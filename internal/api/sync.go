@@ -97,23 +97,20 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 	}
 
 	for path != "" {
-		opts := api.ReplacePathOptions{
-			Method: http.MethodGet,
-			Path:   path,
+		req, err := s.client.rest.NewRequest(http.MethodGet, path, nil)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		if meta.LastModified != "" {
-			opts.Headers = map[string]string{"If-Modified-Since": meta.LastModified}
+			req.Header.Set("If-Modified-Since", meta.LastModified)
 		}
 		if meta.ETag != "" {
-			if opts.Headers == nil {
-				opts.Headers = make(map[string]string)
-			}
-			opts.Headers["If-None-Match"] = meta.ETag
+			req.Header.Set("If-None-Match", meta.ETag)
 		}
 
 		var page []GHNotification
-		resp, err := s.client.rest.Do(opts.Method, opts.Path, nil, &page)
+		resp, err := s.client.rest.Do(req, &page)
 		if err != nil {
 			// Handle 304 Not Modified
 			if restErr, ok := err.(*api.HTTPError); ok && restErr.StatusCode == http.StatusNotModified {
