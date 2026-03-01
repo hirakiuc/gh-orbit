@@ -4,14 +4,6 @@ run:
   timeout: 5m
   tests: true
 
-linters-settings:
-  govet:
-    enable-all: true
-  gofmt:
-    simplify: true
-  misspell:
-    locale: US
-
 linters:
   enable:
     - govet
@@ -23,3 +15,7 @@ linters:
     - gosec
     - bodyclose
     - copyloopvar
+  settings:
+    misspell:
+      locale: US
+
