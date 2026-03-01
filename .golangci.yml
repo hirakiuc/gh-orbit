@@ -1,8 +1,6 @@
 linters-settings:
   govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0.8
+    enable-all: true
   gofmt:
     simplify: true
   misspell:
@@ -15,10 +13,7 @@ linters:
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
     - gofmt
     - misspell
@@ -29,5 +24,3 @@ linters:
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - vendor
