@@ -3,33 +3,57 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/cli/go-gh/v2/pkg/repository"
-	"github.com/gen2brain/beeep"
+	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/spf13/cobra"
-	_ "modernc.org/sqlite"
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "gh-orbit",
 	Short: "gh-orbit is a GitHub CLI extension for TUI-based notification management",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Hello gh-orbit! (Go version)")
-		// Dummy references to ensure dependencies are tracked
-		_ = tea.NewProgram(nil)
-		_ = lipgloss.NewStyle()
-		_, _ = repository.Current()
-		_ = beeep.Alert("title", "message", "")
-		_ = list.New([]list.Item{}, nil, 0, 0)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return run()
 	},
+}
+
+func run() error {
+	// 1. Initialize Database
+	database, err := db.Open()
+	if err != nil {
+		return fmt.Errorf("error opening database: %w", err)
+	}
+	defer func() { _ = database.Close() }()
+
+	// 2. Initialize API Client
+	client, err := api.NewClient()
+	if err != nil {
+		return fmt.Errorf("error creating API client: %w", err)
+	}
+
+	// 3. Get Current User for scoping
+	user, err := client.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("error fetching current user: %w", err)
+	}
+	userID := strconv.FormatInt(user.ID, 10)
+
+	// 4. Start TUI
+	m := tui.NewModel(database, client, userID)
+	p := tea.NewProgram(m)
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
+	}
+
+	return nil
 }
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }

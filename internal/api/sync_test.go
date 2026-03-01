@@ -61,7 +61,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 	// 2. Setup Test DB
 	tmpDir := t.TempDir()
 	dbFile := filepath.Join(tmpDir, "test.db")
-	
+
 	rawDB, err := sql.Open("sqlite", dbFile)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
@@ -116,6 +116,6 @@ func TestSyncEngine_Sync(t *testing.T) {
 	if err := engine.Sync(userID); err != nil {
 		t.Fatalf("Second sync failed: %v", err)
 	}
-	
+
 	// Since we mocked 304 if If-Modified-Since is present, and Sync sends it, it should work.
 }
