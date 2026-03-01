@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -97,7 +98,14 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 	}
 
 	for path != "" {
-		req, err := s.client.rest.NewRequest(http.MethodGet, path, nil)
+		var page []GHNotification
+		
+		// The go-gh v2 RESTClient.Do signature is:
+		// Do(method string, path string, body io.Reader, response interface{}) error
+		// It does NOT return the http.Response, making header inspection difficult.
+		// To inspect headers (Link, Last-Modified, etc.), we should use HTTPClient().
+		
+		req, err := s.client.rest.Request(http.MethodGet, path, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -109,37 +117,44 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 			req.Header.Set("If-None-Match", meta.ETag)
 		}
 
-		var page []GHNotification
-		resp, err := s.client.rest.Do(req, &page)
+		resp, err := s.client.rest.HTTPClient().Do(req)
 		if err != nil {
-			// Handle 304 Not Modified
-			if restErr, ok := err.(*api.HTTPError); ok && restErr.StatusCode == http.StatusNotModified {
-				return nil, &newMeta, nil
-			}
+			return nil, nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotModified {
+			return nil, &newMeta, nil
+		}
+
+		if resp.StatusCode >= 400 {
+			return nil, nil, fmt.Errorf("API error: %s", resp.Status)
+		}
+
+		// Decode the response body
+		if err := api.DecodeJSON(resp.Body, &page); err != nil {
 			return nil, nil, err
 		}
 
 		allNotifications = append(allNotifications, page...)
 
-		// Update metadata from headers of the first page
-		if path == "notifications" || path == "notifications?per_page=100" {
-			if lm := resp.Header.Get("Last-Modified"); lm != "" {
-				newMeta.LastModified = lm
-			}
-			if et := resp.Header.Get("ETag"); et != "" {
-				newMeta.ETag = et
-			}
-			if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
-				if interval, err := strconv.Atoi(pi); err == nil {
-					newMeta.PollInterval = interval
-				}
+		// Update metadata from headers
+		if lm := resp.Header.Get("Last-Modified"); lm != "" {
+			newMeta.LastModified = lm
+		}
+		if et := resp.Header.Get("ETag"); et != "" {
+			newMeta.ETag = et
+		}
+		if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
+			if interval, err := strconv.Atoi(pi); err == nil {
+				newMeta.PollInterval = interval
 			}
 		}
 
 		// Handle pagination
 		path = ""
 		if linkHeader := resp.Header.Get("Link"); linkHeader != "" {
-			links := api.ParseLinkHeader(linkHeader)
+			links := parseLinkHeader(linkHeader)
 			if next, ok := links["next"]; ok {
 				path = next
 			}
@@ -147,4 +162,27 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 	}
 
 	return allNotifications, &newMeta, nil
+}
+
+func parseLinkHeader(header string) map[string]string {
+	links := make(map[string]string)
+	// Example: <https://api.github.com/user/repos?page=3&per_page=100>; rel="next",
+	//          <https://api.github.com/user/repos?page=50&per_page=100>; rel="last"
+	for _, link := range strings.Split(header, ",") {
+		segments := strings.Split(strings.TrimSpace(link), ";")
+		if len(segments) < 2 {
+			continue
+		}
+
+		url := strings.Trim(segments[0], "<>")
+		for _, segment := range segments[1:] {
+			parts := strings.Split(strings.TrimSpace(segment), "=")
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) != "rel" {
+				continue
+			}
+			rel := strings.Trim(parts[1], "\"")
+			links[rel] = url
+		}
+	}
+	return links
 }
