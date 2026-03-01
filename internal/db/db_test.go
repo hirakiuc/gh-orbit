@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ func setupTestDB(t *testing.T) *DB {
 		t.Fatalf("failed to open test db: %v", err)
 	}
 
-	instance := &DB{db}
+	instance := &DB{db, slog.Default()}
 	if err := instance.migrate(); err != nil {
 		t.Fatalf("failed to migrate test db: %v", err)
 	}
