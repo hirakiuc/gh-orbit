@@ -93,6 +93,54 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	}
 }
 
+func TestUpsertPreservesLocalState(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	id := "state-test-1"
+	n := Notification{
+		GitHubID:     id,
+		SubjectTitle: "Original Title",
+		UpdatedAt:    time.Now().Truncate(time.Second),
+	}
+
+	// 1. Initial sync
+	if err := db.UpsertNotification(n); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. User sets local state
+	err := db.UpdateOrbitState(OrbitState{
+		NotificationID: id,
+		Priority:       3,
+		Status:         "tracking",
+		IsReadLocally:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Differential sync (API update)
+	n.SubjectTitle = "Updated Title"
+	n.UpdatedAt = n.UpdatedAt.Add(time.Hour)
+	if err := db.UpsertNotification(n); err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Verify title updated BUT local state remains
+	ns, err := db.GetNotification(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ns.SubjectTitle != "Updated Title" {
+		t.Errorf("Title not updated: %s", ns.SubjectTitle)
+	}
+	if ns.Priority != 3 || ns.Status != "tracking" || !ns.IsReadLocally {
+		t.Errorf("Local state was overwritten: %+v", ns.OrbitState)
+	}
+}
+
 func TestListNotifications(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() { _ = db.Close() }()
