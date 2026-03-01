@@ -35,4 +35,6 @@ var migrations = []string{
 		last_error_at DATETIME,
 		PRIMARY KEY (user_id, key)
 	);`,
+	// Version 3: Add subject_url for robust PR number extraction
+	`ALTER TABLE notifications ADD COLUMN subject_url TEXT;`,
 }

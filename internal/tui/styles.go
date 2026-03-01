@@ -32,9 +32,14 @@ func DefaultStyles() Styles {
 	s.StatusError = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF0000"))
 
-	s.PriorityHigh = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F87"))
-	s.PriorityMed = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAF00"))
-	s.PriorityLow = lipgloss.NewStyle().Foreground(lipgloss.Color("#00AF87"))
+	s.PriorityHigh = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF5F87"))
+
+	s.PriorityMed = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFAF00"))
+
+	s.PriorityLow = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00AF87"))
 
 	return s
 }

@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/hirakiuc/gh-orbit/internal/db"
+)
 
 // GHNotification represents the GitHub API response for a notification.
 type GHNotification struct {
@@ -21,4 +25,9 @@ type GHNotification struct {
 type GHUser struct {
 	ID    int64  `json:"id"`
 	Login string `json:"login"`
+}
+
+// Fetcher defines the interface for retrieving notifications from an external source.
+type Fetcher interface {
+	FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, error)
 }

@@ -17,17 +17,18 @@ func (db *DB) UpsertNotification(n Notification) error {
 	// 1. Upsert notification metadata (API fields only)
 	_, err = tx.Exec(`
 		INSERT INTO notifications (
-			github_id, subject_title, subject_type, reason, repository_full_name, html_url, is_enriched, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, is_enriched, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(github_id) DO UPDATE SET
 			subject_title = excluded.subject_title,
+			subject_url = excluded.subject_url,
 			subject_type = excluded.subject_type,
 			reason = excluded.reason,
 			repository_full_name = excluded.repository_full_name,
 			html_url = excluded.html_url,
 			is_enriched = excluded.is_enriched,
 			updated_at = excluded.updated_at
-	`, n.GitHubID, n.SubjectTitle, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.IsEnriched, n.UpdatedAt)
+	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.IsEnriched, n.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to upsert notification: %w", err)
 	}
@@ -55,7 +56,7 @@ type NotificationWithState struct {
 func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 	row := db.QueryRow(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -64,7 +65,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 
 	var ns NotificationWithState
 	err := row.Scan(
-		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.IsEnriched, &ns.UpdatedAt,
+		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.IsEnriched, &ns.UpdatedAt,
 		&ns.Priority, &ns.Status, &ns.IsReadLocally,
 	)
 	if err == sql.ErrNoRows {
@@ -80,7 +81,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	rows, err := db.Query(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -95,7 +96,7 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	for rows.Next() {
 		var ns NotificationWithState
 		err := rows.Scan(
-			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.IsEnriched, &ns.UpdatedAt,
+			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.IsEnriched, &ns.UpdatedAt,
 			&ns.Priority, &ns.Status, &ns.IsReadLocally,
 		)
 		if err != nil {

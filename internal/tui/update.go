@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -36,21 +37,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-				prNumber := extractNumber(i.notification.SubjectTitle) // Simple helper
+				prNumber := extractNumberFromURL(i.notification.SubjectURL)
 				if prNumber != "" {
 					m.status = "Launching gh pr checkout..."
 					return m, m.CheckoutPR(i.notification.RepositoryFullName, prNumber)
 				}
-				m.err = fmt.Errorf("could not extract PR number from title: %s", i.notification.SubjectTitle)
+				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
 			}
 		case "v":
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-				prNumber := extractNumber(i.notification.SubjectTitle)
+				prNumber := extractNumberFromURL(i.notification.SubjectURL)
 				if prNumber != "" {
 					m.status = "Opening PR in browser..."
 					return m, m.ViewPRWeb(i.notification.RepositoryFullName, prNumber)
 				}
-				m.err = fmt.Errorf("could not extract PR number from title: %s", i.notification.SubjectTitle)
+				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
 			}
 		case "1", "2", "3":
 			// Set priority
@@ -104,12 +105,22 @@ func isValidGitHubURL(url string) bool {
 		strings.HasPrefix(url, "https://api.github.com/")
 }
 
-func extractNumber(title string) string {
-	// Simple extractor for "#123" pattern in titles
-	re := regexp.MustCompile(`#([0-9]+)`)
-	matches := re.FindStringSubmatch(title)
-	if len(matches) > 1 {
-		return matches[1]
+func extractNumberFromURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+
+	// Example: https://api.github.com/repos/owner/repo/pulls/123
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) > 0 {
+		last := segments[len(segments)-1]
+		if regexp.MustCompile(`^[0-9]+$`).MatchString(last) {
+			return last
+		}
 	}
 	return ""
 }

@@ -30,6 +30,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	n := Notification{
 		GitHubID:           "123",
 		SubjectTitle:       "Test PR",
+		SubjectURL:         "https://api.github.com/repos/user/repo/pulls/1",
 		SubjectType:        "PullRequest",
 		Reason:             "author",
 		RepositoryFullName: "user/repo",
@@ -101,6 +102,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	n := Notification{
 		GitHubID:     id,
 		SubjectTitle: "Original Title",
+		SubjectURL:   "https://api.github.com/repos/user/repo/pulls/1",
 		UpdatedAt:    time.Now().Truncate(time.Second),
 	}
 
