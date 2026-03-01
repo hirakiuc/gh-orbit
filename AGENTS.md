@@ -16,7 +16,7 @@
 1. **Sync**: `git pull origin main`.
 2. **Plan**: Mandatory [Strategy Review](.agent/workflows/strategy-review/WORKFLOW.md). **SIGN-OFF** required before `internal/` or `cmd/` changes.
 3. **Branch**: `feat/` or `fix/`.
-4. **Code**: Conventional commits. Include "Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>".
+4. **Code**: Conventional commits. Include appropriate co-author attribution for the AI tool being used.
 5. **Validate**: MANDATORY local check: `make fmt lint build test`. Run `go mod tidy` on dependency changes.
 6. **PR**: `gh pr create --base main`. Address feedback.
 
