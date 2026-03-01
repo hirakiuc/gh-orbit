@@ -11,7 +11,7 @@ func (db *DB) UpsertNotification(n Notification) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 1. Upsert notification
 	_, err = tx.Exec(`
@@ -87,7 +87,7 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []NotificationWithState
 	for rows.Next() {

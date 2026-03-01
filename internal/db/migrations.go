@@ -31,7 +31,7 @@ func (db *DB) migrate() error {
 		}
 
 		if _, err := tx.Exec(migrations[i]); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("migration to version %d failed: %w", version, err)
 		}
 
@@ -42,7 +42,7 @@ func (db *DB) migrate() error {
 		}
 
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("failed to update schema version to %d: %w", version, err)
 		}
 

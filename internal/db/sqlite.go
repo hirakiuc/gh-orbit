@@ -35,7 +35,7 @@ func Open() (*DB, error) {
 
 	instance := &DB{db}
 	if err := instance.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 
