@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cli/go-gh/v2"
+	"github.com/cli/go-gh/v2/pkg/repository"
 	"github.com/gen2brain/beeep"
 	"github.com/spf13/cobra"
 	_ "modernc.org/sqlite"
@@ -21,7 +21,7 @@ var rootCmd = &cobra.Command{
 		// Dummy references to ensure dependencies are tracked
 		_ = tea.NewProgram(nil)
 		_ = lipgloss.NewStyle()
-		_, _ = gh.CurrentRepository()
+		_, _ = repository.Current()
 		_ = beeep.Alert("title", "message", "")
 		_ = list.New([]list.Item{}, nil, 0, 0)
 	},
