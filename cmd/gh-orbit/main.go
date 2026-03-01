@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -22,6 +23,11 @@ var rootCmd = &cobra.Command{
 }
 
 func run() error {
+	// 0. Check for gh CLI
+	if _, err := exec.LookPath("gh"); err != nil {
+		return fmt.Errorf("github cli 'gh' not found in PATH: %w", err)
+	}
+
 	// 0. Load Configuration
 	cfg, err := config.Load()
 	if err != nil {

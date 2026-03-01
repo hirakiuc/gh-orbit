@@ -41,6 +41,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = "Launching gh pr checkout..."
 					return m, m.CheckoutPR(i.notification.RepositoryFullName, prNumber)
 				}
+				m.err = fmt.Errorf("could not extract PR number from title: %s", i.notification.SubjectTitle)
 			}
 		case "v":
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
@@ -49,6 +50,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = "Opening PR in browser..."
 					return m, m.ViewPRWeb(i.notification.RepositoryFullName, prNumber)
 				}
+				m.err = fmt.Errorf("could not extract PR number from title: %s", i.notification.SubjectTitle)
 			}
 		case "1", "2", "3":
 			// Set priority
