@@ -22,7 +22,7 @@ func Open() (*DB, error) {
 	}
 
 	// Create parent directory if it doesn't exist
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create db directory: %w", err)
 	}
 
