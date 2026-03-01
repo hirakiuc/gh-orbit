@@ -12,6 +12,9 @@ This document defines the rules and workflows for AI agents (like Gemini CLI) co
 ### 1.1 Security
 
 - **Credential Safety**: NEVER commit API keys, Personal Access Tokens (PATs), or any sensitive credentials to the repository. Proactively check for and ignore environment files (e.g., `.env`) or local configuration that may contain secrets.
+- **Data Persistence**: Store all persistent data (SQLite, logs, cache) in standard system directories according to the XDG Base Directory specification. Never store user data in the project root or the extension installation directory.
+    - **Config**: `~/.config/gh/extensions/gh-orbit/`
+    - **Data/DB**: `~/.local/share/gh/extensions/gh-orbit/`
 
 ## 2. Development Workflow
 
