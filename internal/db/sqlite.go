@@ -48,12 +48,17 @@ func Open(logger *slog.Logger) (*DB, error) {
 
 // resolveDBPath follows the XDG Base Directory specification.
 func resolveDBPath() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	stateHome := os.Getenv("XDG_STATE_HOME")
+	if stateHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		// On macOS/Linux fallback to ~/.local/state
+		stateHome = filepath.Join(home, ".local", "state")
 	}
 
-	return filepath.Join(configDir, "gh-orbit", "orbit.db"), nil
+	return filepath.Join(stateHome, "gh-orbit", "orbit.db"), nil
 }
 
 // Close closes the database connection.
