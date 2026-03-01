@@ -23,4 +23,16 @@ var migrations = []string{
 		is_read_locally BOOLEAN DEFAULT FALSE,
 		FOREIGN KEY (notification_id) REFERENCES notifications(github_id) ON DELETE CASCADE
 	);`,
+	// Version 2: Sync metadata for multi-account differential sync
+	`CREATE TABLE IF NOT EXISTS sync_meta (
+		user_id TEXT NOT NULL,
+		key TEXT NOT NULL,
+		last_modified TEXT,
+		etag TEXT,
+		poll_interval INTEGER DEFAULT 60,
+		last_sync_at DATETIME,
+		last_error TEXT,
+		last_error_at DATETIME,
+		PRIMARY KEY (user_id, key)
+	);`,
 }

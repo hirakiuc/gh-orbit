@@ -21,3 +21,15 @@ type OrbitState struct {
 	Status         string `json:"status"`   // 'entry', 'tracking', 'archived'
 	IsReadLocally  bool   `json:"is_read_locally"`
 }
+
+// SyncMeta represents the differential sync state per user and endpoint.
+type SyncMeta struct {
+	UserID       string    `json:"user_id"`
+	Key          string    `json:"key"`
+	LastModified string    `json:"last_modified"`
+	ETag         string    `json:"etag"`
+	PollInterval int       `json:"poll_interval"`
+	LastSyncAt   time.Time `json:"last_sync_at"`
+	LastError    string    `json:"last_error"`
+	LastErrorAt  time.Time `json:"last_error_at"`
+}

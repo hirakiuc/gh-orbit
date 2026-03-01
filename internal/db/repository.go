@@ -5,7 +5,8 @@ import (
 	"fmt"
 )
 
-// UpsertNotification inserts or updates a notification and ensures orbit state exists.
+// UpsertNotification inserts or updates a notification record from the API.
+// It ensures that local orbit_state (priority, status, etc.) is preserved.
 func (db *DB) UpsertNotification(n Notification) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -13,7 +14,7 @@ func (db *DB) UpsertNotification(n Notification) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 1. Upsert notification
+	// 1. Upsert notification metadata (API fields only)
 	_, err = tx.Exec(`
 		INSERT INTO notifications (
 			github_id, subject_title, subject_type, reason, repository_full_name, html_url, is_enriched, updated_at
@@ -31,10 +32,11 @@ func (db *DB) UpsertNotification(n Notification) error {
 		return fmt.Errorf("failed to upsert notification: %w", err)
 	}
 
-	// 2. Ensure orbit_state exists (do nothing if it does)
+	// 2. Ensure orbit_state exists for this notification (default values for new entries)
+	// This will NOT overwrite existing user state if the notification was previously synced.
 	_, err = tx.Exec(`
-		INSERT INTO orbit_state (notification_id)
-		VALUES (?)
+		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
+		VALUES (?, 0, 'entry', FALSE)
 		ON CONFLICT(notification_id) DO NOTHING
 	`, n.GitHubID)
 	if err != nil {
@@ -111,5 +113,40 @@ func (db *DB) UpdateOrbitState(state OrbitState) error {
 		SET priority = ?, status = ?, is_read_locally = ?
 		WHERE notification_id = ?
 	`, state.Priority, state.Status, state.IsReadLocally, state.NotificationID)
+	return err
+}
+
+// GetSyncMeta retrieves the sync metadata for a user and endpoint.
+func (db *DB) GetSyncMeta(userID, key string) (*SyncMeta, error) {
+	row := db.QueryRow(`
+		SELECT user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at
+		FROM sync_meta
+		WHERE user_id = ? AND key = ?
+	`, userID, key)
+
+	var s SyncMeta
+	err := row.Scan(&s.UserID, &s.Key, &s.LastModified, &s.ETag, &s.PollInterval, &s.LastSyncAt, &s.LastError, &s.LastErrorAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// UpdateSyncMeta updates the sync metadata.
+func (db *DB) UpdateSyncMeta(s SyncMeta) error {
+	_, err := db.Exec(`
+		INSERT INTO sync_meta (user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, key) DO UPDATE SET
+			last_modified = excluded.last_modified,
+			etag = excluded.etag,
+			poll_interval = excluded.poll_interval,
+			last_sync_at = excluded.last_sync_at,
+			last_error = excluded.last_error,
+			last_error_at = excluded.last_error_at
+	`, s.UserID, s.Key, s.LastModified, s.ETag, s.PollInterval, s.LastSyncAt, s.LastError, s.LastErrorAt)
 	return err
 }
