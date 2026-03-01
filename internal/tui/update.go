@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -20,7 +23,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y":
 			// Copy URL
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-				return m, tea.SetClipboard(i.notification.HTMLURL)
+				if isValidGitHubURL(i.notification.HTMLURL) {
+					return m, tea.SetClipboard(i.notification.HTMLURL)
+				}
+				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
 			}
 		case "1", "2", "3":
 			// Set priority
@@ -67,4 +73,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func isValidGitHubURL(url string) bool {
+	return strings.HasPrefix(url, "https://github.com/") ||
+		strings.HasPrefix(url, "https://api.github.com/")
 }

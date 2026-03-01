@@ -8,19 +8,18 @@ import (
 
 func (m Model) View() tea.View {
 	// Root view
-	v := tea.NewView(m.list.View())
-
-	// Declarative terminal state
-	v.AltScreen = true
+	viewContent := m.list.View()
 
 	// Error handling display
 	if m.err != nil {
-		errorView := m.styles.StatusError.Render(fmt.Sprintf("Error: %v", m.err))
-		// Prepend or append error view if needed, but list view takes full screen.
-		// For MVP, we'll just log or show briefly if list allows.
-		// Actually, let's just use the list's status bar for now if possible.
-		_ = errorView // TODO: Display error
+		errorView := m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
+		viewContent += "\n" + errorView
 	}
+
+	v := tea.NewView(viewContent)
+
+	// Declarative terminal state
+	v.AltScreen = true
 
 	return v
 }

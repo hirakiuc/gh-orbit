@@ -15,43 +15,45 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "gh-orbit",
 	Short: "gh-orbit is a GitHub CLI extension for TUI-based notification management",
-	Run: func(cmd *cobra.Command, args []string) {
-		// 1. Initialize Database
-		database, err := db.Open()
-		if err != nil {
-			fmt.Printf("Error opening database: %v\n", err)
-			os.Exit(1)
-		}
-		defer func() { _ = database.Close() }()
-
-		// 2. Initialize API Client
-		client, err := api.NewClient()
-		if err != nil {
-			fmt.Printf("Error creating API client: %v\n", err)
-			os.Exit(1)
-		}
-
-		// 3. Get Current User for scoping
-		user, err := client.CurrentUser()
-		if err != nil {
-			fmt.Printf("Error fetching current user: %v\n", err)
-			os.Exit(1)
-		}
-		userID := strconv.FormatInt(user.ID, 10)
-
-		// 4. Start TUI
-		m := tui.NewModel(database, client, userID)
-		p := tea.NewProgram(m)
-		if _, err := p.Run(); err != nil {
-			fmt.Printf("Error running TUI: %v\n", err)
-			os.Exit(1)
-		}
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return run()
 	},
+}
+
+func run() error {
+	// 1. Initialize Database
+	database, err := db.Open()
+	if err != nil {
+		return fmt.Errorf("error opening database: %w", err)
+	}
+	defer func() { _ = database.Close() }()
+
+	// 2. Initialize API Client
+	client, err := api.NewClient()
+	if err != nil {
+		return fmt.Errorf("error creating API client: %w", err)
+	}
+
+	// 3. Get Current User for scoping
+	user, err := client.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("error fetching current user: %w", err)
+	}
+	userID := strconv.FormatInt(user.ID, 10)
+
+	// 4. Start TUI
+	m := tui.NewModel(database, client, userID)
+	p := tea.NewProgram(m)
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
+	}
+
+	return nil
 }
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
