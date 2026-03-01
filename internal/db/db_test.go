@@ -24,7 +24,7 @@ func setupTestDB(t *testing.T) *DB {
 
 func TestUpsertAndGetNotification(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	now := time.Now().Truncate(time.Second)
 	n := Notification{
@@ -95,7 +95,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 
 func TestListNotifications(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	n1 := Notification{GitHubID: "1", SubjectTitle: "N1", SubjectType: "Issue", UpdatedAt: time.Now()}
 	n2 := Notification{GitHubID: "2", SubjectTitle: "N2", SubjectType: "PullRequest", UpdatedAt: time.Now().Add(time.Hour)}
