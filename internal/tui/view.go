@@ -10,10 +10,16 @@ func (m Model) View() tea.View {
 	// Root view
 	viewContent := m.list.View()
 
-	// Error handling display
+	// Status and Error handling display
+	var footer string
 	if m.err != nil {
-		errorView := m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
-		viewContent += "\n" + errorView
+		footer = m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
+	} else if m.status != "" {
+		footer = m.styles.StatusNormal.Render(fmt.Sprintf(" %s ", m.status))
+	}
+
+	if footer != "" {
+		viewContent += "\n" + footer
 	}
 
 	v := tea.NewView(viewContent)

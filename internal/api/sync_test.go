@@ -80,7 +80,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		baseURL: server.URL + "/",
 		host:    "github.com",
 	}
-	engine := NewSyncEngine(client, database)
+	engine := NewSyncEngine(client, database, nil)
 
 	// 4. Run First Sync
 	userID := "user-1"
