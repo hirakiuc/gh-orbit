@@ -1,11 +1,7 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -15,16 +11,16 @@ const DefaultPollInterval = 60 // seconds
 
 // SyncEngine orchestrates the synchronization of notifications.
 type SyncEngine struct {
-	client *Client
-	db     *db.DB
-	alerts *AlertService
+	fetcher Fetcher
+	db      *db.DB
+	alerts  *AlertService
 }
 
-func NewSyncEngine(client *Client, database *db.DB, alerts *AlertService) *SyncEngine {
+func NewSyncEngine(fetcher Fetcher, database *db.DB, alerts *AlertService) *SyncEngine {
 	return &SyncEngine{
-		client: client,
-		db:     database,
-		alerts: alerts,
+		fetcher: fetcher,
+		db:      database,
+		alerts:  alerts,
 	}
 }
 
@@ -51,7 +47,7 @@ func (s *SyncEngine) Sync(userID string) error {
 		return nil // Too soon to poll
 	}
 
-	notifications, newMeta, err := s.fetchNotifications(meta)
+	notifications, newMeta, err := s.fetcher.FetchNotifications(meta)
 	if err != nil {
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
@@ -65,6 +61,7 @@ func (s *SyncEngine) Sync(userID string) error {
 			err := s.db.UpsertNotification(db.Notification{
 				GitHubID:           n.ID,
 				SubjectTitle:       n.Subject.Title,
+				SubjectURL:         n.Subject.URL,
 				SubjectType:        n.Subject.Type,
 				Reason:             n.Reason,
 				RepositoryFullName: n.Repository.FullName,
@@ -85,105 +82,4 @@ func (s *SyncEngine) Sync(userID string) error {
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	return s.db.UpdateSyncMeta(*newMeta)
-}
-
-func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, error) {
-	var allNotifications []GHNotification
-	newMeta := *meta
-
-	path := "notifications?per_page=100"
-
-	// Only fetch all notifications on first sync
-	if meta.LastModified != "" || meta.ETag != "" {
-		path = "notifications"
-	}
-
-	for path != "" {
-		url := path
-		if !strings.HasPrefix(url, "http") {
-			url = s.client.BaseURL() + path
-		}
-
-		req, err := http.NewRequest(http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if meta.LastModified != "" {
-			req.Header.Set("If-Modified-Since", meta.LastModified)
-		}
-		if meta.ETag != "" {
-			req.Header.Set("If-None-Match", meta.ETag)
-		}
-
-		resp, err := s.client.HTTP().Do(req) // #nosec G704: Trusted GitHub API URLs
-		if err != nil {
-			return nil, nil, err
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.StatusCode == http.StatusNotModified {
-			return nil, &newMeta, nil
-		}
-
-		if resp.StatusCode >= 400 {
-			return nil, nil, fmt.Errorf("API error: %s", resp.Status)
-		}
-
-		var page []GHNotification
-		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			return nil, nil, err
-		}
-
-		allNotifications = append(allNotifications, page...)
-
-		// Update metadata from headers of the first page
-		if strings.Contains(url, "notifications") {
-			if lm := resp.Header.Get("Last-Modified"); lm != "" {
-				newMeta.LastModified = lm
-			}
-			if et := resp.Header.Get("ETag"); et != "" {
-				newMeta.ETag = et
-			}
-			if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
-				if interval, err := strconv.Atoi(pi); err == nil {
-					newMeta.PollInterval = interval
-				}
-			}
-		}
-
-		// Handle pagination
-		path = ""
-		if linkHeader := resp.Header.Get("Link"); linkHeader != "" {
-			links := parseLinkHeader(linkHeader)
-			if next, ok := links["next"]; ok {
-				path = next
-			}
-		}
-	}
-
-	return allNotifications, &newMeta, nil
-}
-
-func parseLinkHeader(header string) map[string]string {
-	links := make(map[string]string)
-	// Example: <https://api.github.com/user/repos?page=3&per_page=100>; rel="next",
-	//          <https://api.github.com/user/repos?page=50&per_page=100>; rel="last"
-	for _, link := range strings.Split(header, ",") {
-		segments := strings.Split(strings.TrimSpace(link), ";")
-		if len(segments) < 2 {
-			continue
-		}
-
-		url := strings.Trim(segments[0], "<>")
-		for _, segment := range segments[1:] {
-			parts := strings.Split(strings.TrimSpace(segment), "=")
-			if len(parts) != 2 || strings.TrimSpace(parts[0]) != "rel" {
-				continue
-			}
-			rel := strings.Trim(parts[1], "\"")
-			links[rel] = url
-		}
-	}
-	return links
 }

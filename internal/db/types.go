@@ -6,6 +6,7 @@ import "time"
 type Notification struct {
 	GitHubID           string    `json:"id"`
 	SubjectTitle       string    `json:"subject_title"`
+	SubjectURL         string    `json:"subject_url"`
 	SubjectType        string    `json:"subject_type"`
 	Reason             string    `json:"reason"`
 	RepositoryFullName string    `json:"repository_full_name"`

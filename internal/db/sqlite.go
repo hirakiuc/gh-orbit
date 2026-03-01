@@ -44,22 +44,12 @@ func Open() (*DB, error) {
 
 // resolveDBPath follows the XDG Base Directory specification.
 func resolveDBPath() (string, error) {
-	// Respect XDG_DATA_HOME if set, otherwise use os.UserConfigDir as a reliable base
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		// On macOS: ~/Library/Application Support/gh-orbit/
-		// On Linux: ~/.local/share/gh-orbit/
-		if os.Getenv("XDG_DATA_HOME") == "" {
-			// Fallback to platform-specific data dir
-			dataHome = filepath.Join(home, ".local", "share")
-		}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
 	}
 
-	return filepath.Join(dataHome, "gh-orbit", "orbit.db"), nil
+	return filepath.Join(configDir, "gh-orbit", "orbit.db"), nil
 }
 
 // Close closes the database connection.

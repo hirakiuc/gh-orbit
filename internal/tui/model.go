@@ -29,12 +29,13 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 	l.Styles.Title = styles.Title
 
 	alerts := api.NewAlertService(cfg)
+	fetcher := api.NewNotificationFetcher(client)
 
 	return Model{
 		list:   l,
 		db:     database,
 		client: client,
-		sync:   api.NewSyncEngine(client, database, alerts),
+		sync:   api.NewSyncEngine(fetcher, database, alerts),
 		config: cfg,
 		userID: userID,
 		styles: styles,
