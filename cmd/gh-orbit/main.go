@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/spf13/cobra"
@@ -21,6 +22,12 @@ var rootCmd = &cobra.Command{
 }
 
 func run() error {
+	// 0. Load Configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("error loading config: %w", err)
+	}
+
 	// 1. Initialize Database
 	database, err := db.Open()
 	if err != nil {
@@ -42,7 +49,7 @@ func run() error {
 	userID := strconv.FormatInt(user.ID, 10)
 
 	// 4. Start TUI
-	m := tui.NewModel(database, client, userID)
+	m := tui.NewModel(database, client, userID, cfg)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)

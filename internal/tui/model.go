@@ -4,6 +4,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
@@ -12,12 +13,14 @@ type Model struct {
 	db     *db.DB
 	client *api.Client
 	sync   *api.SyncEngine
+	config *config.Config
 	userID string
 	styles Styles
 	err    error
+	status string
 }
 
-func NewModel(database *db.DB, client *api.Client, userID string) Model {
+func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config) Model {
 	styles := DefaultStyles()
 	delegate := newItemDelegate(styles)
 
@@ -25,11 +28,14 @@ func NewModel(database *db.DB, client *api.Client, userID string) Model {
 	l.Title = "GitHub Orbit"
 	l.Styles.Title = styles.Title
 
+	alerts := api.NewAlertService(cfg)
+
 	return Model{
 		list:   l,
 		db:     database,
 		client: client,
-		sync:   api.NewSyncEngine(client, database),
+		sync:   api.NewSyncEngine(client, database, alerts),
+		config: cfg,
 		userID: userID,
 		styles: styles,
 	}

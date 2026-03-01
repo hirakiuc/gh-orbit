@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"charm.land/bubbles/v2/list"
@@ -27,6 +28,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.SetClipboard(i.notification.HTMLURL)
 				}
 				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
+			}
+		case "enter":
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
+				m.status = "Opening browser..."
+				return m, m.OpenBrowser(i.notification.HTMLURL)
+			}
+		case "c":
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+				prNumber := extractNumber(i.notification.SubjectTitle) // Simple helper
+				if prNumber != "" {
+					m.status = "Launching gh pr checkout..."
+					return m, m.CheckoutPR(i.notification.RepositoryFullName, prNumber)
+				}
+			}
+		case "v":
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+				prNumber := extractNumber(i.notification.SubjectTitle)
+				if prNumber != "" {
+					m.status = "Opening PR in browser..."
+					return m, m.ViewPRWeb(i.notification.RepositoryFullName, prNumber)
+				}
 			}
 		case "1", "2", "3":
 			// Set priority
@@ -78,4 +100,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func isValidGitHubURL(url string) bool {
 	return strings.HasPrefix(url, "https://github.com/") ||
 		strings.HasPrefix(url, "https://api.github.com/")
+}
+
+func extractNumber(title string) string {
+	// Simple extractor for "#123" pattern in titles
+	re := regexp.MustCompile(`#([0-9]+)`)
+	matches := re.FindStringSubmatch(title)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
 }

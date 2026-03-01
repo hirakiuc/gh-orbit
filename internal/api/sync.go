@@ -17,12 +17,14 @@ const DefaultPollInterval = 60 // seconds
 type SyncEngine struct {
 	client *Client
 	db     *db.DB
+	alerts *AlertService
 }
 
-func NewSyncEngine(client *Client, database *db.DB) *SyncEngine {
+func NewSyncEngine(client *Client, database *db.DB, alerts *AlertService) *SyncEngine {
 	return &SyncEngine{
 		client: client,
 		db:     database,
+		alerts: alerts,
 	}
 }
 
@@ -71,6 +73,11 @@ func (s *SyncEngine) Sync(userID string) error {
 			})
 			if err != nil {
 				return fmt.Errorf("failed to save notification %s: %w", n.ID, err)
+			}
+
+			// Trigger system alert for new notifications
+			if s.alerts != nil && n.UpdatedAt.After(meta.LastSyncAt) {
+				_ = s.alerts.Notify(n)
 			}
 		}
 	}
