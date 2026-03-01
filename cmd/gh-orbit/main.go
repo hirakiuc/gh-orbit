@@ -23,6 +23,13 @@ var rootCmd = &cobra.Command{
 }
 
 func run() error {
+	// 0. Initialize Logger
+	logger, cleanup, err := config.SetupLogger()
+	if err != nil {
+		return fmt.Errorf("error setting up logger: %w", err)
+	}
+	defer func() { _ = cleanup() }()
+
 	// 0. Check for gh CLI
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("github cli 'gh' not found in PATH: %w", err)
@@ -35,7 +42,7 @@ func run() error {
 	}
 
 	// 1. Initialize Database
-	database, err := db.Open()
+	database, err := db.Open(logger)
 	if err != nil {
 		return fmt.Errorf("error opening database: %w", err)
 	}
@@ -55,7 +62,7 @@ func run() error {
 	userID := strconv.FormatInt(user.ID, 10)
 
 	// 4. Start TUI
-	m := tui.NewModel(database, client, userID, cfg)
+	m := tui.NewModel(database, client, userID, cfg, logger)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)

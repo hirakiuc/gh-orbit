@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -14,18 +15,21 @@ type SyncEngine struct {
 	fetcher Fetcher
 	db      *db.DB
 	alerts  *AlertService
+	logger  *slog.Logger
 }
 
-func NewSyncEngine(fetcher Fetcher, database *db.DB, alerts *AlertService) *SyncEngine {
+func NewSyncEngine(fetcher Fetcher, database *db.DB, alerts *AlertService, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
 		fetcher: fetcher,
 		db:      database,
 		alerts:  alerts,
+		logger:  logger,
 	}
 }
 
 // Sync performs a full synchronization cycle for notifications.
 func (s *SyncEngine) Sync(userID string) error {
+	s.logger.Info("starting notification sync", "user_id", userID)
 	metaKey := "notifications"
 
 	meta, err := s.db.GetSyncMeta(userID, metaKey)
@@ -44,11 +48,13 @@ func (s *SyncEngine) Sync(userID string) error {
 
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
+		s.logger.Debug("skipping sync, poll interval not reached", "interval", meta.PollInterval)
 		return nil // Too soon to poll
 	}
 
 	notifications, newMeta, err := s.fetcher.FetchNotifications(meta)
 	if err != nil {
+		s.logger.Error("failed to fetch notifications", "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
 		_ = s.db.UpdateSyncMeta(*meta)
@@ -81,5 +87,6 @@ func (s *SyncEngine) Sync(userID string) error {
 
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
+	s.logger.Info("notification sync complete", "user_id", userID)
 	return s.db.UpdateSyncMeta(*newMeta)
 }

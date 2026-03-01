@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -80,8 +81,8 @@ func TestSyncEngine_Sync(t *testing.T) {
 		baseURL: server.URL + "/",
 		host:    "github.com",
 	}
-	fetcher := NewNotificationFetcher(client)
-	engine := NewSyncEngine(fetcher, database, nil)
+	fetcher := NewNotificationFetcher(client, slog.Default())
+	engine := NewSyncEngine(fetcher, database, nil, slog.Default())
 
 	// 4. Run First Sync
 	userID := "user-1"

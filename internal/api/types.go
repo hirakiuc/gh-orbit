@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -25,6 +26,14 @@ type GHNotification struct {
 type GHUser struct {
 	ID    int64  `json:"id"`
 	Login string `json:"login"`
+}
+
+// LogValue implements slog.LogValuer to redact sensitive user data.
+func (u GHUser) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int64("id", u.ID),
+		slog.String("login", "<REDACTED>"),
+	)
 }
 
 // Fetcher defines the interface for retrieving notifications from an external source.

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"log/slog"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -14,13 +16,14 @@ type Model struct {
 	client *api.Client
 	sync   *api.SyncEngine
 	config *config.Config
+	logger *slog.Logger
 	userID string
 	styles Styles
 	err    error
 	status string
 }
 
-func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config) Model {
+func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
 	styles := DefaultStyles()
 	delegate := newItemDelegate(styles)
 
@@ -28,15 +31,16 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 	l.Title = "GitHub Orbit"
 	l.Styles.Title = styles.Title
 
-	alerts := api.NewAlertService(cfg)
-	fetcher := api.NewNotificationFetcher(client)
+	alerts := api.NewAlertService(cfg, logger)
+	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
 		list:   l,
 		db:     database,
 		client: client,
-		sync:   api.NewSyncEngine(fetcher, database, alerts),
+		sync:   api.NewSyncEngine(fetcher, database, alerts, logger),
 		config: cfg,
+		logger: logger,
 		userID: userID,
 		styles: styles,
 	}

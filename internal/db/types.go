@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // Notification represents a GitHub notification record.
 type Notification struct {
@@ -33,4 +36,15 @@ type SyncMeta struct {
 	LastSyncAt   time.Time `json:"last_sync_at"`
 	LastError    string    `json:"last_error"`
 	LastErrorAt  time.Time `json:"last_error_at"`
+}
+
+// LogValue implements slog.LogValuer to redact sensitive sync metadata.
+func (s SyncMeta) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("user_id", s.UserID),
+		slog.String("key", s.Key),
+		slog.String("last_modified", "<REDACTED>"),
+		slog.String("etag", "<REDACTED>"),
+		slog.Int("poll_interval", s.PollInterval),
+	)
 }

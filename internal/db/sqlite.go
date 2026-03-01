@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -12,14 +13,17 @@ import (
 // DB represents the database connection pool.
 type DB struct {
 	*sql.DB
+	logger *slog.Logger
 }
 
 // Open opens a connection to the SQLite database.
-func Open() (*DB, error) {
+func Open(logger *slog.Logger) (*DB, error) {
 	dbPath, err := resolveDBPath()
 	if err != nil {
 		return nil, err
 	}
+
+	logger.Info("opening database", "path", dbPath)
 
 	// Create parent directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
@@ -33,7 +37,7 @@ func Open() (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	instance := &DB{db}
+	instance := &DB{db, logger}
 	if err := instance.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err

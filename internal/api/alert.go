@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/gen2brain/beeep"
 	"github.com/hirakiuc/gh-orbit/internal/config"
@@ -10,20 +11,26 @@ import (
 // AlertService handles system notifications.
 type AlertService struct {
 	config *config.Config
+	logger *slog.Logger
 }
 
-func NewAlertService(cfg *config.Config) *AlertService {
-	return &AlertService{config: cfg}
+func NewAlertService(cfg *config.Config, logger *slog.Logger) *AlertService {
+	return &AlertService{
+		config: cfg,
+		logger: logger,
+	}
 }
 
 // Notify sends a system alert for a GitHub notification if it matches filters.
 func (a *AlertService) Notify(n GHNotification) error {
 	if !a.config.Notifications.Enabled || a.config.Notifications.Mute {
+		a.logger.Debug("skipping alert, notifications disabled or muted")
 		return nil
 	}
 
 	// Filter by reason
 	if !a.shouldNotifyReason(n.Reason) {
+		a.logger.Debug("skipping alert, reason not in whitelist", "reason", n.Reason)
 		return nil
 	}
 
@@ -36,6 +43,8 @@ func (a *AlertService) Notify(n GHNotification) error {
 
 	title := fmt.Sprintf("[%s] %s", n.Repository.FullName, n.Subject.Title)
 	message := fmt.Sprintf("Reason: %s", n.Reason)
+
+	a.logger.Info("sending system alert", "title", title, "reason", n.Reason)
 
 	// beeep.Notify(title, message, icon)
 	// We pass an empty string for the icon as per feedback on macOS limitations.

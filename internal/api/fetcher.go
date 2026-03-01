@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,10 +14,14 @@ import (
 // NotificationFetcher implements the Fetcher interface for the GitHub REST API.
 type NotificationFetcher struct {
 	client *Client
+	logger *slog.Logger
 }
 
-func NewNotificationFetcher(client *Client) *NotificationFetcher {
-	return &NotificationFetcher{client: client}
+func NewNotificationFetcher(client *Client, logger *slog.Logger) *NotificationFetcher {
+	return &NotificationFetcher{
+		client: client,
+		logger: logger,
+	}
 }
 
 func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, error) {
@@ -53,6 +58,8 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 			return nil, nil, err
 		}
 		defer func() { _ = resp.Body.Close() }()
+
+		f.logger.Debug("received API response", "status", resp.StatusCode, "url", url)
 
 		if resp.StatusCode == http.StatusNotModified {
 			return nil, &newMeta, nil
