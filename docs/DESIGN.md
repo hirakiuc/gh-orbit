@@ -13,7 +13,7 @@
 
 ## 3. Proposed Solution
 
-Build a `gh` extension that consumes the GitHub Notifications API and structures data into a local SQLite DB. It will feature custom filtering logic, macOS native notifications, and a TUI interface designed to trigger local AI analysis (e.g., Ollama) before the user even opens a browser.
+Build a `gh` extension that consumes the GitHub Notifications API and structures data into a local SQLite DB. It will feature custom filtering logic, macOS native notifications, and a TUI interface designed to trigger AI analysis (e.g., Gemini CLI, Claude Code) before the user even opens a browser.
 
 ---
 
@@ -22,7 +22,7 @@ Build a `gh` extension that consumes the GitHub Notifications API and structures
 * **Source:** GitHub Notifications API (REST).
 * **Storage:** Local SQLite (for state, priority, and AI analysis cache).
 * **Interface:** Bubble Tea (TUI) & macOS User Notifications.
-* **Intelligence:** Hook-based integration with local LLM CLI tools.
+* **Intelligence:** Hook-based integration with AI CLI tools (Gemini, Claude).
 
 ---
 
@@ -44,9 +44,10 @@ Build a `gh` extension that consumes the GitHub Notifications API and structures
 
 ### Phase 3: Intelligence Integration (Future)
 
-* **Local AI Hook:** Trigger commands like `ollama` or `mods` to analyze PR diffs.
+* **AI Hook:** Trigger commands like `gemini` or `claude` to analyze PR diffs.
 * **Pre-review Insights:** Display AI-generated 1-line summaries or risk scores in the TUI list.
-* **CI Debugger:** Automatically fetch logs for failed CI notifications and pipe them to an AI for root-cause estimation.
+* **CI Debugger**: Automatically fetch logs for failed CI notifications and pipe them to an AI for root-cause estimation.
+
 
 ---
 
