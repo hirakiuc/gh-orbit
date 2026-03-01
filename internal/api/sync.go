@@ -1,13 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
@@ -27,13 +27,7 @@ func NewSyncEngine(client *Client, database *db.DB) *SyncEngine {
 }
 
 // Sync performs a full synchronization cycle for notifications.
-func (s *SyncEngine) Sync() error {
-	user, err := s.client.CurrentUser()
-	if err != nil {
-		return err
-	}
-
-	userID := strconv.FormatInt(user.ID, 10)
+func (s *SyncEngine) Sync(userID string) error {
 	metaKey := "notifications"
 
 	meta, err := s.db.GetSyncMeta(userID, metaKey)
@@ -91,21 +85,19 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 	newMeta := *meta
 
 	path := "notifications?per_page=100"
-	
+
 	// Only fetch all notifications on first sync
 	if meta.LastModified != "" || meta.ETag != "" {
 		path = "notifications"
 	}
 
 	for path != "" {
-		var page []GHNotification
-		
-		// The go-gh v2 RESTClient.Do signature is:
-		// Do(method string, path string, body io.Reader, response interface{}) error
-		// It does NOT return the http.Response, making header inspection difficult.
-		// To inspect headers (Link, Last-Modified, etc.), we should use HTTPClient().
-		
-		req, err := s.client.rest.Request(http.MethodGet, path, nil)
+		url := path
+		if !strings.HasPrefix(url, "http") {
+			url = s.client.BaseURL() + path
+		}
+
+		req, err := http.NewRequest(http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
 			return nil, nil, err
 		}
@@ -117,11 +109,11 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 			req.Header.Set("If-None-Match", meta.ETag)
 		}
 
-		resp, err := s.client.rest.HTTPClient().Do(req)
+		resp, err := s.client.HTTP().Do(req) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
 			return nil, nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusNotModified {
 			return nil, &newMeta, nil
@@ -131,23 +123,25 @@ func (s *SyncEngine) fetchNotifications(meta *db.SyncMeta) ([]GHNotification, *d
 			return nil, nil, fmt.Errorf("API error: %s", resp.Status)
 		}
 
-		// Decode the response body
-		if err := api.DecodeJSON(resp.Body, &page); err != nil {
+		var page []GHNotification
+		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 			return nil, nil, err
 		}
 
 		allNotifications = append(allNotifications, page...)
 
-		// Update metadata from headers
-		if lm := resp.Header.Get("Last-Modified"); lm != "" {
-			newMeta.LastModified = lm
-		}
-		if et := resp.Header.Get("ETag"); et != "" {
-			newMeta.ETag = et
-		}
-		if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
-			if interval, err := strconv.Atoi(pi); err == nil {
-				newMeta.PollInterval = interval
+		// Update metadata from headers of the first page
+		if strings.Contains(url, "notifications") {
+			if lm := resp.Header.Get("Last-Modified"); lm != "" {
+				newMeta.LastModified = lm
+			}
+			if et := resp.Header.Get("ETag"); et != "" {
+				newMeta.ETag = et
+			}
+			if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
+				if interval, err := strconv.Atoi(pi); err == nil {
+					newMeta.PollInterval = interval
+				}
 			}
 		}
 
