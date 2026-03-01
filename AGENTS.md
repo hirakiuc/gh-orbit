@@ -7,7 +7,7 @@
 - **Zero-Config**: Use `go-gh/v2` for auth; no manual PATs.
 - **Platform Native**: Follow XDG spec for persistence:
     - **Config**: `~/.config/gh/extensions/gh-orbit/`
-    - **Data/DB**: `~/.local/share/gh/extensions/gh-orbit/`
+    - **Data/DB/Logs**: `~/.local/state/gh-orbit/`
 - **Secure**: NEVER commit secrets/tokens. Redact sensitive data from logs.
 
 ## 2. Development Workflow
