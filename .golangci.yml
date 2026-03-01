@@ -16,7 +16,6 @@ linters:
     - unused
     - gosimple
     - ineffassign
-    - typecheck
     - gofmt
     - misspell
     - gosec
