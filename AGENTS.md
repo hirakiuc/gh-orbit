@@ -9,6 +9,10 @@ This document defines the rules and workflows for AI agents (like Gemini CLI) co
 - **CGO-Free**: All Go dependencies must be CGO-free (especially SQLite) to ensure easy cross-compilation.
 - **Zero-Config**: Use `go-gh` for authentication. Never ask the user for a PAT.
 
+### 1.1 Security
+
+- **Credential Safety**: NEVER commit API keys, Personal Access Tokens (PATs), or any sensitive credentials to the repository. Proactively check for and ignore environment files (e.g., `.env`) or local configuration that may contain secrets.
+
 ## 2. Development Workflow
 
 - **Roadmap-Driven**: Always refer to `.agent/implementation_plan.md` before starting a task.
