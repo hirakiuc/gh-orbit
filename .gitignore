@@ -75,7 +75,14 @@ tags
 # End of https://www.toptal.com/developers/gitignore/api/vim,go
 bin/
 
-# Rust
-target/
-.agora/
+# SQLite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
 *.log
+logs/
