@@ -28,7 +28,7 @@ This document defines the rules and workflows for AI agents (like Gemini CLI) co
 3. **Strategy**: Follow [Strategy Review](.agent/workflows/strategy-review/WORKFLOW.md). **SIGN-OFF** in `.agent/proposals/` required before modifying any code files.
 4. **Commits**: Conventional (feat, fix, etc.).
 5. **Attribution**: End commits with `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`.
-6 **Validation**: Proactively run `go test ./...` and `make lint` (when available) after changes.
+6. **Validation**: MANDATORY local verification. Before pushing, run `make fmt`, `make lint`, `make build`, and `make test`. Always run `go mod tidy` after dependency changes to keep `go.sum` consistent.
 7. **PR**: `gh pr create`. Address feedback before human review.
 
 ## 3. Tech Stack
