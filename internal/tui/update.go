@@ -89,6 +89,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetDelegate(newItemDelegate(m.styles))
 
 	case notificationsLoadedMsg:
+		items := make([]list.Item, len(msg))
+		for i, n := range msg {
+			items[i] = item{notification: n}
+		}
+		cmds = append(cmds, m.list.SetItems(items))
+
+	case syncCompleteMsg:
 		m.syncing = false
 		items := make([]list.Item, len(msg))
 		for i, n := range msg {

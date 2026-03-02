@@ -71,10 +71,11 @@ func (m *Model) Init() tea.Cmd {
 // Msg types
 type (
 	notificationsLoadedMsg []db.NotificationWithState
+	syncCompleteMsg        []db.NotificationWithState
 	errMsg                 struct{ err error }
 )
 
-func (m Model) loadNotifications() tea.Cmd {
+func (m *Model) loadNotifications() tea.Cmd {
 	return func() tea.Msg {
 		notifs, err := m.db.ListNotifications()
 		if err != nil {
@@ -84,7 +85,7 @@ func (m Model) loadNotifications() tea.Cmd {
 	}
 }
 
-func (m Model) syncNotifications() tea.Cmd {
+func (m *Model) syncNotifications() tea.Cmd {
 	return func() tea.Msg {
 		err := m.sync.Sync(m.userID)
 		if err != nil {
@@ -95,6 +96,6 @@ func (m Model) syncNotifications() tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-		return notificationsLoadedMsg(notifs)
+		return syncCompleteMsg(notifs)
 	}
 }
