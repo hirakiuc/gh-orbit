@@ -171,6 +171,51 @@ func TestModel_MarkRead(t *testing.T) {
 	}
 }
 
+func TestModel_SetPriority(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+	testDB := setupTestDB(t)
+	defer func() { _ = testDB.Close() }()
+
+	l := list.New([]list.Item{
+		item{notification: db.NotificationWithState{
+			Notification: db.Notification{GitHubID: "test-id"},
+			OrbitState:   db.OrbitState{Priority: 0},
+		}},
+	}, newItemDelegate(styles, keys), 0, 0)
+
+	m := &Model{
+		list:             l,
+		db:               testDB,
+		logger:           slog.Default(),
+		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{Priority: 0}}},
+	}
+
+	// 1. Set priority to 1
+	m.setPriority(1)
+	if m.allNotifications[0].Priority != 1 {
+		t.Errorf("expected priority 1, got %d", m.allNotifications[0].Priority)
+	}
+
+	// 2. Toggle priority 1 -> 0
+	m.setPriority(1)
+	if m.allNotifications[0].Priority != 0 {
+		t.Errorf("expected priority 0 after toggle, got %d", m.allNotifications[0].Priority)
+	}
+
+	// 3. Set priority to 3
+	m.setPriority(3)
+	if m.allNotifications[0].Priority != 3 {
+		t.Errorf("expected priority 3, got %d", m.allNotifications[0].Priority)
+	}
+
+	// 4. Explicit reset with 0
+	m.setPriority(0)
+	if m.allNotifications[0].Priority != 0 {
+		t.Errorf("expected priority 0 after explicit reset, got %d", m.allNotifications[0].Priority)
+	}
+}
+
 func TestModel_TabFiltering(t *testing.T) {
 	styles := DefaultStyles(true)
 	keys := DefaultKeyMap()

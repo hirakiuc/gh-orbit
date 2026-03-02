@@ -77,11 +77,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.ViewItem(i)
 			}
 		case key.Matches(msg, m.keys.SetPriorityLow):
-			m.setPriority(1)
+			return m, m.setPriority(1)
 		case key.Matches(msg, m.keys.SetPriorityMed):
-			m.setPriority(2)
+			return m, m.setPriority(2)
 		case key.Matches(msg, m.keys.SetPriorityHigh):
-			m.setPriority(3)
+			return m, m.setPriority(3)
+		case key.Matches(msg, m.keys.ClearPriority):
+			return m, m.setPriority(0)
 		}
 
 	case tea.WindowSizeMsg:
@@ -133,8 +135,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) setPriority(priority int) {
+func (m *Model) setPriority(priority int) tea.Cmd {
 	if i, ok := m.list.SelectedItem().(item); ok {
+		// Toggle logic: if already at this priority, reset to 0
+		if i.notification.Priority == priority {
+			priority = 0
+		}
+
 		i.notification.Priority = priority
 		err := m.db.UpdateOrbitState(db.OrbitState{
 			NotificationID: i.notification.GitHubID,
@@ -145,6 +152,19 @@ func (m *Model) setPriority(priority int) {
 		if err != nil {
 			m.err = err
 		}
+
+		// Update feedback
+		msg := "Priority cleared"
+		switch priority {
+		case 1:
+			msg = "Priority set to Low"
+		case 2:
+			msg = "Priority set to Medium"
+		case 3:
+			msg = "Priority set to High"
+		}
+		m.status = msg
+
 		// Update allNotifications master copy
 		for idx, n := range m.allNotifications {
 			if n.GitHubID == i.notification.GitHubID {
@@ -153,7 +173,10 @@ func (m *Model) setPriority(priority int) {
 			}
 		}
 		m.applyFilters()
+
+		return m.clearStatusAfter(3 * time.Second)
 	}
+	return nil
 }
 
 func (m *Model) applyFilters() {
