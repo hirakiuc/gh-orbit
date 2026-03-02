@@ -3,9 +3,11 @@ package tui
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
@@ -45,12 +47,34 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		indicator = d.styles.Cursor.Render("▌ ")
 	}
 
+	// Type icon with fallback
+	icon := "•"
+	switch i.notification.SubjectType {
+	case "PullRequest":
+		icon = "" // Nerd Font
+	case "Issue":
+		icon = "" // Nerd Font
+	case "Discussion":
+		icon = "" // Nerd Font
+	}
+	// Fallback if Nerd Font is not available (common Unicode)
+	if !strings.ContainsAny(icon, "") {
+		switch i.notification.SubjectType {
+		case "PullRequest":
+			icon = "PR"
+		case "Issue":
+			icon = "#"
+		case "Discussion":
+			icon = "D"
+		}
+	}
+
 	title := i.notification.SubjectTitle
 	if isSelected {
 		title = d.styles.SelectedTitle.Render(title)
 	}
 
-	str := fmt.Sprintf("%s%d. %s", indicator, index+1, title)
+	str := fmt.Sprintf("%s %s %d. %s", indicator, icon, index+1, title)
 
 	// Add priority indicator
 	priority := ""
@@ -67,7 +91,9 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		str += priority
 	}
 
-	description := i.notification.RepositoryFullName
+	// Meta info: repository and relative time
+	relTime := humanize.Time(i.notification.UpdatedAt)
+	description := fmt.Sprintf("%s • %s", i.notification.RepositoryFullName, relTime)
 	if isSelected {
 		description = d.styles.SelectedDescription.Render(description)
 	}

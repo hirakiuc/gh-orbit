@@ -54,6 +54,31 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 	updatedModel, _ := m.Update(msg)
 	_ = updatedModel.(*Model)
 
-	// Since we can't easily check private style properties, 
+	// Since we can't easily check private style properties,
 	// we've verified it compiles and runs.
+}
+
+func TestModel_Update_WindowSize(t *testing.T) {
+	styles := DefaultStyles(true)
+	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
+
+	m := &Model{
+		list: l,
+	}
+
+	// Mock window size msg
+	width, height := 80, 24
+	msg := tea.WindowSizeMsg{Width: width, Height: height}
+	updatedModel, _ := m.Update(msg)
+	newModel := updatedModel.(*Model)
+
+	// The list height should be height-1 (to leave space for footer)
+	expectedHeight := height - 1
+	if newModel.list.Height() != expectedHeight {
+		t.Errorf("expected list height %d, got %d", expectedHeight, newModel.list.Height())
+	}
+
+	if newModel.list.Width() != width {
+		t.Errorf("expected list width %d, got %d", width, newModel.list.Width())
+	}
 }

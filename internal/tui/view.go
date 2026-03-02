@@ -7,9 +7,27 @@ import (
 )
 
 func (m *Model) View() tea.View {
-	// Root view
-	viewContent := m.list.View()
+	// Build the view content from components
+	viewContent := m.renderList()
 
+	footer := m.renderFooter()
+	if footer != "" {
+		viewContent += "\n" + footer
+	}
+
+	v := tea.NewView(viewContent)
+
+	// Declarative terminal state
+	v.AltScreen = true
+
+	return v
+}
+
+func (m *Model) renderList() string {
+	return m.list.View()
+}
+
+func (m *Model) renderFooter() string {
 	// Status and Error handling display
 	var footer string
 	if m.syncing {
@@ -23,16 +41,5 @@ func (m *Model) View() tea.View {
 		footer += m.styles.StatusNormal.Render(fmt.Sprintf(" %s ", m.status))
 	}
 
-	if footer != "" {
-		// Ensure the footer is exactly one line and truncated if necessary
-		// We use Height-1 in Update for the list, so we must stay within 1 line.
-		viewContent += "\n" + footer
-	}
-
-	v := tea.NewView(viewContent)
-
-	// Declarative terminal state
-	v.AltScreen = true
-
-	return v
+	return footer
 }
