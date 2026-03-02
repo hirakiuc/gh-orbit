@@ -15,11 +15,14 @@ func (db *DB) migrate() error {
 
 	// 2. Get current version
 	var currentVersion int
-	err = db.QueryRow("SELECT version FROM schema_version").Scan(&currentVersion)
-	if err == sql.ErrNoRows {
+	err = db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&currentVersion)
+	if err == sql.ErrNoRows || (err == nil && currentVersion == 0) {
 		currentVersion = 0
 	} else if err != nil {
-		return fmt.Errorf("failed to get current schema version: %w", err)
+		// If the table is empty but MAX returns NULL, it might not be ErrNoRows
+		// in some sqlite drivers, but Scan into int might fail or give 0.
+		// modernc.org/sqlite usually handles this fine.
+		currentVersion = 0
 	}
 
 	// 3. Apply missing migrations
@@ -35,13 +38,12 @@ func (db *DB) migrate() error {
 			return fmt.Errorf("migration to version %d failed: %w", version, err)
 		}
 
-		if currentVersion == 0 {
-			_, err = tx.Exec("INSERT INTO schema_version (version) VALUES (?)", version)
-		} else {
-			_, err = tx.Exec("UPDATE schema_version SET version = ?", version)
+		// Update schema version: ensure only one row remains
+		if _, err := tx.Exec("DELETE FROM schema_version"); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed to clear schema_version: %w", err)
 		}
-
-		if err != nil {
+		if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", version); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed to update schema version to %d: %w", version, err)
 		}

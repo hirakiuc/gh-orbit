@@ -17,11 +17,18 @@ func TestModel_Update_SyncingState(t *testing.T) {
 		list:    l,
 	}
 
-	// Test success reset
-	msg := notificationsLoadedMsg{}
+	// notificationsLoadedMsg should NOT reset syncing
+	msgLocal := notificationsLoadedMsg{}
+	updatedModelLocal, _ := m.Update(msgLocal)
+	if !updatedModelLocal.(*Model).syncing {
+		t.Error("expected syncing to remain true after notificationsLoadedMsg")
+	}
+
+	// syncCompleteMsg SHOULD reset syncing
+	msg := syncCompleteMsg{}
 	updatedModel, _ := m.Update(msg)
 	if updatedModel.(*Model).syncing {
-		t.Error("expected syncing to be false after notificationsLoadedMsg")
+		t.Error("expected syncing to be false after syncCompleteMsg")
 	}
 
 	// Test error reset
