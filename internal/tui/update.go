@@ -46,6 +46,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
 			}
+		case key.Matches(msg, m.keys.ToggleRead):
+			if i, ok := m.list.SelectedItem().(item); ok {
+				return m, m.ToggleRead(i)
+			}
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				m.status = "Opening browser..."
