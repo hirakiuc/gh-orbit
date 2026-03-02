@@ -10,7 +10,7 @@ type KeyMap struct {
 	SetPriorityHigh key.Binding
 	CopyURL         key.Binding
 	CheckoutPR      key.Binding
-	ViewPR          key.Binding
+	ViewContextual  key.Binding
 	OpenBrowser     key.Binding
 }
 
@@ -41,13 +41,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("c"),
 			key.WithHelp("c", "checkout pr"),
 		),
-		ViewPR: key.NewBinding(
+		ViewContextual: key.NewBinding(
 			key.WithKeys("v"),
-			key.WithHelp("v", "view pr web"),
+			key.WithHelp("v", "view (gh cli)"),
 		),
 		OpenBrowser: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("enter", "open in browser"),
+			key.WithHelp("enter", "open (browser)"),
 		),
 	}
 }
@@ -57,14 +57,15 @@ func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.Sync,
 		k.OpenBrowser,
+		k.ViewContextual,
 	}
 }
 
 // FullHelp returns the keybindings to be displayed in the expanded help view.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Sync, k.CopyURL, k.OpenBrowser},
+		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
 		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh},
-		{k.CheckoutPR, k.ViewPR},
+		{k.CheckoutPR},
 	}
 }
