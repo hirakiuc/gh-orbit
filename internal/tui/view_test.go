@@ -90,12 +90,15 @@ func TestRenderFooter(t *testing.T) {
 
 func TestRenderList(t *testing.T) {
 	styles := DefaultStyles(true)
-	l := list.New([]list.Item{}, newItemDelegate(styles), 20, 10)
+	keys := DefaultKeyMap()
+	delegate := newItemDelegate(styles, keys)
+	l := list.New([]list.Item{}, delegate, 20, 10)
 	l.Title = "Test Title"
 
 	m := Model{
 		list:   l,
 		styles: styles,
+		keys:   keys,
 	}
 
 	rendered := m.renderList()
@@ -109,5 +112,13 @@ func TestRenderList(t *testing.T) {
 		if len(stripped) == 0 {
 			t.Errorf("renderList() returned empty string")
 		}
+	}
+
+	// Verify help content (short help should be at the bottom)
+	if !strings.Contains(stripped, "sync") {
+		t.Errorf("renderList() help should contain 'sync'")
+	}
+	if !strings.Contains(stripped, "open in browser") {
+		t.Errorf("renderList() help should contain 'open in browser'")
 	}
 }
