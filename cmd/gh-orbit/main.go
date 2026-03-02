@@ -63,7 +63,7 @@ func run() error {
 
 	// 4. Start TUI
 	m := tui.NewModel(database, client, userID, cfg, logger)
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(&m)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
