@@ -4,13 +4,16 @@ import "charm.land/lipgloss/v2"
 
 // Styles defines the UI styles for the TUI.
 type Styles struct {
-	Title        lipgloss.Style
-	Help         lipgloss.Style
-	StatusNormal lipgloss.Style
-	StatusError  lipgloss.Style
-	PriorityHigh lipgloss.Style
-	PriorityMed  lipgloss.Style
-	PriorityLow  lipgloss.Style
+	Title               lipgloss.Style
+	Help                lipgloss.Style
+	StatusNormal        lipgloss.Style
+	StatusError         lipgloss.Style
+	PriorityHigh        lipgloss.Style
+	PriorityMed         lipgloss.Style
+	PriorityLow         lipgloss.Style
+	Cursor              lipgloss.Style
+	SelectedTitle       lipgloss.Style
+	SelectedDescription lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -40,6 +43,17 @@ func DefaultStyles() Styles {
 
 	s.PriorityLow = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#00AF87"))
+
+	s.Cursor = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#7D56F4")).
+		Bold(true)
+
+	s.SelectedTitle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA"))
+
+	s.SelectedDescription = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#A0A0A0"))
 
 	return s
 }

@@ -37,7 +37,20 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	str := fmt.Sprintf("%d. %s", index+1, i.notification.SubjectTitle)
+	isSelected := index == m.Index()
+
+	// Indicator
+	indicator := "  "
+	if isSelected {
+		indicator = d.styles.Cursor.Render("▌ ")
+	}
+
+	title := i.notification.SubjectTitle
+	if isSelected {
+		title = d.styles.SelectedTitle.Render(title)
+	}
+
+	str := fmt.Sprintf("%s%d. %s", indicator, index+1, title)
 
 	// Add priority indicator
 	priority := ""
@@ -54,5 +67,10 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		str += priority
 	}
 
-	_, _ = fmt.Fprintf(w, "%s\n  %s", str, i.notification.RepositoryFullName)
+	description := i.notification.RepositoryFullName
+	if isSelected {
+		description = d.styles.SelectedDescription.Render(description)
+	}
+
+	_, _ = fmt.Fprintf(w, "%s\n    %s", str, description)
 }

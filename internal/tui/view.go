@@ -12,10 +12,14 @@ func (m Model) View() tea.View {
 
 	// Status and Error handling display
 	var footer string
+	if m.syncing {
+		footer = m.spinner.View() + " Syncing..."
+	}
+
 	if m.err != nil {
-		footer = m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
+		footer += m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
 	} else if m.status != "" {
-		footer = m.styles.StatusNormal.Render(fmt.Sprintf(" %s ", m.status))
+		footer += m.styles.StatusNormal.Render(fmt.Sprintf(" %s ", m.status))
 	}
 
 	if footer != "" {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
@@ -21,7 +22,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "r":
-			return m, m.syncNotifications()
+			if m.syncing {
+				return m, nil
+			}
+			m.syncing = true
+			return m, tea.Batch(
+				m.syncNotifications(),
+				m.spinner.Tick,
+			)
 		case "y":
 			// Copy URL
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
@@ -73,16 +81,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height)
+		m.list.SetSize(msg.Width, msg.Height-1) // Leave space for footer
 
 	case notificationsLoadedMsg:
+		m.syncing = false
 		items := make([]list.Item, len(msg))
 		for i, n := range msg {
 			items[i] = item{notification: n}
 		}
 		cmds = append(cmds, m.list.SetItems(items))
 
+	case spinner.TickMsg:
+		if m.syncing {
+			m.spinner, cmd = m.spinner.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
 	case errMsg:
+		m.syncing = false
 		m.err = msg.err
 	}
 
