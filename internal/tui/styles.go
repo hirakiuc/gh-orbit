@@ -16,6 +16,16 @@ type Styles struct {
 	Cursor              lipgloss.Style
 	SelectedTitle       lipgloss.Style
 	SelectedDescription lipgloss.Style
+
+	// Semantic colors for indicators
+	Mention         lipgloss.Style
+	ReviewRequested lipgloss.Style
+	ActionRequired  lipgloss.Style
+	Assign          lipgloss.Style
+	Member          lipgloss.Style
+	Subscribed      lipgloss.Style
+	Unread          lipgloss.Style
+	IconContainer   lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -67,6 +77,27 @@ func DefaultStyles(isDark bool) Styles {
 
 	s.SelectedDescription = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#A0A0A0"))
+
+	// Semantic Indicators
+	if isDark {
+		s.Mention = lipgloss.NewStyle().Foreground(lipgloss.Color("#A371F7"))
+		s.ReviewRequested = lipgloss.NewStyle().Foreground(lipgloss.Color("#D29922"))
+		s.ActionRequired = lipgloss.NewStyle().Foreground(lipgloss.Color("#F85149"))
+		s.Assign = lipgloss.NewStyle().Foreground(lipgloss.Color("#3FB950"))
+		s.Member = lipgloss.NewStyle().Foreground(lipgloss.Color("#2F81F7"))
+		s.Subscribed = lipgloss.NewStyle().Foreground(lipgloss.Color("#8B949E"))
+		s.Unread = lipgloss.NewStyle().Foreground(lipgloss.Color("#58A6FF"))
+	} else {
+		s.Mention = lipgloss.NewStyle().Foreground(lipgloss.Color("#8957E5"))
+		s.ReviewRequested = lipgloss.NewStyle().Foreground(lipgloss.Color("#9E6A03"))
+		s.ActionRequired = lipgloss.NewStyle().Foreground(lipgloss.Color("#CF222E"))
+		s.Assign = lipgloss.NewStyle().Foreground(lipgloss.Color("#1A7F37"))
+		s.Member = lipgloss.NewStyle().Foreground(lipgloss.Color("#0969DA"))
+		s.Subscribed = lipgloss.NewStyle().Foreground(lipgloss.Color("#6E7781"))
+		s.Unread = lipgloss.NewStyle().Foreground(lipgloss.Color("#0969DA"))
+	}
+
+	s.IconContainer = lipgloss.NewStyle().Width(2)
 
 	return s
 }
