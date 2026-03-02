@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
@@ -119,11 +120,19 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 		return nil
 	}
 
-	// 1. Optimistic UI update
+	// 1. Update master copy
+	for idx, n := range m.allNotifications {
+		if n.GitHubID == i.notification.GitHubID {
+			m.allNotifications[idx].IsReadLocally = true
+			break
+		}
+	}
+
+	// 2. Optimistic UI update
 	i.notification.IsReadLocally = true
 	m.list.SetItem(m.list.Index(), i)
 
-	// 2. Persistent Local Update
+	// 3. Persistent Local Update
 	err := m.db.UpdateOrbitState(db.OrbitState{
 		NotificationID: i.notification.GitHubID,
 		Priority:       i.notification.Priority,
@@ -134,7 +143,9 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 		m.logger.Error("failed to update local read state", "error", err)
 	}
 
-	// 3. Asynchronous Remote Sync
+	m.applyFilters()
+
+	// 4. Asynchronous Remote Sync
 	return func() tea.Msg {
 		err := m.client.MarkThreadAsRead(i.notification.GitHubID)
 		if err != nil {
@@ -150,11 +161,19 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 func (m *Model) ToggleRead(i item) tea.Cmd {
 	newState := !i.notification.IsReadLocally
 
-	// 1. Update UI
+	// 1. Update master copy
+	for idx, n := range m.allNotifications {
+		if n.GitHubID == i.notification.GitHubID {
+			m.allNotifications[idx].IsReadLocally = newState
+			break
+		}
+	}
+
+	// 2. Update UI
 	i.notification.IsReadLocally = newState
 	m.list.SetItem(m.list.Index(), i)
 
-	// 2. Update DB
+	// 3. Update DB
 	err := m.db.UpdateOrbitState(db.OrbitState{
 		NotificationID: i.notification.GitHubID,
 		Priority:       i.notification.Priority,
@@ -165,15 +184,25 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 		m.err = err
 	}
 
-	// 3. Remote Sync (only if marking as read)
+	// 4. Status Feedback
+	m.status = "Marked as unread"
 	if newState {
-		return func() tea.Msg {
-			_ = m.client.MarkThreadAsRead(i.notification.GitHubID)
-			return nil
-		}
+		m.status = "Marked as read"
 	}
 
-	return nil
+	m.applyFilters()
+
+	// 5. Remote Sync + Timed Clear
+	var cmds []tea.Cmd
+	cmds = append(cmds, m.clearStatusAfter(3*time.Second))
+	if newState {
+		cmds = append(cmds, func() tea.Msg {
+			_ = m.client.MarkThreadAsRead(i.notification.GitHubID)
+			return nil
+		})
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // ViewPRWeb executes 'gh pr view --web' for the given repo and PR number.

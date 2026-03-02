@@ -48,9 +48,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.ToggleRead):
 			if i, ok := m.list.SelectedItem().(item); ok {
-				cmd := m.ToggleRead(i)
-				m.applyFilters()
-				return m, cmd
+				cmds = append(cmds, m.ToggleRead(i))
 			}
 		case key.Matches(msg, m.keys.NextTab):
 			m.activeTab = (m.activeTab + 1) % 4
