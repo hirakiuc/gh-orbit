@@ -83,6 +83,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height-1) // Leave space for footer
 
+	case tea.BackgroundColorMsg:
+		m.styles = DefaultStyles(msg.IsDark())
+		m.list.Styles.Title = m.styles.Title
+		m.list.SetDelegate(newItemDelegate(m.styles))
+
 	case notificationsLoadedMsg:
 		m.syncing = false
 		items := make([]list.Item, len(msg))

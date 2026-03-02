@@ -28,7 +28,7 @@ type Model struct {
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
-	styles := DefaultStyles()
+	styles := DefaultStyles(true) // Default to dark theme
 	delegate := newItemDelegate(styles)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
@@ -61,6 +61,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Sequence(
 		m.loadNotifications(),
 		tea.Batch(
+			tea.RequestBackgroundColor,
 			m.syncNotifications(),
 			m.spinner.Tick,
 		),

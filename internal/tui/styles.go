@@ -1,6 +1,8 @@
 package tui
 
-import "charm.land/lipgloss/v2"
+import (
+	"charm.land/lipgloss/v2"
+)
 
 // Styles defines the UI styles for the TUI.
 type Styles struct {
@@ -17,13 +19,24 @@ type Styles struct {
 }
 
 // DefaultStyles returns the default styles for the application.
-func DefaultStyles() Styles {
+func DefaultStyles(isDark bool) Styles {
 	s := Styles{}
+
+	// Primary accent color
+	accent := lipgloss.Color("#7D56F4")
+	if !isDark {
+		accent = lipgloss.Color("#5A3BD3") // Slightly darker for light backgrounds
+	}
+
+	fg := lipgloss.Color("#FAFAFA")
+	if !isDark {
+		fg = lipgloss.Color("#1A1A1A")
+	}
 
 	s.Title = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#FAFAFA")).
-		Background(lipgloss.Color("#7D56F4")).
+		Background(accent).
 		Padding(0, 1)
 
 	s.Help = lipgloss.NewStyle().
@@ -45,12 +58,12 @@ func DefaultStyles() Styles {
 		Foreground(lipgloss.Color("#00AF87"))
 
 	s.Cursor = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#7D56F4")).
+		Foreground(accent).
 		Bold(true)
 
 	s.SelectedTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FAFAFA"))
+		Foreground(fg)
 
 	s.SelectedDescription = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#A0A0A0"))
