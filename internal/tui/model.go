@@ -56,7 +56,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	m.syncing = true
 	return tea.Sequence(
 		m.loadNotifications(),

@@ -6,7 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func (m Model) View() tea.View {
+func (m *Model) View() tea.View {
 	// Root view
 	viewContent := m.list.View()
 

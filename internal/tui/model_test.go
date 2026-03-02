@@ -12,7 +12,7 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	styles := DefaultStyles(true)
 	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
 
-	m := Model{
+	m := &Model{
 		syncing: true,
 		list:    l,
 	}
@@ -20,7 +20,7 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	// Test success reset
 	msg := notificationsLoadedMsg{}
 	updatedModel, _ := m.Update(msg)
-	if updatedModel.(Model).syncing {
+	if updatedModel.(*Model).syncing {
 		t.Error("expected syncing to be false after notificationsLoadedMsg")
 	}
 
@@ -28,7 +28,7 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	m.syncing = true
 	msgErr := errMsg{err: nil}
 	updatedModel, _ = m.Update(msgErr)
-	if updatedModel.(Model).syncing {
+	if updatedModel.(*Model).syncing {
 		t.Error("expected syncing to be false after errMsg")
 	}
 }
@@ -37,7 +37,7 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 	styles := DefaultStyles(true)
 	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
 
-	m := Model{
+	m := &Model{
 		styles: styles,
 		list:   l,
 	}
@@ -45,7 +45,7 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 	// Mock a light background color msg
 	msg := tea.BackgroundColorMsg{Color: color.RGBA{R: 255, G: 255, B: 255, A: 255}}
 	updatedModel, _ := m.Update(msg)
-	_ = updatedModel.(Model)
+	_ = updatedModel.(*Model)
 
 	// Since we can't easily check private style properties, 
 	// we've verified it compiles and runs.
