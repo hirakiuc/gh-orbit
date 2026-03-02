@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image/color"
 	"testing"
 
@@ -86,5 +87,38 @@ func TestModel_Update_WindowSize(t *testing.T) {
 
 	if newModel.list.Width() != width {
 		t.Errorf("expected list width %d, got %d", width, newModel.list.Width())
+	}
+}
+
+func TestModel_Update_StatusClearing(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
+
+	m := &Model{
+		status: "some status",
+		err:    fmt.Errorf("some error"),
+		list:   l,
+		keys:   keys,
+	}
+
+	// Test actionCompleteMsg
+	msgAction := actionCompleteMsg{}
+	updatedModel, _ := m.Update(msgAction)
+	newModel := updatedModel.(*Model)
+	if newModel.status != "" {
+		t.Error("expected status to be cleared after actionCompleteMsg")
+	}
+	if newModel.err != nil {
+		t.Error("expected err to be cleared after actionCompleteMsg")
+	}
+
+	// Test clearStatusMsg
+	m.status = "temporary status"
+	msgClear := clearStatusMsg{}
+	updatedModel, _ = m.Update(msgClear)
+	newModel = updatedModel.(*Model)
+	if newModel.status != "" {
+		t.Error("expected status to be cleared after clearStatusMsg")
 	}
 }

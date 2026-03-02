@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
@@ -37,7 +38,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.CopyURL):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				if isValidGitHubURL(i.notification.HTMLURL) {
-					return m, tea.SetClipboard(i.notification.HTMLURL)
+					m.status = "Copied URL to clipboard"
+					return m, tea.Batch(
+						tea.SetClipboard(i.notification.HTMLURL),
+						m.clearStatusAfter(3*time.Second),
+					)
 				}
 				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
 			}
@@ -96,6 +101,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case actionCompleteMsg:
+		m.status = ""
+		m.err = nil
+
+	case clearStatusMsg:
+		m.status = ""
+
 	case errMsg:
 		m.syncing = false
 		m.err = msg.err
@@ -130,6 +142,12 @@ func (m *Model) setPriority(priority int) {
 		// Refresh list item
 		m.list.SetItem(m.list.Index(), i)
 	}
+}
+
+func (m *Model) clearStatusAfter(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(_ time.Time) tea.Msg {
+		return clearStatusMsg{}
+	})
 }
 
 func isValidGitHubURL(url string) bool {

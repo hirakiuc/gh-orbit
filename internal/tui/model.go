@@ -75,6 +75,8 @@ func (m *Model) Init() tea.Cmd {
 type (
 	notificationsLoadedMsg []db.NotificationWithState
 	syncCompleteMsg        []db.NotificationWithState
+	actionCompleteMsg      struct{}
+	clearStatusMsg         struct{}
 	errMsg                 struct{ err error }
 )
 

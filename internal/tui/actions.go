@@ -66,7 +66,7 @@ func (m *Model) OpenBrowser(url string) tea.Cmd {
 			m.logger.Error("failed to open browser", "error", err)
 			return errMsg{err: err}
 		}
-		return nil
+		return actionCompleteMsg{}
 	}
 }
 
@@ -92,7 +92,7 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 			return errMsg{err: err}
 		}
 		m.logger.Info("checkout successful", "repo", repo, "number", number)
-		return nil
+		return actionCompleteMsg{}
 	})
 }
 
@@ -134,7 +134,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 			m.logger.Error("gh view command failed", "command", ghCmd, "error", err)
 			return errMsg{err: err}
 		}
-		return nil
+		return actionCompleteMsg{}
 	}
 }
 
