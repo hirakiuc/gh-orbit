@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
@@ -33,6 +34,24 @@ func (d itemDelegate) Height() int                               { return 2 }
 func (d itemDelegate) Spacing() int                              { return 0 }
 func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
 
+type semanticIcon struct {
+	icon     string
+	fallback string
+	style    func(s Styles) lipgloss.Style
+}
+
+var reasonIcons = map[string]semanticIcon{
+	"mention":          {"", "@", func(s Styles) lipgloss.Style { return s.Mention }},
+	"review_requested": {"", "R", func(s Styles) lipgloss.Style { return s.ReviewRequested }},
+	"author":           {"", "A", func(s Styles) lipgloss.Style { return s.Member }},
+	"assign":           {"", "G", func(s Styles) lipgloss.Style { return s.Assign }},
+	"security_alert":   {"", "!", func(s Styles) lipgloss.Style { return s.ActionRequired }},
+	"comment":          {"", "C", func(s Styles) lipgloss.Style { return s.Subscribed }},
+	"manual":           {"", "M", func(s Styles) lipgloss.Style { return s.Subscribed }},
+	"subscribed":       {"", "S", func(s Styles) lipgloss.Style { return s.Subscribed }},
+	"state_change":     {"", "X", func(s Styles) lipgloss.Style { return s.Subscribed }},
+}
+
 func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	i, ok := listItem.(item)
 	if !ok {
@@ -41,32 +60,49 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	isSelected := index == m.Index()
 
-	// Indicator
+	// 1. Selection Indicator
 	indicator := "  "
 	if isSelected {
 		indicator = d.styles.Cursor.Render("▌ ")
 	}
 
-	// Type icon with fallback
-	icon := "•"
+	// 2. Unread Status Dot
+	statusDot := "  "
+	if !i.notification.IsReadLocally {
+		statusDot = d.styles.Unread.Render("• ")
+	}
+
+	// 3. Type Icon
+	typeIcon := "•"
 	switch i.notification.SubjectType {
 	case "PullRequest":
-		icon = "" // Nerd Font
+		typeIcon = ""
 	case "Issue":
-		icon = "" // Nerd Font
+		typeIcon = ""
 	case "Discussion":
-		icon = "" // Nerd Font
+		typeIcon = ""
 	}
 	// Fallback if Nerd Font is not available (common Unicode)
-	if !strings.ContainsAny(icon, "") {
+	if !strings.ContainsAny(typeIcon, "") {
 		switch i.notification.SubjectType {
 		case "PullRequest":
-			icon = "PR"
+			typeIcon = "PR"
 		case "Issue":
-			icon = "#"
+			typeIcon = "#"
 		case "Discussion":
-			icon = "D"
+			typeIcon = "D"
 		}
+	}
+	typeIconStr := d.styles.IconContainer.Render(typeIcon)
+
+	// 4. Reason Icon
+	reasonIcon := "  "
+	if si, ok := reasonIcons[i.notification.Reason]; ok {
+		icon := si.icon
+		if !strings.ContainsAny(icon, "") {
+			icon = si.fallback
+		}
+		reasonIcon = si.style(d.styles).Inherit(d.styles.IconContainer).Render(icon)
 	}
 
 	title := i.notification.SubjectTitle
@@ -74,7 +110,8 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		title = d.styles.SelectedTitle.Render(title)
 	}
 
-	str := fmt.Sprintf("%s %s %d. %s", indicator, icon, index+1, title)
+	// Stable Layout: [Selection] [Status] [Type] [Reason] [Index] [Title]
+	str := fmt.Sprintf("%s%s%s%s%d. %s", indicator, statusDot, typeIconStr, reasonIcon, index+1, title)
 
 	// Add priority indicator
 	priority := ""
