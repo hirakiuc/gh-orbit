@@ -12,20 +12,29 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
+const (
+	TabInbox = iota
+	TabUnread
+	TabTriaged
+	TabAll
+)
+
 type Model struct {
-	list    list.Model
-	db      *db.DB
-	client  *api.Client
-	sync    *api.SyncEngine
-	config  *config.Config
-	logger  *slog.Logger
-	userID  string
-	styles  Styles
-	keys    KeyMap
-	err     error
-	status  string
-	spinner spinner.Model
-	syncing bool
+	list             list.Model
+	db               *db.DB
+	client           *api.Client
+	sync             *api.SyncEngine
+	config           *config.Config
+	logger           *slog.Logger
+	userID           string
+	styles           Styles
+	keys             KeyMap
+	activeTab        int
+	allNotifications []db.NotificationWithState
+	err              error
+	status           string
+	spinner          spinner.Model
+	syncing          bool
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {

@@ -48,8 +48,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.ToggleRead):
 			if i, ok := m.list.SelectedItem().(item); ok {
-				return m, m.ToggleRead(i)
+				cmd := m.ToggleRead(i)
+				m.applyFilters()
+				return m, cmd
 			}
+		case key.Matches(msg, m.keys.NextTab):
+			m.activeTab = (m.activeTab + 1) % 4
+			m.applyFilters()
+		case key.Matches(msg, m.keys.PrevTab):
+			m.activeTab = (m.activeTab - 1 + 4) % 4
+			m.applyFilters()
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				m.status = "Opening browser..."
@@ -77,7 +85,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height-1) // Leave space for footer
+		m.list.SetSize(msg.Width, msg.Height-3) // 1 Header, 1 Tab bar, 1 Footer
 
 	case tea.BackgroundColorMsg:
 		m.styles = DefaultStyles(msg.IsDark())
@@ -85,19 +93,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
 
 	case notificationsLoadedMsg:
-		items := make([]list.Item, len(msg))
-		for i, n := range msg {
-			items[i] = item{notification: n}
-		}
-		cmds = append(cmds, m.list.SetItems(items))
+		m.allNotifications = msg
+		m.applyFilters()
 
 	case syncCompleteMsg:
 		m.syncing = false
-		items := make([]list.Item, len(msg))
-		for i, n := range msg {
-			items[i] = item{notification: n}
-		}
-		cmds = append(cmds, m.list.SetItems(items))
+		m.allNotifications = msg
+		m.applyFilters()
 
 	case spinner.TickMsg:
 		if m.syncing {
@@ -143,8 +145,62 @@ func (m *Model) setPriority(priority int) {
 		if err != nil {
 			m.err = err
 		}
-		// Refresh list item
-		m.list.SetItem(m.list.Index(), i)
+		// Update allNotifications master copy
+		for idx, n := range m.allNotifications {
+			if n.GitHubID == i.notification.GitHubID {
+				m.allNotifications[idx].Priority = priority
+				break
+			}
+		}
+		m.applyFilters()
+	}
+}
+
+func (m *Model) applyFilters() {
+	// 1. Store currently selected ID
+	var selectedID string
+	if i, ok := m.list.SelectedItem().(item); ok {
+		selectedID = i.notification.GitHubID
+	}
+
+	// 2. Filter allNotifications
+	var filtered []list.Item
+	for _, n := range m.allNotifications {
+		keep := false
+		switch m.activeTab {
+		case TabInbox:
+			// Unread OR has priority
+			if !n.IsReadLocally || n.Priority > 0 {
+				keep = true
+			}
+		case TabUnread:
+			if !n.IsReadLocally {
+				keep = true
+			}
+		case TabTriaged:
+			if n.Priority > 0 {
+				keep = true
+			}
+		case TabAll:
+			keep = true
+		}
+
+		if keep {
+			filtered = append(filtered, item{notification: n})
+		}
+	}
+
+	// 3. Update list items
+	m.list.SetItems(filtered)
+
+	// 4. Restore selection
+	if selectedID != "" {
+		for index, li := range m.list.Items() {
+			if i, ok := li.(item); ok && i.notification.GitHubID == selectedID {
+				m.list.Select(index)
+				break
+			}
+		}
 	}
 }
 

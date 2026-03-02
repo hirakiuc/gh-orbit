@@ -91,8 +91,8 @@ func TestModel_Update_WindowSize(t *testing.T) {
 	updatedModel, _ := m.Update(msg)
 	newModel := updatedModel.(*Model)
 
-	// The list height should be height-1 (to leave space for footer)
-	expectedHeight := height - 1
+	// The list height should be height-3 (Header, Tab bar, Footer)
+	expectedHeight := height - 3
 	if newModel.list.Height() != expectedHeight {
 		t.Errorf("expected list height %d, got %d", expectedHeight, newModel.list.Height())
 	}
@@ -168,5 +168,66 @@ func TestModel_MarkRead(t *testing.T) {
 	updatedItem := m.list.Items()[0].(item)
 	if !updatedItem.notification.IsReadLocally {
 		t.Error("expected notification to be marked as read optimistically")
+	}
+}
+
+func TestModel_TabFiltering(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+
+	notifs := []db.NotificationWithState{
+		{
+			Notification: db.Notification{GitHubID: "unread-no-priority"},
+			OrbitState:   db.OrbitState{IsReadLocally: false, Priority: 0},
+		},
+		{
+			Notification: db.Notification{GitHubID: "read-with-priority"},
+			OrbitState:   db.OrbitState{IsReadLocally: true, Priority: 1},
+		},
+		{
+			Notification: db.Notification{GitHubID: "read-no-priority"},
+			OrbitState:   db.OrbitState{IsReadLocally: true, Priority: 0},
+		},
+	}
+
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
+
+	m := &Model{
+		list:             l,
+		allNotifications: notifs,
+		activeTab:        TabInbox,
+	}
+
+	// 1. Test Inbox Tab (Default)
+	m.applyFilters()
+	if len(m.list.Items()) != 2 {
+		t.Errorf("expected 2 items in Inbox, got %d", len(m.list.Items()))
+	}
+
+	// 2. Test Unread Tab
+	m.activeTab = TabUnread
+	m.applyFilters()
+	if len(m.list.Items()) != 1 {
+		t.Errorf("expected 1 item in Unread, got %d", len(m.list.Items()))
+	}
+	if m.list.Items()[0].(item).notification.GitHubID != "unread-no-priority" {
+		t.Error("wrong item in Unread tab")
+	}
+
+	// 3. Test Triaged Tab
+	m.activeTab = TabTriaged
+	m.applyFilters()
+	if len(m.list.Items()) != 1 {
+		t.Errorf("expected 1 item in Triaged, got %d", len(m.list.Items()))
+	}
+	if m.list.Items()[0].(item).notification.GitHubID != "read-with-priority" {
+		t.Error("wrong item in Triaged tab")
+	}
+
+	// 4. Test All Tab
+	m.activeTab = TabAll
+	m.applyFilters()
+	if len(m.list.Items()) != 3 {
+		t.Errorf("expected 3 items in All, got %d", len(m.list.Items()))
 	}
 }

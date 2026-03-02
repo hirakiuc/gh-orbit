@@ -26,6 +26,11 @@ type Styles struct {
 	Subscribed      lipgloss.Style
 	Unread          lipgloss.Style
 	IconContainer   lipgloss.Style
+
+	// Tabs
+	TabActive    lipgloss.Style
+	TabInactive  lipgloss.Style
+	TabContainer lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -98,6 +103,21 @@ func DefaultStyles(isDark bool) Styles {
 	}
 
 	s.IconContainer = lipgloss.NewStyle().Width(2)
+
+	// Tabs
+	s.TabActive = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(accent).
+		Padding(0, 1).
+		Underline(true)
+
+	s.TabInactive = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Padding(0, 1)
+
+	s.TabContainer = lipgloss.NewStyle().
+		Height(1).
+		MarginBottom(1)
 
 	return s
 }

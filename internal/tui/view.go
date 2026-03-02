@@ -4,11 +4,13 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func (m *Model) View() tea.View {
 	// Build the view content from components
-	viewContent := m.renderList()
+	viewContent := m.renderTabs()
+	viewContent += "\n" + m.renderList()
 
 	footer := m.renderFooter()
 	if footer != "" {
@@ -21,6 +23,24 @@ func (m *Model) View() tea.View {
 	v.AltScreen = true
 
 	return v
+}
+
+func (m *Model) renderTabs() string {
+	tabNames := []string{"Inbox", "Unread", "Triaged", "All"}
+	var renderedTabs []string
+
+	for i, name := range tabNames {
+		var style lipgloss.Style
+		if i == m.activeTab {
+			style = m.styles.TabActive
+		} else {
+			style = m.styles.TabInactive
+		}
+		renderedTabs = append(renderedTabs, style.Render(name))
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	return m.styles.TabContainer.Render(row)
 }
 
 func (m *Model) renderList() string {
