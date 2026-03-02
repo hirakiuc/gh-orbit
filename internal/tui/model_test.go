@@ -150,10 +150,15 @@ func TestModel_MarkRead(t *testing.T) {
 	defer func() { _ = testDB.Close() }()
 
 	m := &Model{
-		list:   l,
-		db:     testDB,
-		logger: slog.Default(),
+		list:             l,
+		db:               testDB,
+		logger:           slog.Default(),
+		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{IsReadLocally: false}}},
+		activeTab:        TabAll,
 	}
+
+	// Populate the list
+	m.applyFilters()
 
 	// Initial state
 	i := m.list.Items()[0].(item)
@@ -164,10 +169,15 @@ func TestModel_MarkRead(t *testing.T) {
 	// Mark as read
 	m.MarkRead(i)
 
-	// Verify optimistic update
+	// Verify optimistic update in list
 	updatedItem := m.list.Items()[0].(item)
 	if !updatedItem.notification.IsReadLocally {
-		t.Error("expected notification to be marked as read optimistically")
+		t.Error("expected notification to be marked as read optimistically in list")
+	}
+
+	// Verify synchronization in allNotifications
+	if !m.allNotifications[0].IsReadLocally {
+		t.Error("expected allNotifications[0] to be marked as read")
 	}
 }
 
