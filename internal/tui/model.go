@@ -21,6 +21,7 @@ type Model struct {
 	logger  *slog.Logger
 	userID  string
 	styles  Styles
+	keys    KeyMap
 	err     error
 	status  string
 	spinner spinner.Model
@@ -29,7 +30,8 @@ type Model struct {
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
 	styles := DefaultStyles(true) // Default to dark theme
-	delegate := newItemDelegate(styles)
+	keys := DefaultKeyMap()
+	delegate := newItemDelegate(styles, keys)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.Title = "GitHub Orbit"
@@ -52,6 +54,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		logger:  logger,
 		userID:  userID,
 		styles:  styles,
+		keys:    keys,
 		spinner: s,
 	}
 }

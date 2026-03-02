@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -18,10 +19,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		// Only handle custom keys if the list isn't filtering
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+
+		switch {
+		case msg.String() == "ctrl+c" || msg.String() == "q":
 			return m, tea.Quit
-		case "r":
+		case key.Matches(msg, m.keys.Sync):
 			if m.syncing {
 				return m, nil
 			}
@@ -30,20 +36,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncNotifications(),
 				m.spinner.Tick,
 			)
-		case "y":
-			// Copy URL
+		case key.Matches(msg, m.keys.CopyURL):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				if isValidGitHubURL(i.notification.HTMLURL) {
 					return m, tea.SetClipboard(i.notification.HTMLURL)
 				}
 				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
 			}
-		case "enter":
+		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				m.status = "Opening browser..."
 				return m, m.OpenBrowser(i.notification.HTMLURL)
 			}
-		case "c":
+		case key.Matches(msg, m.keys.CheckoutPR):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
 				prNumber := extractNumberFromURL(i.notification.SubjectURL)
 				if prNumber != "" {
@@ -52,7 +57,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
 			}
-		case "v":
+		case key.Matches(msg, m.keys.ViewPR):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
 				prNumber := extractNumberFromURL(i.notification.SubjectURL)
 				if prNumber != "" {
@@ -61,23 +66,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
 			}
-		case "1", "2", "3":
-			// Set priority
-			if i, ok := m.list.SelectedItem().(item); ok {
-				priority := int(msg.String()[0] - '0')
-				i.notification.Priority = priority
-				err := m.db.UpdateOrbitState(db.OrbitState{
-					NotificationID: i.notification.GitHubID,
-					Priority:       priority,
-					Status:         i.notification.Status,
-					IsReadLocally:  i.notification.IsReadLocally,
-				})
-				if err != nil {
-					m.err = err
-				}
-				// Refresh list item
-				m.list.SetItem(m.list.Index(), i)
-			}
+		case key.Matches(msg, m.keys.SetPriorityLow):
+			m.setPriority(1)
+		case key.Matches(msg, m.keys.SetPriorityMed):
+			m.setPriority(2)
+		case key.Matches(msg, m.keys.SetPriorityHigh):
+			m.setPriority(3)
 		}
 
 	case tea.WindowSizeMsg:
@@ -86,7 +80,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		m.styles = DefaultStyles(msg.IsDark())
 		m.list.Styles.Title = m.styles.Title
-		m.list.SetDelegate(newItemDelegate(m.styles))
+		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
 
 	case notificationsLoadedMsg:
 		items := make([]list.Item, len(msg))
@@ -126,6 +120,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) setPriority(priority int) {
+	if i, ok := m.list.SelectedItem().(item); ok {
+		i.notification.Priority = priority
+		err := m.db.UpdateOrbitState(db.OrbitState{
+			NotificationID: i.notification.GitHubID,
+			Priority:       priority,
+			Status:         i.notification.Status,
+			IsReadLocally:  i.notification.IsReadLocally,
+		})
+		if err != nil {
+			m.err = err
+		}
+		// Refresh list item
+		m.list.SetItem(m.list.Index(), i)
+	}
 }
 
 func isValidGitHubURL(url string) bool {

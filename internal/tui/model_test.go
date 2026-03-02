@@ -10,11 +10,13 @@ import (
 
 func TestModel_Update_SyncingState(t *testing.T) {
 	styles := DefaultStyles(true)
-	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
 
 	m := &Model{
 		syncing: true,
 		list:    l,
+		keys:    keys,
 	}
 
 	// notificationsLoadedMsg should NOT reset syncing
@@ -42,11 +44,13 @@ func TestModel_Update_SyncingState(t *testing.T) {
 
 func TestModel_Update_ThemeChange(t *testing.T) {
 	styles := DefaultStyles(true)
-	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
 
 	m := &Model{
 		styles: styles,
 		list:   l,
+		keys:   keys,
 	}
 
 	// Mock a light background color msg
@@ -60,10 +64,12 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 
 func TestModel_Update_WindowSize(t *testing.T) {
 	styles := DefaultStyles(true)
-	l := list.New([]list.Item{}, newItemDelegate(styles), 0, 0)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
 
 	m := &Model{
 		list: l,
+		keys: keys,
 	}
 
 	// Mock window size msg

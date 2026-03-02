@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -24,15 +25,24 @@ func (i item) FilterValue() string {
 
 type itemDelegate struct {
 	styles Styles
+	keys   KeyMap
 }
 
-func newItemDelegate(s Styles) itemDelegate {
-	return itemDelegate{styles: s}
+func newItemDelegate(s Styles, k KeyMap) itemDelegate {
+	return itemDelegate{styles: s, keys: k}
 }
 
 func (d itemDelegate) Height() int                               { return 2 }
 func (d itemDelegate) Spacing() int                              { return 0 }
 func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+
+func (d itemDelegate) ShortHelp() []key.Binding {
+	return d.keys.ShortHelp()
+}
+
+func (d itemDelegate) FullHelp() [][]key.Binding {
+	return d.keys.FullHelp()
+}
 
 type semanticIcon struct {
 	icon     string
