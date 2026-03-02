@@ -122,3 +122,21 @@ func TestRenderList(t *testing.T) {
 		t.Errorf("renderList() help should contain 'open (browser)'")
 	}
 }
+
+func TestRenderTabs(t *testing.T) {
+	styles := DefaultStyles(true)
+	m := Model{
+		activeTab: TabInbox,
+		styles:    styles,
+	}
+
+	rendered := m.renderTabs()
+	stripped := stripANSI(rendered)
+
+	expectedTabs := []string{"Inbox", "Unread", "Triaged", "All"}
+	for _, tab := range expectedTabs {
+		if !strings.Contains(stripped, tab) {
+			t.Errorf("renderTabs() = %q, want it to contain %q", stripped, tab)
+		}
+	}
+}
