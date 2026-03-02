@@ -9,6 +9,7 @@ type KeyMap struct {
 	SetPriorityMed  key.Binding
 	SetPriorityHigh key.Binding
 	CopyURL         key.Binding
+	ToggleRead      key.Binding
 	CheckoutPR      key.Binding
 	ViewContextual  key.Binding
 	OpenBrowser     key.Binding
@@ -37,6 +38,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy url"),
 		),
+		ToggleRead: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "mark read/unread"),
+		),
 		CheckoutPR: key.NewBinding(
 			key.WithKeys("c"),
 			key.WithHelp("c", "checkout pr"),
@@ -56,6 +61,7 @@ func DefaultKeyMap() KeyMap {
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.Sync,
+		k.ToggleRead,
 		k.OpenBrowser,
 		k.ViewContextual,
 	}
@@ -66,6 +72,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
 		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh},
-		{k.CheckoutPR},
+		{k.ToggleRead, k.CheckoutPR},
 	}
 }

@@ -57,6 +57,12 @@ func (c *Client) CurrentUser() (*GHUser, error) {
 	return &user, nil
 }
 
+// MarkThreadAsRead marks a single notification thread as read.
+func (c *Client) MarkThreadAsRead(threadID string) error {
+	path := fmt.Sprintf("notifications/threads/%s", threadID)
+	return c.rest.Patch(path, nil, nil)
+}
+
 // HTTP returns the underlying http.Client configured by go-gh.
 func (c *Client) HTTP() *http.Client {
 	return c.http

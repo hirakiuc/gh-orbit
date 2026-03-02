@@ -3,11 +3,23 @@ package tui
 import (
 	"fmt"
 	"image/color"
+	"log/slog"
 	"testing"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/db"
+	_ "modernc.org/sqlite"
 )
+
+func setupTestDB(t *testing.T) *db.DB {
+	// Use in-memory database for tests
+	database, err := db.OpenInMemory(slog.Default())
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+	return database
+}
 
 func TestModel_Update_SyncingState(t *testing.T) {
 	styles := DefaultStyles(true)
@@ -120,5 +132,41 @@ func TestModel_Update_StatusClearing(t *testing.T) {
 	newModel = updatedModel.(*Model)
 	if newModel.status != "" {
 		t.Error("expected status to be cleared after clearStatusMsg")
+	}
+}
+
+func TestModel_MarkRead(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{
+		item{notification: db.NotificationWithState{
+			Notification: db.Notification{GitHubID: "test-id"},
+			OrbitState:   db.OrbitState{IsReadLocally: false},
+		}},
+	}, newItemDelegate(styles, keys), 0, 0)
+
+	// Mock DB
+	testDB := setupTestDB(t)
+	defer func() { _ = testDB.Close() }()
+
+	m := &Model{
+		list:   l,
+		db:     testDB,
+		logger: slog.Default(),
+	}
+
+	// Initial state
+	i := m.list.Items()[0].(item)
+	if i.notification.IsReadLocally {
+		t.Fatal("expected notification to be unread initially")
+	}
+
+	// Mark as read
+	m.MarkRead(i)
+
+	// Verify optimistic update
+	updatedItem := m.list.Items()[0].(item)
+	if !updatedItem.notification.IsReadLocally {
+		t.Error("expected notification to be marked as read optimistically")
 	}
 }

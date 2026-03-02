@@ -46,6 +46,22 @@ func Open(logger *slog.Logger) (*DB, error) {
 	return instance, nil
 }
 
+// OpenInMemory opens an in-memory SQLite database for testing.
+func OpenInMemory(logger *slog.Logger) (*DB, error) {
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open in-memory database: %w", err)
+	}
+
+	instance := &DB{db, logger}
+	if err := instance.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	return instance, nil
+}
+
 // resolveDBPath follows the XDG Base Directory specification.
 func resolveDBPath() (string, error) {
 	stateHome := os.Getenv("XDG_STATE_HOME")

@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
+	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
 var _ = slog.LevelInfo
@@ -25,30 +26,35 @@ func (m *Model) ViewItem(i item) tea.Cmd {
 	notif := i.notification
 	repo := notif.RepositoryFullName
 
+	var cmd tea.Cmd
 	switch notif.SubjectType {
 	case "PullRequest":
 		number := extractNumberFromURL(notif.SubjectURL)
 		if number != "" {
 			m.status = "Opening PR..."
-			return m.ViewPRWeb(repo, number)
+			cmd = m.ViewPRWeb(repo, number)
 		}
 	case "Issue":
 		number := extractNumberFromURL(notif.SubjectURL)
 		if number != "" {
 			m.status = "Opening issue..."
-			return m.ViewIssueWeb(repo, number)
+			cmd = m.ViewIssueWeb(repo, number)
 		}
 	case "Release":
 		tag := extractTagFromURL(notif.SubjectURL)
 		if tag != "" {
 			m.status = "Opening release..."
-			return m.ViewReleaseWeb(repo, tag)
+			cmd = m.ViewReleaseWeb(repo, tag)
 		}
 	}
 
-	// Fallback to standard browser open
-	m.status = "Opening in browser..."
-	return m.OpenBrowser(notif.HTMLURL)
+	if cmd == nil {
+		// Fallback to standard browser open
+		m.status = "Opening in browser..."
+		cmd = m.OpenBrowser(notif.HTMLURL)
+	}
+
+	return tea.Batch(cmd, m.MarkRead(i))
 }
 
 // OpenBrowser opens the given URL in the default browser.
@@ -84,9 +90,15 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 		}
 	}
 
+	// Find the item to mark as read
+	var selectedItem item
+	if i, ok := m.list.SelectedItem().(item); ok {
+		selectedItem = i
+	}
+
 	// #nosec G204: PR number and repo name are strictly regex-validated above
 	c := exec.Command("gh", "pr", "checkout", number, "-R", repo)
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+	checkoutCmd := tea.ExecProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			m.logger.Error("checkout failed", "error", err)
 			return errMsg{err: err}
@@ -94,6 +106,74 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 		m.logger.Info("checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
 	})
+
+	if selectedItem.notification.GitHubID != "" {
+		return tea.Batch(checkoutCmd, m.MarkRead(selectedItem))
+	}
+	return checkoutCmd
+}
+
+// MarkRead marks a notification as read locally and remotely.
+func (m *Model) MarkRead(i item) tea.Cmd {
+	if i.notification.IsReadLocally {
+		return nil
+	}
+
+	// 1. Optimistic UI update
+	i.notification.IsReadLocally = true
+	m.list.SetItem(m.list.Index(), i)
+
+	// 2. Persistent Local Update
+	err := m.db.UpdateOrbitState(db.OrbitState{
+		NotificationID: i.notification.GitHubID,
+		Priority:       i.notification.Priority,
+		Status:         i.notification.Status,
+		IsReadLocally:  true,
+	})
+	if err != nil {
+		m.logger.Error("failed to update local read state", "error", err)
+	}
+
+	// 3. Asynchronous Remote Sync
+	return func() tea.Msg {
+		err := m.client.MarkThreadAsRead(i.notification.GitHubID)
+		if err != nil {
+			m.logger.Error("failed to mark thread as read on GitHub", "error", err)
+			// We don't return an error message here to avoid interrupting the UI,
+			// as the local state is already updated.
+		}
+		return nil
+	}
+}
+
+// ToggleRead manually toggles the read status.
+func (m *Model) ToggleRead(i item) tea.Cmd {
+	newState := !i.notification.IsReadLocally
+
+	// 1. Update UI
+	i.notification.IsReadLocally = newState
+	m.list.SetItem(m.list.Index(), i)
+
+	// 2. Update DB
+	err := m.db.UpdateOrbitState(db.OrbitState{
+		NotificationID: i.notification.GitHubID,
+		Priority:       i.notification.Priority,
+		Status:         i.notification.Status,
+		IsReadLocally:  newState,
+	})
+	if err != nil {
+		m.err = err
+	}
+
+	// 3. Remote Sync (only if marking as read)
+	if newState {
+		return func() tea.Msg {
+			_ = m.client.MarkThreadAsRead(i.notification.GitHubID)
+			return nil
+		}
+	}
+
+	return nil
 }
 
 // ViewPRWeb executes 'gh pr view --web' for the given repo and PR number.
