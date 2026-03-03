@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
@@ -272,12 +271,6 @@ func (m *Model) applyFilters() {
 			}
 		}
 	}
-}
-
-func (m *Model) clearStatusAfter(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(_ time.Time) tea.Msg {
-		return clearStatusMsg{}
-	})
 }
 
 func isValidGitHubURL(url string) bool {
