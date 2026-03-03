@@ -33,7 +33,7 @@ func SetupLogger() (*slog.Logger, func() error, error) {
 
 	// Redacting handler options
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Value.Kind() == slog.KindString {
 				val := a.Value.String()
