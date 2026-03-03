@@ -5,9 +5,8 @@ import (
 	"fmt"
 )
 
-// UpsertNotification inserts or updates a notification record from the API.
-// It ensures that local orbit_state (priority, status, etc.) is preserved.
-func (db *DB) UpsertNotification(n Notification) error {
+// UpsertMetadata inserts or updates core notification metadata from API polling.
+func (db *DB) UpsertMetadata(n Notification) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -17,8 +16,8 @@ func (db *DB) UpsertNotification(n Notification) error {
 	// 1. Upsert notification metadata (API fields only)
 	_, err = tx.Exec(`
 		INSERT INTO notifications (
-			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, body, author_login, is_enriched, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(github_id) DO UPDATE SET
 			subject_title = excluded.subject_title,
 			subject_url = excluded.subject_url,
@@ -26,17 +25,13 @@ func (db *DB) UpsertNotification(n Notification) error {
 			reason = excluded.reason,
 			repository_full_name = excluded.repository_full_name,
 			html_url = excluded.html_url,
-			body = COALESCE(NULLIF(excluded.body, ''), notifications.body),
-			author_login = COALESCE(NULLIF(excluded.author_login, ''), notifications.author_login),
-			is_enriched = excluded.is_enriched,
 			updated_at = excluded.updated_at
-	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.Body, n.AuthorLogin, n.IsEnriched, n.UpdatedAt)
+	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("failed to upsert notification: %w", err)
+		return fmt.Errorf("failed to upsert metadata: %w", err)
 	}
 
-	// 2. Ensure orbit_state exists for this notification (default values for new entries)
-	// This will NOT overwrite existing user state if the notification was previously synced.
+	// 2. Ensure orbit_state exists
 	_, err = tx.Exec(`
 		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
 		VALUES (?, 0, 'entry', FALSE)
@@ -47,6 +42,27 @@ func (db *DB) UpsertNotification(n Notification) error {
 	}
 
 	return tx.Commit()
+}
+
+// EnrichNotification updates a notification with detailed content (body, author).
+func (db *DB) EnrichNotification(id, body, author, htmlURL string) error {
+	_, err := db.Exec(`
+		UPDATE notifications
+		SET body = ?,
+		    author_login = ?,
+		    html_url = COALESCE(NULLIF(?, ''), html_url),
+		    is_enriched = TRUE
+		WHERE github_id = ?
+	`, body, author, htmlURL, id)
+	if err != nil {
+		return fmt.Errorf("failed to enrich notification: %w", err)
+	}
+	return nil
+}
+
+// UpsertNotification is a compatibility helper that performs a metadata upsert.
+func (db *DB) UpsertNotification(n Notification) error {
+	return db.UpsertMetadata(n)
 }
 
 // GetNotification retrieves a notification and its local state.

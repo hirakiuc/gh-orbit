@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/spinner"
 )
 
 // stripANSI is a simple utility to remove ANSI codes for content-based assertions.
@@ -31,7 +30,14 @@ func stripANSI(s string) string {
 
 func TestRenderFooter(t *testing.T) {
 	styles := DefaultStyles(true)
-	s := spinner.New(spinner.WithSpinner(spinner.Dot))
+
+	m1 := Model{ui: NewUIController(styles), styles: styles}
+	m1.ui.syncing = true
+
+	m2 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("test error")}
+
+	m3 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("test error")}
+	m3.ui.syncing = true
 
 	tests := []struct {
 		name     string
@@ -39,39 +45,19 @@ func TestRenderFooter(t *testing.T) {
 		contains string
 	}{
 		{
-			name: "syncing state",
-			model: Model{
-				syncing: true,
-				spinner: s,
-				styles:  styles,
-			},
+			name:     "syncing state",
+			model:    m1,
 			contains: "Syncing...",
 		},
 		{
-			name: "error state",
-			model: Model{
-				err:    fmt.Errorf("test error"),
-				styles: styles,
-			},
+			name:     "error state",
+			model:    m2,
 			contains: "Error: test error",
 		},
 		{
-			name: "status state",
-			model: Model{
-				status: "ready",
-				styles: styles,
-			},
-			contains: "ready",
-		},
-		{
-			name: "syncing and status",
-			model: Model{
-				syncing: true,
-				status:  "updating",
-				spinner: s,
-				styles:  styles,
-			},
-			contains: "Syncing... updating",
+			name:     "syncing and error",
+			model:    m3,
+			contains: "Syncing... Error: test error",
 		},
 	}
 

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
@@ -28,34 +27,35 @@ func (m *Model) ViewItem(i item) tea.Cmd {
 	repo := notif.RepositoryFullName
 
 	var cmd tea.Cmd
+	var toast string
 	switch notif.SubjectType {
 	case "PullRequest":
 		number := extractNumberFromURL(notif.SubjectURL)
 		if number != "" {
-			m.status = "Opening PR..."
+			toast = "Opening PR..."
 			cmd = m.ViewPRWeb(repo, number)
 		}
 	case "Issue":
 		number := extractNumberFromURL(notif.SubjectURL)
 		if number != "" {
-			m.status = "Opening issue..."
+			toast = "Opening issue..."
 			cmd = m.ViewIssueWeb(repo, number)
 		}
 	case "Release":
 		tag := extractTagFromURL(notif.SubjectURL)
 		if tag != "" {
-			m.status = "Opening release..."
+			toast = "Opening release..."
 			cmd = m.ViewReleaseWeb(repo, tag)
 		}
 	}
 
 	if cmd == nil {
 		// Fallback to standard browser open
-		m.status = "Opening in browser..."
+		toast = "Opening in browser..."
 		cmd = m.OpenBrowser(notif.HTMLURL)
 	}
 
-	return tea.Batch(cmd, m.MarkRead(i))
+	return tea.Batch(cmd, m.ui.SetToast(toast), m.MarkRead(i))
 }
 
 // OpenBrowser opens the given URL in the default browser.
@@ -185,16 +185,16 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	}
 
 	// 4. Status Feedback
-	m.status = "Marked as unread"
+	toast := "Marked as unread"
 	if newState {
-		m.status = "Marked as read"
+		toast = "Marked as read"
 	}
 
 	m.applyFilters()
 
 	// 5. Remote Sync + Timed Clear
 	var cmds []tea.Cmd
-	cmds = append(cmds, m.clearStatusAfter(3*time.Second))
+	cmds = append(cmds, m.ui.SetToast(toast))
 	if newState {
 		cmds = append(cmds, func() tea.Msg {
 			_ = m.client.MarkThreadAsRead(i.notification.GitHubID)
@@ -251,28 +251,22 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 
 func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 	return func() tea.Msg {
-		body, htmlURL, author, err := m.sync.Fetcher().FetchDetail(u, subjectType)
+		res, err := m.enrich.FetchDetail(u, subjectType)
 		if err != nil {
 			return errMsg{err: err}
 		}
 
-		// Update database
-		err = m.db.UpsertNotification(db.Notification{
-			GitHubID:    id,
-			Body:        body,
-			AuthorLogin: author,
-			HTMLURL:     htmlURL,
-			IsEnriched:  true,
-		})
+		// Update database with granular enrich method
+		err = m.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL)
 		if err != nil {
 			return errMsg{err: err}
 		}
 
 		return detailLoadedMsg{
 			GitHubID: id,
-			Body:     body,
-			Author:   author,
-			HTMLURL:  htmlURL,
+			Body:     res.Body,
+			Author:   res.Author,
+			HTMLURL:  res.HTMLURL,
 		}
 	}
 }
