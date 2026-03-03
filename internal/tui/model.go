@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -35,6 +36,11 @@ type Model struct {
 	status           string
 	spinner          spinner.Model
 	syncing          bool
+	viewport         viewport.Model
+	showDetail       bool
+	fetchingDetail   bool
+	activeDetail     string
+	isDark           bool
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
@@ -51,20 +57,24 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))),
 	)
 
+	vp := viewport.New()
+
 	alerts := api.NewAlertService(cfg, logger)
 	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
-		list:    l,
-		db:      database,
-		client:  client,
-		sync:    api.NewSyncEngine(fetcher, database, alerts, logger),
-		config:  cfg,
-		logger:  logger,
-		userID:  userID,
-		styles:  styles,
-		keys:    keys,
-		spinner: s,
+		list:     l,
+		db:       database,
+		client:   client,
+		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
+		config:   cfg,
+		logger:   logger,
+		userID:   userID,
+		styles:   styles,
+		keys:     keys,
+		spinner:  s,
+		viewport: vp,
+		isDark:   true,
 	}
 }
 
@@ -86,7 +96,13 @@ type (
 	syncCompleteMsg        []db.NotificationWithState
 	actionCompleteMsg      struct{}
 	clearStatusMsg         struct{}
-	errMsg                 struct{ err error }
+	detailLoadedMsg        struct {
+		GitHubID string
+		Body     string
+		Author   string
+		HTMLURL  string
+	}
+	errMsg struct{ err error }
 )
 
 func (m *Model) loadNotifications() tea.Cmd {

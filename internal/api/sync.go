@@ -27,6 +27,11 @@ func NewSyncEngine(fetcher Fetcher, database *db.DB, alerts *AlertService, logge
 	}
 }
 
+// Fetcher returns the underlying Fetcher instance.
+func (s *SyncEngine) Fetcher() Fetcher {
+	return s.fetcher
+}
+
 // Sync performs a full synchronization cycle for notifications.
 func (s *SyncEngine) Sync(userID string) error {
 	s.logger.Info("starting notification sync", "user_id", userID)

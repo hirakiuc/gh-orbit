@@ -14,6 +14,8 @@ type Notification struct {
 	Reason             string    `json:"reason"`
 	RepositoryFullName string    `json:"repository_full_name"`
 	HTMLURL            string    `json:"html_url"`
+	Body               string    `json:"body"`
+	AuthorLogin        string    `json:"author_login"`
 	IsEnriched         bool      `json:"is_enriched"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
