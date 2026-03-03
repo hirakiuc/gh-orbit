@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -41,7 +42,9 @@ type Model struct {
 	fetchingDetail   bool
 	activeDetail     string
 	isDark           bool
-}
+	markdownRenderer *glamour.TermRenderer
+	}
+
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
 	styles := DefaultStyles(true) // Default to dark theme

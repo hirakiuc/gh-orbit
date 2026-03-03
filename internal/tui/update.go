@@ -110,14 +110,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height-3) // 1 Header, 1 Tab bar, 1 Footer
-		m.viewport.SetWidth(msg.Width - 4)
-		m.viewport.SetHeight(msg.Height - 8)
+		
+		vpWidth := msg.Width - 4
+		if vpWidth < 0 { vpWidth = 0 }
+		m.viewport.SetWidth(vpWidth)
+		
+		vpHeight := msg.Height - 8
+		if vpHeight < 0 { vpHeight = 0 }
+		m.viewport.SetHeight(vpHeight)
+
+		m.updateMarkdownRenderer()
 
 	case tea.BackgroundColorMsg:
 		m.isDark = msg.IsDark()
 		m.styles = DefaultStyles(m.isDark)
 		m.list.Styles.Title = m.styles.Title
 		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
+		m.updateMarkdownRenderer()
 
 	case notificationsLoadedMsg:
 		m.allNotifications = msg

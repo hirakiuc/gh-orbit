@@ -56,20 +56,33 @@ func (m *Model) renderMarkdown(body string) string {
 		return "No content available."
 	}
 
-	renderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(m.viewport.Width()-4),
-	)
-	if err != nil {
-		return body
+	if m.markdownRenderer == nil {
+		m.updateMarkdownRenderer()
 	}
 
-	out, err := renderer.Render(body)
+	out, err := m.markdownRenderer.Render(body)
 	if err != nil {
 		return body
 	}
 
 	return out
+}
+
+func (m *Model) updateMarkdownRenderer() {
+	width := m.viewport.Width() - 4
+	if width < 20 {
+		width = 20
+	}
+
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		m.logger.Error("failed to create markdown renderer", "error", err)
+		return
+	}
+	m.markdownRenderer = renderer
 }
 
 func (m *Model) renderTabs() string {
