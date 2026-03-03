@@ -59,9 +59,11 @@ func (m *Model) renderDetailView() string {
 	}
 
 	// 1. Unified Header using shared component
-	// We use newItemDelegate just to access the helper (refactor later to static helper if needed)
-	delegate := newItemDelegate(m.styles, m.keys)
-	header := delegate.renderTargetHeader(i.notification, "", true)
+	headerCtx := RenderContext{
+		Styles: m.styles,
+		Width:  m.width,
+	}
+	header := RenderTargetHeader(headerCtx, i.notification, "", true)
 	
 	meta := fmt.Sprintf("Author: %s | Repo: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName)
 	

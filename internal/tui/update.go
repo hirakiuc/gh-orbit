@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
@@ -80,108 +81,136 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 	}
 
-	// 2. Handle state-dependent messages
+	// 2. Handle state-dependent messages (Router Pattern)
+	var stateCmd tea.Cmd
 	switch m.state {
 	case StateDetail:
-		if msg, ok := msg.(tea.KeyPressMsg); ok {
-			if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
-				m.state = StateList
-				return m, nil
-			}
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
-		}
-
+		_, stateCmd = m.updateDetail(msg)
 	case StateList:
-		switch msg := msg.(type) {
-		case tea.KeyPressMsg:
-			// Only handle custom keys if the list isn't filtering
-			if m.list.FilterState() == list.Filtering {
-				break
-			}
+		_, stateCmd = m.updateList(msg)
+	}
+	cmds = append(cmds, stateCmd)
 
-			switch {
-			case msg.String() == "ctrl+c" || msg.String() == "q":
-				return m, tea.Quit
-			case key.Matches(msg, m.keys.Sync):
-				if m.ui.syncing {
-					return m, nil
-				}
-				return m, tea.Batch(
-					m.ui.SetSyncing(true),
-					m.syncNotifications(),
-				)
-			case key.Matches(msg, m.keys.ToggleDetail):
-				if i, ok := m.list.SelectedItem().(item); ok {
-					m.state = StateDetail
-					if !i.notification.IsEnriched {
-						return m, tea.Batch(
-							m.ui.SetFetching(true),
-							m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType),
-						)
-					}
-					// Prepare viewport content
-					m.activeDetail = m.renderMarkdown(i.notification.Body)
-					m.viewport.SetContent(m.activeDetail)
-					return m, nil
-				}
-				return m, nil
-			case key.Matches(msg, m.keys.CopyURL):
-				if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-					if isValidGitHubURL(i.notification.HTMLURL) {
-						return m, tea.Batch(
-							tea.SetClipboard(i.notification.HTMLURL),
-							m.ui.SetToast("Copied URL to clipboard"),
-						)
-					}
-					m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
-				}
-			case key.Matches(msg, m.keys.ToggleRead):
-				if i, ok := m.list.SelectedItem().(item); ok {
-					cmds = append(cmds, m.ToggleRead(i))
-				}
-			case key.Matches(msg, m.keys.NextTab):
-				m.activeTab = (m.activeTab + 1) % 4
-				m.applyFilters()
-			case key.Matches(msg, m.keys.PrevTab):
-				m.activeTab = (m.activeTab - 1 + 4) % 4
-				m.applyFilters()
-			case key.Matches(msg, m.keys.OpenBrowser):
-				if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-					return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), m.ui.SetToast("Opening browser..."))
-				}
-			case key.Matches(msg, m.keys.CheckoutPR):
-				if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-					prNumber := extractNumberFromURL(i.notification.SubjectURL)
-					if prNumber != "" {
-						return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), m.ui.SetToast("Launching gh pr checkout..."))
-					}
-					m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
-				}
-			case key.Matches(msg, m.keys.ViewContextual):
-				if i, ok := m.list.SelectedItem().(item); ok {
-					return m, m.ViewItem(i)
-				}
-			case key.Matches(msg, m.keys.SetPriorityLow):
-				return m, m.setPriority(1)
-			case key.Matches(msg, m.keys.SetPriorityMed):
-				return m, m.setPriority(2)
-			case key.Matches(msg, m.keys.SetPriorityHigh):
-				return m, m.setPriority(3)
-			case key.Matches(msg, m.keys.ClearPriority):
-				return m, m.setPriority(0)
-			case key.Matches(msg, m.keys.FilterPR):
-				return m, m.toggleResourceFilter("PullRequest", "PRs")
-			case key.Matches(msg, m.keys.FilterIssue):
-				return m, m.toggleResourceFilter("Issue", "Issues")
-			case key.Matches(msg, m.keys.FilterDiscussion):
-				return m, m.toggleResourceFilter("Discussion", "Discussions")
-			}
+	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(tea.KeyPressMsg); ok {
+		if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
+			m.state = StateList
+			return m, nil
+		}
+	}
+	var cmd tea.Cmd
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
+func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		// Only handle custom keys if the list isn't filtering
+		if m.list.FilterState() == list.Filtering {
+			break
 		}
 
-		m.list, cmd = m.list.Update(msg)
-		cmds = append(cmds, cmd)
+		switch {
+		case msg.String() == "ctrl+c" || msg.String() == "q":
+			return m, tea.Quit
+		case key.Matches(msg, m.keys.Sync):
+			if m.ui.syncing {
+				return m, nil
+			}
+			return m, tea.Batch(
+				m.ui.SetSyncing(true),
+				m.syncNotifications(),
+			)
+		case key.Matches(msg, m.keys.ToggleDetail):
+			if i, ok := m.list.SelectedItem().(item); ok {
+				m.state = StateDetail
+				if !i.notification.IsEnriched {
+					return m, tea.Batch(
+						m.ui.SetFetching(true),
+						m.enrich.GetEnrichmentCmd(
+							i.notification.GitHubID,
+							i.notification.SubjectURL,
+							i.notification.SubjectType,
+							func(res api.EnrichmentResult) tea.Msg {
+								return detailLoadedMsg{
+									GitHubID: i.notification.GitHubID,
+									Body:     res.Body,
+									Author:   res.Author,
+									HTMLURL:  res.HTMLURL,
+								}
+							},
+							func(err error) tea.Msg { return errMsg{err: err} },
+						),
+					)
+				}
+				// Prepare viewport content
+				m.activeDetail = m.renderMarkdown(i.notification.Body)
+				m.viewport.SetContent(m.activeDetail)
+				return m, nil
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.CopyURL):
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
+				if isValidGitHubURL(i.notification.HTMLURL) {
+					return m, tea.Batch(
+						tea.SetClipboard(i.notification.HTMLURL),
+						m.ui.SetToast("Copied URL to clipboard"),
+					)
+				}
+				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
+			}
+		case key.Matches(msg, m.keys.ToggleRead):
+			if i, ok := m.list.SelectedItem().(item); ok {
+				cmds = append(cmds, m.ToggleRead(i))
+			}
+		case key.Matches(msg, m.keys.NextTab):
+			m.activeTab = (m.activeTab + 1) % 4
+			m.applyFilters()
+		case key.Matches(msg, m.keys.PrevTab):
+			m.activeTab = (m.activeTab - 1 + 4) % 4
+			m.applyFilters()
+		case key.Matches(msg, m.keys.OpenBrowser):
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
+				return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), m.ui.SetToast("Opening browser..."))
+			}
+		case key.Matches(msg, m.keys.CheckoutPR):
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+				prNumber := extractNumberFromURL(i.notification.SubjectURL)
+				if prNumber != "" {
+					return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), m.ui.SetToast("Launching gh pr checkout..."))
+				}
+				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
+			}
+		case key.Matches(msg, m.keys.ViewContextual):
+			if i, ok := m.list.SelectedItem().(item); ok {
+				return m, m.ViewItem(i)
+			}
+		case key.Matches(msg, m.keys.SetPriorityLow):
+			return m, m.setPriority(1)
+		case key.Matches(msg, m.keys.SetPriorityMed):
+			return m, m.setPriority(2)
+		case key.Matches(msg, m.keys.SetPriorityHigh):
+			return m, m.setPriority(3)
+		case key.Matches(msg, m.keys.ClearPriority):
+			return m, m.setPriority(0)
+		case key.Matches(msg, m.keys.FilterPR):
+			return m, m.toggleResourceFilter("PullRequest", "PRs")
+		case key.Matches(msg, m.keys.FilterIssue):
+			return m, m.toggleResourceFilter("Issue", "Issues")
+		case key.Matches(msg, m.keys.FilterDiscussion):
+			return m, m.toggleResourceFilter("Discussion", "Discussions")
+		}
 	}
+
+	m.list, cmd = m.list.Update(msg)
+	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
