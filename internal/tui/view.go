@@ -46,9 +46,12 @@ func (m *Model) View() tea.View {
 			toast := m.styles.Toast.Render(m.toastMessage)
 			// Place toast at the bottom center
 			toastWidth := lipgloss.Width(toast)
+			toastY := m.height - 2
+			if toastY < 0 { toastY = 0 }
+			
 			layer := lipgloss.NewLayer(toast).
 				X((m.width - toastWidth) / 2).
-				Y(m.height - 2).
+				Y(toastY).
 				Z(100)
 			canvas.Compose(layer)
 		}
@@ -58,7 +61,13 @@ func (m *Model) View() tea.View {
 			percent := m.viewport.ScrollPercent()
 			if percent >= 0 {
 				scrollbarHeight := m.viewport.Height()
+				totalLines := m.viewport.TotalLineCount()
+				
 				thumbHeight := 3 // Minimal thumb size
+				if totalLines > 0 {
+					thumbHeight = int(float64(scrollbarHeight) * (float64(scrollbarHeight) / float64(totalLines)))
+					if thumbHeight < 3 { thumbHeight = 3 }
+				}
 				if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
 				
 				thumbPos := int(float64(scrollbarHeight-thumbHeight) * percent)
