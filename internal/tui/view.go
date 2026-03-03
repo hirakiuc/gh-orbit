@@ -25,68 +25,66 @@ func (m *Model) View() tea.View {
 
 	footer := m.renderFooter()
 	if footer != "" {
-		// We add a newline if the footer is fixed, 
-		// but since we are moving status to toasts, 
-		// the footer only contains the spinner/sync state now.
 		viewContent += "\n" + footer
 	}
 
 	v := tea.NewView(viewContent)
 
-	// Overlays via Canvas
-	if m.width > 0 && m.height > 0 {
-		canvas := lipgloss.NewCanvas(m.width, m.height)
-		
+	// Overlays via Compositor
+	// We only use the compositor if we have overlays to show.
+	// This avoids issues with the base layer being misrendered.
+	hasToast := m.toastMessage != ""
+	hasScrollbar := m.showDetail && !m.fetchingDetail && m.viewport.ScrollPercent() >= 0
+
+	if (hasToast || hasScrollbar) && m.width > 0 && m.height > 0 {
 		// Base layer
 		base := lipgloss.NewLayer(viewContent).X(0).Y(0).Z(0)
-		canvas.Compose(base)
+		cptr := lipgloss.NewCompositor(base)
 
 		// 1. Toast Notification
-		if m.toastMessage != "" {
+		if hasToast {
 			toast := m.styles.Toast.Render(m.toastMessage)
 			// Place toast at the bottom center
 			toastWidth := lipgloss.Width(toast)
 			toastY := m.height - 2
 			if toastY < 0 { toastY = 0 }
 			
-			layer := lipgloss.NewLayer(toast).
+			toastLayer := lipgloss.NewLayer(toast).
 				X((m.width - toastWidth) / 2).
 				Y(toastY).
 				Z(100)
-			canvas.Compose(layer)
+			cptr.AddLayers(toastLayer)
 		}
 
 		// 2. Scrollbar for Detail View
-		if m.showDetail && !m.fetchingDetail {
+		if hasScrollbar {
 			percent := m.viewport.ScrollPercent()
-			if percent >= 0 {
-				scrollbarHeight := m.viewport.Height()
-				totalLines := m.viewport.TotalLineCount()
-				
-				thumbHeight := 3 // Minimal thumb size
-				if totalLines > 0 {
-					thumbHeight = int(float64(scrollbarHeight) * (float64(scrollbarHeight) / float64(totalLines)))
-					if thumbHeight < 3 { thumbHeight = 3 }
-				}
-				if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
-				
-				thumbPos := int(float64(scrollbarHeight-thumbHeight) * percent)
-				
-				thumb := m.styles.ScrollbarThumb.
-					Width(1).
-					Height(thumbHeight).
-					Render(" ")
-				
-				// Place scrollbar on the right edge of the viewport
-				layer := lipgloss.NewLayer(thumb).
-					X(m.width - 2).
-					Y(4 + thumbPos). // Start after header
-					Z(50)
-				canvas.Compose(layer)
+			scrollbarHeight := m.viewport.Height()
+			totalLines := m.viewport.TotalLineCount()
+			
+			thumbHeight := 3 // Minimal thumb size
+			if totalLines > 0 {
+				thumbHeight = int(float64(scrollbarHeight) * (float64(scrollbarHeight) / float64(totalLines)))
+				if thumbHeight < 3 { thumbHeight = 3 }
 			}
+			if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
+			
+			thumbPos := int(float64(scrollbarHeight-thumbHeight) * percent)
+			
+			thumb := m.styles.ScrollbarThumb.
+				Width(1).
+				Height(thumbHeight).
+				Render(" ")
+			
+			// Place scrollbar on the right edge of the viewport
+			sbLayer := lipgloss.NewLayer(thumb).
+				X(m.width - 2).
+				Y(4 + thumbPos). // Start after header
+				Z(50)
+			cptr.AddLayers(sbLayer)
 		}
 
-		v = tea.NewView(canvas.Render())
+		v.SetContent(cptr.Render())
 	}
 
 	// Declarative terminal state
@@ -111,9 +109,18 @@ func (m *Model) renderDetailView() string {
 	header := m.styles.DetailHeader.Render(fmt.Sprintf("%s #%s", i.notification.SubjectTitle, extractNumberFromURL(i.notification.SubjectURL)))
 	meta := fmt.Sprintf("Author: %s | Repo: %s | Reason: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName, i.notification.Reason)
 	
-	content := header + "\n" + meta + "\n\n" + m.viewport.View()
+	// Content inside the viewport
+	vpView := m.viewport.View()
+	
+	content := header + "\n" + meta + "\n\n" + vpView
 
-	return m.styles.Viewport.Render(content)
+	// If we have dimensions, ensure the style doesn't clip
+	style := m.styles.Viewport
+	if m.width > 0 && m.height > 0 {
+		style = style.Width(m.width - 2).Height(m.height - 4)
+	}
+
+	return style.Render(content)
 }
 
 func (m *Model) renderMarkdown(body string) string {
