@@ -58,7 +58,7 @@ type NotificationWithState struct {
 func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 	row := db.QueryRow(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.body, n.author_login, n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -83,7 +83,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	rows, err := db.Query(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, n.body, n.author_login, n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id

@@ -38,6 +38,6 @@ var migrations = []string{
 	// Version 3: Add subject_url for robust PR number extraction
 	`ALTER TABLE notifications ADD COLUMN subject_url TEXT;`,
 	// Version 4: Add body and author_login for detail view
-	`ALTER TABLE notifications ADD COLUMN body TEXT;
-	 ALTER TABLE notifications ADD COLUMN author_login TEXT;`,
+	`ALTER TABLE notifications ADD COLUMN body TEXT DEFAULT '';
+	 ALTER TABLE notifications ADD COLUMN author_login TEXT DEFAULT '';`,
 }
