@@ -58,9 +58,12 @@ func (m *Model) renderDetailView() string {
 		return "No item selected"
 	}
 
-	// Header
-	header := m.styles.DetailHeader.Render(fmt.Sprintf("%s #%s", i.notification.SubjectTitle, extractNumberFromURL(i.notification.SubjectURL)))
-	meta := fmt.Sprintf("Author: %s | Repo: %s | Reason: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName, i.notification.Reason)
+	// 1. Unified Header using shared component
+	// We use newItemDelegate just to access the helper (refactor later to static helper if needed)
+	delegate := newItemDelegate(m.styles, m.keys)
+	header := delegate.renderTargetHeader(i.notification, "", true)
+	
+	meta := fmt.Sprintf("Author: %s | Repo: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName)
 	
 	// Content inside the viewport
 	vpView := m.viewport.View()

@@ -311,3 +311,38 @@ func TestModel_Update_DetailView(t *testing.T) {
 		t.Errorf("expected body to be 'Test Body', got %s", newModel.allNotifications[0].Body)
 	}
 }
+
+func TestModel_ResourceFiltering(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+	notifs := []db.NotificationWithState{
+		{Notification: db.Notification{GitHubID: "1", SubjectType: "PullRequest"}},
+		{Notification: db.Notification{GitHubID: "2", SubjectType: "Issue"}},
+	}
+
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
+	m := &Model{
+		list:             l,
+		allNotifications: notifs,
+		activeTab:        TabAll,
+		ui:               NewUIController(styles),
+	}
+
+	// 1. Filter PRs
+	m.toggleResourceFilter("PullRequest", "PRs")
+	if len(m.list.Items()) != 1 {
+		t.Errorf("expected 1 item (PR), got %d", len(m.list.Items()))
+	}
+
+	// 2. Toggle same filter (clear)
+	m.toggleResourceFilter("PullRequest", "PRs")
+	if len(m.list.Items()) != 2 {
+		t.Errorf("expected 2 items after clear, got %d", len(m.list.Items()))
+	}
+
+	// 3. Filter Issues
+	m.toggleResourceFilter("Issue", "Issues")
+	if len(m.list.Items()) != 1 {
+		t.Errorf("expected 1 item (Issue), got %d", len(m.list.Items()))
+	}
+}

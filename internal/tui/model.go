@@ -42,6 +42,7 @@ type Model struct {
 	allNotifications []db.NotificationWithState
 	err              error
 	state            AppState
+	resourceFilter   string
 	viewport         viewport.Model
 	activeDetail     string
 	isDark           bool

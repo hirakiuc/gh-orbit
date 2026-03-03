@@ -148,15 +148,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyFilters()
 			case key.Matches(msg, m.keys.OpenBrowser):
 				if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-					cmds = append(cmds, m.ui.SetToast("Opening browser..."))
-					return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), tea.Batch(cmds...))
+					return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), m.ui.SetToast("Opening browser..."))
 				}
 			case key.Matches(msg, m.keys.CheckoutPR):
 				if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
 					prNumber := extractNumberFromURL(i.notification.SubjectURL)
 					if prNumber != "" {
-						cmds = append(cmds, m.ui.SetToast("Launching gh pr checkout..."))
-						return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), tea.Batch(cmds...))
+						return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), m.ui.SetToast("Launching gh pr checkout..."))
 					}
 					m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
 				}
@@ -172,6 +170,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.setPriority(3)
 			case key.Matches(msg, m.keys.ClearPriority):
 				return m, m.setPriority(0)
+			case key.Matches(msg, m.keys.FilterPR):
+				return m, m.toggleResourceFilter("PullRequest", "PRs")
+			case key.Matches(msg, m.keys.FilterIssue):
+				return m, m.toggleResourceFilter("Issue", "Issues")
+			case key.Matches(msg, m.keys.FilterDiscussion):
+				return m, m.toggleResourceFilter("Discussion", "Discussions")
 			}
 		}
 
@@ -225,6 +229,20 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 	return nil
 }
 
+func (m *Model) toggleResourceFilter(filterType, label string) tea.Cmd {
+	if m.resourceFilter == filterType {
+		m.resourceFilter = ""
+		m.ui.SetResourceFilter("")
+		m.applyFilters()
+		return m.ui.SetToast("Filter cleared")
+	}
+
+	m.resourceFilter = filterType
+	m.ui.SetResourceFilter(label)
+	m.applyFilters()
+	return m.ui.SetToast(fmt.Sprintf("Filtering by %s", label))
+}
+
 func (m *Model) applyFilters() {
 	// 1. Store currently selected ID
 	var selectedID string
@@ -236,22 +254,24 @@ func (m *Model) applyFilters() {
 	var filtered []list.Item
 	for _, n := range m.allNotifications {
 		keep := false
+
+		// Apply Tab Filter
 		switch m.activeTab {
 		case TabInbox:
-			// Unread OR has priority
-			if !n.IsReadLocally || n.Priority > 0 {
-				keep = true
-			}
+			if !n.IsReadLocally || n.Priority > 0 { keep = true }
 		case TabUnread:
-			if !n.IsReadLocally {
-				keep = true
-			}
+			if !n.IsReadLocally { keep = true }
 		case TabTriaged:
-			if n.Priority > 0 {
-				keep = true
-			}
+			if n.Priority > 0 { keep = true }
 		case TabAll:
 			keep = true
+		}
+
+		// Apply Resource Type Filter (if active)
+		if keep && m.resourceFilter != "" {
+			if n.SubjectType != m.resourceFilter {
+				keep = false
+			}
 		}
 
 		if keep {

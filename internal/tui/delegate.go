@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/sahilm/fuzzy"
 )
 
 type item struct {
@@ -76,54 +77,12 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		indicator = d.styles.Cursor.Render("▌ ")
 	}
 
-	// 2. Unread Status Dot
-	statusDot := "  "
-	if !i.notification.IsReadLocally {
-		statusDot = d.styles.Unread.Render("• ")
-	}
+	// 2. Target Identity Header (Icon + Title + #ID + Badge)
+	header := d.renderTargetHeader(i.notification, m.FilterValue(), isSelected)
 
-	// 3. Type Icon
-	typeIcon := "•"
-	switch i.notification.SubjectType {
-	case "PullRequest":
-		typeIcon = ""
-	case "Issue":
-		typeIcon = ""
-	case "Discussion":
-		typeIcon = ""
-	}
-	// Fallback if Nerd Font is not available (common Unicode)
-	if !strings.ContainsAny(typeIcon, "") {
-		switch i.notification.SubjectType {
-		case "PullRequest":
-			typeIcon = "PR"
-		case "Issue":
-			typeIcon = "#"
-		case "Discussion":
-			typeIcon = "D"
-		}
-	}
-	typeIconStr := d.styles.IconContainer.Render(typeIcon)
+	// 3. Status/Priority
+	str := fmt.Sprintf("%s%s", indicator, header)
 
-	// 4. Reason Icon
-	reasonIcon := "  "
-	if si, ok := reasonIcons[i.notification.Reason]; ok {
-		icon := si.icon
-		if !strings.ContainsAny(icon, "") {
-			icon = si.fallback
-		}
-		reasonIcon = si.style(d.styles).Inherit(d.styles.IconContainer).Render(icon)
-	}
-
-	title := i.notification.SubjectTitle
-	if isSelected {
-		title = d.styles.SelectedTitle.Render(title)
-	}
-
-	// Stable Layout: [Selection] [Status] [Type] [Reason] [Index] [Title]
-	str := fmt.Sprintf("%s%s%s%s%d. %s", indicator, statusDot, typeIconStr, reasonIcon, index+1, title)
-
-	// Add priority indicator
 	priority := ""
 	switch i.notification.Priority {
 	case 3:
@@ -133,12 +92,11 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	case 1:
 		priority = d.styles.PriorityLow.Render(" [!]")
 	}
-
 	if priority != "" {
 		str += priority
 	}
 
-	// Meta info: repository and relative time
+	// 4. Meta info (line 2)
 	relTime := humanize.Time(i.notification.UpdatedAt)
 	description := fmt.Sprintf("%s • %s", i.notification.RepositoryFullName, relTime)
 	if isSelected {
@@ -146,4 +104,76 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	}
 
 	_, _ = fmt.Fprintf(w, "%s\n    %s", str, description)
+}
+
+func (d itemDelegate) renderTargetHeader(n db.NotificationWithState, filter string, isSelected bool) string {
+	// 1. Type Icon
+	typeIcon := "•"
+	switch n.SubjectType {
+	case "PullRequest":
+		typeIcon = ""
+	case "Issue":
+		typeIcon = ""
+	case "Discussion":
+		typeIcon = ""
+	case "Commit":
+		typeIcon = ""
+	case "Release":
+		typeIcon = ""
+	}
+	if !strings.ContainsAny(typeIcon, "") {
+		switch n.SubjectType {
+		case "PullRequest":
+			typeIcon = "PR"
+		case "Issue":
+			typeIcon = "#"
+		case "Discussion":
+			typeIcon = "D"
+		default:
+			typeIcon = "•"
+		}
+	}
+	iconStr := d.styles.IconContainer.Render(typeIcon)
+
+	// 2. Unread status
+	statusDot := " "
+	if !n.IsReadLocally {
+		statusDot = d.styles.Unread.Render("•")
+	}
+
+	// 3. Title + #ID
+	title := n.SubjectTitle
+	number := extractNumberFromURL(n.SubjectURL)
+	if number != "" {
+		title = fmt.Sprintf("%s #%s", title, number)
+	}
+
+	// Highlight matches
+	if filter != "" {
+		title = d.highlightMatches(title, filter)
+	} else if isSelected {
+		title = d.styles.SelectedTitle.Render(title)
+	}
+
+	// 4. Reason Badge
+	badge := ""
+	if si, ok := reasonIcons[n.Reason]; ok {
+		style := si.style(d.styles)
+		badgeText := strings.ToUpper(strings.ReplaceAll(n.Reason, "_", " "))
+		badge = style.
+			Padding(0, 1).
+			Render(badgeText)
+	}
+
+	return fmt.Sprintf("%s%s %s  %s", iconStr, statusDot, title, badge)
+}
+
+func (d itemDelegate) highlightMatches(text, filter string) string {
+	matches := fuzzy.Find(filter, []string{text})
+	if len(matches) == 0 {
+		return text
+	}
+
+	// sahilm/fuzzy returns indices for the first match
+	return lipgloss.StyleRunes(text, matches[0].MatchedIndexes, d.styles.FuzzyMatch, d.styles.SelectedTitle)
 }
