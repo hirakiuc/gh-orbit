@@ -37,6 +37,10 @@ type Styles struct {
 	DetailBody   lipgloss.Style
 	DetailBadge  lipgloss.Style
 	Viewport     lipgloss.Style
+
+	// Overlays
+	Toast          lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -144,6 +148,16 @@ func DefaultStyles(isDark bool) Styles {
 	s.Viewport = lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("#30363D"))
+
+	s.Toast = lipgloss.NewStyle().
+		Padding(0, 1).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(accent).
+		Bold(true)
+
+	s.ScrollbarThumb = lipgloss.NewStyle().
+		Foreground(accent).
+		Background(accent)
 
 	return s
 }

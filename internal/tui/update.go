@@ -63,7 +63,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.CopyURL):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				if isValidGitHubURL(i.notification.HTMLURL) {
-					m.status = "Copied URL to clipboard"
+					m.toastMessage = "Copied URL to clipboard"
 					return m, tea.Batch(
 						tea.SetClipboard(i.notification.HTMLURL),
 						m.clearStatusAfter(3*time.Second),
@@ -110,6 +110,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		m.list.SetSize(msg.Width, msg.Height-3) // 1 Header, 1 Tab bar, 1 Footer
 		
 		vpWidth := msg.Width - 4
@@ -166,6 +168,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case clearStatusMsg:
 		m.status = ""
+		m.toastMessage = ""
 
 	case errMsg:
 		m.syncing = false
@@ -214,7 +217,7 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 		case 3:
 			msg = "Priority set to High"
 		}
-		m.status = msg
+		m.toastMessage = msg
 
 		// Update allNotifications master copy
 		for idx, n := range m.allNotifications {

@@ -10,8 +10,12 @@ import (
 
 func (m *Model) View() tea.View {
 	var viewContent string
+	windowTitle := "gh-orbit"
 
 	if m.showDetail {
+		if i, ok := m.list.SelectedItem().(item); ok {
+			windowTitle = fmt.Sprintf("gh-orbit: %s", i.notification.SubjectTitle)
+		}
 		viewContent = m.renderDetailView()
 	} else {
 		// Build the view content from components
@@ -21,13 +25,65 @@ func (m *Model) View() tea.View {
 
 	footer := m.renderFooter()
 	if footer != "" {
+		// We add a newline if the footer is fixed, 
+		// but since we are moving status to toasts, 
+		// the footer only contains the spinner/sync state now.
 		viewContent += "\n" + footer
 	}
 
 	v := tea.NewView(viewContent)
 
+	// Overlays via Canvas
+	if m.width > 0 && m.height > 0 {
+		canvas := lipgloss.NewCanvas(m.width, m.height)
+		
+		// Base layer
+		base := lipgloss.NewLayer(viewContent).X(0).Y(0).Z(0)
+		canvas.Compose(base)
+
+		// 1. Toast Notification
+		if m.toastMessage != "" {
+			toast := m.styles.Toast.Render(m.toastMessage)
+			// Place toast at the bottom center
+			toastWidth := lipgloss.Width(toast)
+			layer := lipgloss.NewLayer(toast).
+				X((m.width - toastWidth) / 2).
+				Y(m.height - 2).
+				Z(100)
+			canvas.Compose(layer)
+		}
+
+		// 2. Scrollbar for Detail View
+		if m.showDetail && !m.fetchingDetail {
+			percent := m.viewport.ScrollPercent()
+			if percent >= 0 {
+				scrollbarHeight := m.viewport.Height()
+				thumbHeight := 3 // Minimal thumb size
+				if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
+				
+				thumbPos := int(float64(scrollbarHeight-thumbHeight) * percent)
+				
+				thumb := m.styles.ScrollbarThumb.
+					Width(1).
+					Height(thumbHeight).
+					Render(" ")
+				
+				// Place scrollbar on the right edge of the viewport
+				layer := lipgloss.NewLayer(thumb).
+					X(m.width - 2).
+					Y(4 + thumbPos). // Start after header
+					Z(50)
+				canvas.Compose(layer)
+			}
+		}
+
+		v = tea.NewView(canvas.Render())
+	}
+
 	// Declarative terminal state
 	v.AltScreen = true
+	v.WindowTitle = windowTitle
+	v.MouseMode = tea.MouseModeCellMotion
 
 	return v
 }
@@ -74,8 +130,14 @@ func (m *Model) updateMarkdownRenderer() {
 		width = 20
 	}
 
+	style := "dark"
+	if !m.isDark {
+		style = "light"
+	}
+
 	renderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle(style),
+		glamour.WithEmoji(),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {

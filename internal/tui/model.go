@@ -43,7 +43,10 @@ type Model struct {
 	activeDetail     string
 	isDark           bool
 	markdownRenderer *glamour.TermRenderer
-	}
+	toastMessage     string
+	width            int
+	height           int
+}
 
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
