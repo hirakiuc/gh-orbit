@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
 // EnrichmentResult holds the fetched details for a notification.
@@ -17,14 +20,16 @@ type EnrichmentResult struct {
 // EnrichmentEngine handles fetching and caching of notification details.
 type EnrichmentEngine struct {
 	client *Client
+	db     *db.DB
 	logger *slog.Logger
 	cache  map[string]EnrichmentResult
 	mu     sync.RWMutex
 }
 
-func NewEnrichmentEngine(client *Client, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
 	return &EnrichmentEngine{
 		client: client,
+		db:     database,
 		logger: logger,
 		cache:  make(map[string]EnrichmentResult),
 	}
@@ -86,4 +91,23 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 	e.mu.Unlock()
 
 	return res, nil
+}
+
+// GetEnrichmentCmd creates a Bubble Tea command to enrich a notification.
+// It wraps the API call and the database persistence.
+func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		res, err := e.FetchDetail(u, subjectType)
+		if err != nil {
+			return errorMsg(err)
+		}
+
+		// Persist to DB
+		err = e.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL)
+		if err != nil {
+			return errorMsg(err)
+		}
+
+		return successMsg(res)
+	}
 }

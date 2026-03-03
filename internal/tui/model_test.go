@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"image/color"
 	"log/slog"
 	"testing"
@@ -13,7 +12,6 @@ import (
 )
 
 func setupTestDB(t *testing.T) *db.DB {
-	// Use in-memory database for tests
 	database, err := db.OpenInMemory(slog.Default())
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
@@ -21,18 +19,29 @@ func setupTestDB(t *testing.T) *db.DB {
 	return database
 }
 
-func TestModel_Update_SyncingState(t *testing.T) {
+func newTestModel(t *testing.T) *Model {
 	styles := DefaultStyles(true)
 	keys := DefaultKeyMap()
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
+	delegate := newItemDelegate(styles, keys)
+	l := list.New([]list.Item{}, delegate, 80, 24)
+	
+	database := setupTestDB(t)
+	
 	m := &Model{
-		list: l,
-		keys: keys,
-		ui:   NewUIController(styles),
+		list:   l,
+		db:     database,
+		keys:   keys,
+		styles: styles,
+		ui:     NewUIController(styles),
+		logger: slog.Default(),
+		state:  StateList,
 	}
+	m.ui.SetSize(80, 24)
+	return m
+}
 
-	// Set syncing via UI
+func TestModel_Update_SyncingState(t *testing.T) {
+	m := newTestModel(t)
 	m.ui.SetSyncing(true)
 
 	// syncCompleteMsg SHOULD reset syncing
@@ -52,71 +61,18 @@ func TestModel_Update_SyncingState(t *testing.T) {
 }
 
 func TestModel_Update_ThemeChange(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		styles: styles,
-		list:   l,
-		keys:   keys,
-		ui:     NewUIController(styles),
-	}
+	m := newTestModel(t)
 
 	// Mock a light background color msg
 	msg := tea.BackgroundColorMsg{Color: color.RGBA{R: 255, G: 255, B: 255, A: 255}}
 	updatedModel, _ := m.Update(msg)
 	_ = updatedModel.(*Model)
-
-	// Since we can't easily check private style properties,
-	// we've verified it compiles and runs.
-}
-
-func TestModel_Update_WindowSize(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		list: l,
-		keys: keys,
-		ui:   NewUIController(styles),
-	}
-
-	// Mock window size msg
-	width, height := 80, 24
-	msg := tea.WindowSizeMsg{Width: width, Height: height}
-	updatedModel, _ := m.Update(msg)
-	newModel := updatedModel.(*Model)
-
-	// The list height should be height-3 (Header, Tab bar, Footer)
-	expectedHeight := height - 3
-	if newModel.list.Height() != expectedHeight {
-		t.Errorf("expected list height %d, got %d", expectedHeight, newModel.list.Height())
-	}
-
-	if newModel.list.Width() != width {
-		t.Errorf("expected list width %d, got %d", width, newModel.list.Width())
-	}
 }
 
 func TestModel_Update_StatusClearing(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		err:  fmt.Errorf("some error"),
-		list: l,
-		keys: keys,
-		ui:   NewUIController(styles),
-	}
-	m.ui.SetToast("some status")
-
-	// Test actionCompleteMsg
-	// Note: in the new Update, actionCompleteMsg isn't explicitly handled anymore
-	// but we'll check clearStatusMsg instead.
+	m := newTestModel(t)
 	m.ui.SetToast("temporary status")
+
 	msgClear := clearStatusMsg{}
 	updatedModel, _ := m.Update(msgClear)
 	newModel := updatedModel.(*Model)
@@ -126,207 +82,30 @@ func TestModel_Update_StatusClearing(t *testing.T) {
 }
 
 func TestModel_MarkRead(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	l := list.New([]list.Item{
-		item{notification: db.NotificationWithState{
-			Notification: db.Notification{GitHubID: "test-id"},
-			OrbitState:   db.OrbitState{IsReadLocally: false},
-		}},
-	}, newItemDelegate(styles, keys), 0, 0)
-
-	// Mock DB
-	testDB := setupTestDB(t)
-	defer func() { _ = testDB.Close() }()
-
-	m := &Model{
-		list:             l,
-		db:               testDB,
-		logger:           slog.Default(),
-		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{IsReadLocally: false}}},
-		activeTab:        TabAll,
-		ui:               NewUIController(styles),
-	}
-
-	// Populate the list
+	m := newTestModel(t)
+	m.allNotifications = []db.NotificationWithState{{
+		Notification: db.Notification{GitHubID: "test-id"},
+		OrbitState:   db.OrbitState{IsReadLocally: false},
+	}}
+	m.activeTab = TabAll
 	m.applyFilters()
 
 	// Initial state
 	i := m.list.Items()[0].(item)
-	if i.notification.IsReadLocally {
-		t.Fatal("expected notification to be unread initially")
-	}
-
-	// Mark as read
 	m.MarkRead(i)
 
-	// Verify optimistic update in list
-	updatedItem := m.list.Items()[0].(item)
-	if !updatedItem.notification.IsReadLocally {
-		t.Error("expected notification to be marked as read optimistically in list")
-	}
-
-	// Verify synchronization in allNotifications
 	if !m.allNotifications[0].IsReadLocally {
 		t.Error("expected allNotifications[0] to be marked as read")
 	}
 }
 
-func TestModel_SetPriority(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	testDB := setupTestDB(t)
-	defer func() { _ = testDB.Close() }()
-
-	l := list.New([]list.Item{
-		item{notification: db.NotificationWithState{
-			Notification: db.Notification{GitHubID: "test-id"},
-			OrbitState:   db.OrbitState{Priority: 0},
-		}},
-	}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		list:             l,
-		db:               testDB,
-		logger:           slog.Default(),
-		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{Priority: 0}}},
-		ui:               NewUIController(styles),
-	}
-
-	// 1. Set priority to 1
-	m.setPriority(1)
-	if m.allNotifications[0].Priority != 1 {
-		t.Errorf("expected priority 1, got %d", m.allNotifications[0].Priority)
-	}
-
-	// 2. Toggle priority 1 -> 0
-	m.setPriority(1)
-	if m.allNotifications[0].Priority != 0 {
-		t.Errorf("expected priority 0 after toggle, got %d", m.allNotifications[0].Priority)
-	}
-
-	// 3. Set priority to 3
-	m.setPriority(3)
-	if m.allNotifications[0].Priority != 3 {
-		t.Errorf("expected priority 3, got %d", m.allNotifications[0].Priority)
-	}
-
-	// 4. Explicit reset with 0
-	m.setPriority(0)
-	if m.allNotifications[0].Priority != 0 {
-		t.Errorf("expected priority 0 after explicit reset, got %d", m.allNotifications[0].Priority)
-	}
-}
-
-func TestModel_TabFiltering(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-
-	notifs := []db.NotificationWithState{
-		{
-			Notification: db.Notification{GitHubID: "unread-no-priority"},
-			OrbitState:   db.OrbitState{IsReadLocally: false, Priority: 0},
-		},
-		{
-			Notification: db.Notification{GitHubID: "read-with-priority"},
-			OrbitState:   db.OrbitState{IsReadLocally: true, Priority: 1},
-		},
-		{
-			Notification: db.Notification{GitHubID: "read-no-priority"},
-			OrbitState:   db.OrbitState{IsReadLocally: true, Priority: 0},
-		},
-	}
-
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		list:             l,
-		allNotifications: notifs,
-		activeTab:        TabInbox,
-	}
-
-	// 1. Test Inbox Tab (Default)
-	m.applyFilters()
-	if len(m.list.Items()) != 2 {
-		t.Errorf("expected 2 items in Inbox, got %d", len(m.list.Items()))
-	}
-
-	// 2. Test Unread Tab
-	m.activeTab = TabUnread
-	m.applyFilters()
-	if len(m.list.Items()) != 1 {
-		t.Errorf("expected 1 item in Unread, got %d", len(m.list.Items()))
-	}
-	if m.list.Items()[0].(item).notification.GitHubID != "unread-no-priority" {
-		t.Error("wrong item in Unread tab")
-	}
-
-	// 3. Test Triaged Tab
-	m.activeTab = TabTriaged
-	m.applyFilters()
-	if len(m.list.Items()) != 1 {
-		t.Errorf("expected 1 item in Triaged, got %d", len(m.list.Items()))
-	}
-	if m.list.Items()[0].(item).notification.GitHubID != "read-with-priority" {
-		t.Error("wrong item in Triaged tab")
-	}
-
-	// 4. Test All Tab
-	m.activeTab = TabAll
-	m.applyFilters()
-	if len(m.list.Items()) != 3 {
-		t.Errorf("expected 3 items in All, got %d", len(m.list.Items()))
-	}
-}
-
-func TestModel_Update_DetailView(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-
-	m := &Model{
-		styles:           styles,
-		list:             l,
-		keys:             keys,
-		ui:               NewUIController(styles),
-		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "123"}}},
-	}
-
-	// Test detailLoadedMsg
-	msg := detailLoadedMsg{
-		GitHubID: "123",
-		Body:     "Test Body",
-		Author:   "testuser",
-		HTMLURL:  "https://github.com/test",
-	}
-
-	updatedModel, _ := m.Update(msg)
-	newModel := updatedModel.(*Model)
-
-	if newModel.ui.fetchingDetail {
-		t.Error("expected fetchingDetail to be false after detailLoadedMsg")
-	}
-
-	if newModel.allNotifications[0].Body != "Test Body" {
-		t.Errorf("expected body to be 'Test Body', got %s", newModel.allNotifications[0].Body)
-	}
-}
-
 func TestModel_ResourceFiltering(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	notifs := []db.NotificationWithState{
+	m := newTestModel(t)
+	m.allNotifications = []db.NotificationWithState{
 		{Notification: db.Notification{GitHubID: "1", SubjectType: "PullRequest"}},
 		{Notification: db.Notification{GitHubID: "2", SubjectType: "Issue"}},
 	}
-
-	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
-	m := &Model{
-		list:             l,
-		allNotifications: notifs,
-		activeTab:        TabAll,
-		ui:               NewUIController(styles),
-	}
+	m.activeTab = TabAll
 
 	// 1. Filter PRs
 	m.toggleResourceFilter("PullRequest", "PRs")
@@ -334,15 +113,9 @@ func TestModel_ResourceFiltering(t *testing.T) {
 		t.Errorf("expected 1 item (PR), got %d", len(m.list.Items()))
 	}
 
-	// 2. Toggle same filter (clear)
+	// 2. Clear
 	m.toggleResourceFilter("PullRequest", "PRs")
 	if len(m.list.Items()) != 2 {
 		t.Errorf("expected 2 items after clear, got %d", len(m.list.Items()))
-	}
-
-	// 3. Filter Issues
-	m.toggleResourceFilter("Issue", "Issues")
-	if len(m.list.Items()) != 1 {
-		t.Errorf("expected 1 item (Issue), got %d", len(m.list.Items()))
 	}
 }

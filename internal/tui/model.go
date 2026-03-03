@@ -70,7 +70,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		db:       database,
 		client:   client,
 		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
-		enrich:   api.NewEnrichmentEngine(client, logger),
+		enrich:   api.NewEnrichmentEngine(client, database, logger),
 		ui:       NewUIController(styles),
 		config:   cfg,
 		logger:   logger,
