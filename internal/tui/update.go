@@ -18,6 +18,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.showDetail {
+			if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
+				m.showDetail = false
+				return m, nil
+			}
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+
 		// Only handle custom keys if the list isn't filtering
 		if m.list.FilterState() == list.Filtering {
 			break
@@ -35,6 +44,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncNotifications(),
 				m.spinner.Tick,
 			)
+		case key.Matches(msg, m.keys.ToggleDetail):
+			if i, ok := m.list.SelectedItem().(item); ok {
+				m.showDetail = true
+				if !i.notification.IsEnriched {
+					m.fetchingDetail = true
+					return m, tea.Batch(
+						m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType),
+						m.spinner.Tick,
+					)
+				}
+				// Prepare viewport content
+				m.activeDetail = m.renderMarkdown(i.notification.Body)
+				m.viewport.SetContent(m.activeDetail)
+				return m, nil
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.CopyURL):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				if isValidGitHubURL(i.notification.HTMLURL) {
@@ -86,11 +111,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height-3) // 1 Header, 1 Tab bar, 1 Footer
+		
+		vpWidth := msg.Width - 4
+		if vpWidth < 0 { vpWidth = 0 }
+		m.viewport.SetWidth(vpWidth)
+		
+		vpHeight := msg.Height - 8
+		if vpHeight < 0 { vpHeight = 0 }
+		m.viewport.SetHeight(vpHeight)
+
+		m.updateMarkdownRenderer()
 
 	case tea.BackgroundColorMsg:
-		m.styles = DefaultStyles(msg.IsDark())
+		m.isDark = msg.IsDark()
+		m.styles = DefaultStyles(m.isDark)
 		m.list.Styles.Title = m.styles.Title
 		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
+		m.updateMarkdownRenderer()
 
 	case notificationsLoadedMsg:
 		m.allNotifications = msg
@@ -101,8 +138,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.allNotifications = msg
 		m.applyFilters()
 
+	case detailLoadedMsg:
+		m.fetchingDetail = false
+		// Update master copy
+		for idx, n := range m.allNotifications {
+			if n.GitHubID == msg.GitHubID {
+				m.allNotifications[idx].Body = msg.Body
+				m.allNotifications[idx].AuthorLogin = msg.Author
+				m.allNotifications[idx].HTMLURL = msg.HTMLURL
+				m.allNotifications[idx].IsEnriched = true
+				break
+			}
+		}
+		m.activeDetail = m.renderMarkdown(msg.Body)
+		m.viewport.SetContent(m.activeDetail)
+		m.applyFilters()
+
 	case spinner.TickMsg:
-		if m.syncing {
+		if m.syncing || m.fetchingDetail {
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
 		}

@@ -31,6 +31,12 @@ type Styles struct {
 	TabActive    lipgloss.Style
 	TabInactive  lipgloss.Style
 	TabContainer lipgloss.Style
+
+	// Detail View
+	DetailHeader lipgloss.Style
+	DetailBody   lipgloss.Style
+	DetailBadge  lipgloss.Style
+	Viewport     lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -118,6 +124,26 @@ func DefaultStyles(isDark bool) Styles {
 	s.TabContainer = lipgloss.NewStyle().
 		Height(1).
 		MarginBottom(1)
+
+	s.DetailHeader = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(accent).
+		Padding(0, 1).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(lipgloss.Color("#30363D"))
+
+	s.DetailBody = lipgloss.NewStyle().
+		Padding(1, 2)
+
+	s.DetailBadge = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(accent).
+		Padding(0, 1).
+		Bold(true)
+
+	s.Viewport = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#30363D"))
 
 	return s
 }

@@ -1,12 +1,10 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -60,20 +58,11 @@ func TestSyncEngine_Sync(t *testing.T) {
 	defer server.Close()
 
 	// 2. Setup Test DB
-	tmpDir := t.TempDir()
-	dbFile := filepath.Join(tmpDir, "test.db")
-
-	rawDB, err := sql.Open("sqlite", dbFile)
+	database, err := db.OpenInMemory(slog.Default())
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
-	defer func() { _ = rawDB.Close() }()
-
-	database := &db.DB{DB: rawDB}
-	_, _ = rawDB.Exec(`CREATE TABLE schema_version (version INTEGER PRIMARY KEY)`)
-	_, _ = rawDB.Exec(`CREATE TABLE notifications (github_id TEXT PRIMARY KEY, subject_title TEXT, subject_url TEXT, subject_type TEXT, reason TEXT, repository_full_name TEXT, html_url TEXT, is_enriched BOOLEAN, updated_at DATETIME)`)
-	_, _ = rawDB.Exec(`CREATE TABLE orbit_state (notification_id TEXT PRIMARY KEY, priority INTEGER, status TEXT, is_read_locally BOOLEAN)`)
-	_, _ = rawDB.Exec(`CREATE TABLE sync_meta (user_id TEXT, key TEXT, last_modified TEXT, etag TEXT, poll_interval INTEGER, last_sync_at DATETIME, last_error TEXT, last_error_at DATETIME, PRIMARY KEY (user_id, key))`)
+	defer func() { _ = database.Close() }()
 
 	// 3. Initialize SyncEngine
 	client := &Client{

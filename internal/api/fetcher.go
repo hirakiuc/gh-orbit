@@ -104,6 +104,52 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 	return allNotifications, &newMeta, nil
 }
 
+func (f *NotificationFetcher) FetchDetail(u string, subjectType string) (string, string, string, error) {
+	f.logger.Debug("fetching notification detail", "url", u, "type", subjectType)
+
+	// Strip base URL if present to use with REST client
+	path := strings.TrimPrefix(u, f.client.BaseURL())
+
+	var data struct {
+		Body    string `json:"body"`
+		HTMLURL string `json:"html_url"`
+		User    struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Commit struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name string `json:"name"`
+			} `json:"author"`
+		} `json:"commit"`
+	}
+
+	err := f.client.REST().Get(path, &data)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to fetch detail from %s: %w", u, err)
+	}
+
+	body := data.Body
+	author := data.User.Login
+	htmlURL := data.HTMLURL
+
+	// Handle specific types
+	switch subjectType {
+	case "Commit":
+		if body == "" {
+			body = data.Commit.Message
+		}
+		if author == "" {
+			author = data.Commit.Author.Name
+		}
+	case "Discussion":
+		// Discussions might need different handling if the body is nested
+		// but typically they have a top-level body in the REST API if available.
+	}
+
+	return body, htmlURL, author, nil
+}
+
 func parseLinkHeader(header string) map[string]string {
 	links := make(map[string]string)
 	for _, link := range strings.Split(header, ",") {

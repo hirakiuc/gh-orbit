@@ -286,3 +286,35 @@ func TestModel_TabFiltering(t *testing.T) {
 		t.Errorf("expected 3 items in All, got %d", len(m.list.Items()))
 	}
 }
+
+func TestModel_Update_DetailView(t *testing.T) {
+	styles := DefaultStyles(true)
+	keys := DefaultKeyMap()
+	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
+
+	m := &Model{
+		styles:           styles,
+		list:             l,
+		keys:             keys,
+		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "123"}}},
+	}
+
+	// Test detailLoadedMsg
+	msg := detailLoadedMsg{
+		GitHubID: "123",
+		Body:     "Test Body",
+		Author:   "testuser",
+		HTMLURL:  "https://github.com/test",
+	}
+
+	updatedModel, _ := m.Update(msg)
+	newModel := updatedModel.(*Model)
+
+	if newModel.fetchingDetail {
+		t.Error("expected fetchingDetail to be false after detailLoadedMsg")
+	}
+
+	if newModel.allNotifications[0].Body != "Test Body" {
+		t.Errorf("expected body to be 'Test Body', got %s", newModel.allNotifications[0].Body)
+	}
+}

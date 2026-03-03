@@ -249,6 +249,34 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 
 // URL extraction helpers
 
+func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
+	return func() tea.Msg {
+		body, htmlURL, author, err := m.sync.Fetcher().FetchDetail(u, subjectType)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		// Update database
+		err = m.db.UpsertNotification(db.Notification{
+			GitHubID:    id,
+			Body:        body,
+			AuthorLogin: author,
+			HTMLURL:     htmlURL,
+			IsEnriched:  true,
+		})
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		return detailLoadedMsg{
+			GitHubID: id,
+			Body:     body,
+			Author:   author,
+			HTMLURL:  htmlURL,
+		}
+	}
+}
+
 func extractNumberFromURL(u string) string {
 	if u == "" {
 		return ""

@@ -5,12 +5,19 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
 )
 
 func (m *Model) View() tea.View {
-	// Build the view content from components
-	viewContent := m.renderTabs()
-	viewContent += "\n" + m.renderList()
+	var viewContent string
+
+	if m.showDetail {
+		viewContent = m.renderDetailView()
+	} else {
+		// Build the view content from components
+		viewContent = m.renderTabs()
+		viewContent += "\n" + m.renderList()
+	}
 
 	footer := m.renderFooter()
 	if footer != "" {
@@ -23,6 +30,59 @@ func (m *Model) View() tea.View {
 	v.AltScreen = true
 
 	return v
+}
+
+func (m *Model) renderDetailView() string {
+	if m.fetchingDetail {
+		return m.spinner.View() + " Fetching detail..."
+	}
+
+	i, ok := m.list.SelectedItem().(item)
+	if !ok {
+		return "No item selected"
+	}
+
+	// Header
+	header := m.styles.DetailHeader.Render(fmt.Sprintf("%s #%s", i.notification.SubjectTitle, extractNumberFromURL(i.notification.SubjectURL)))
+	meta := fmt.Sprintf("Author: %s | Repo: %s | Reason: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName, i.notification.Reason)
+	
+	content := header + "\n" + meta + "\n\n" + m.viewport.View()
+
+	return m.styles.Viewport.Render(content)
+}
+
+func (m *Model) renderMarkdown(body string) string {
+	if body == "" {
+		return "No content available."
+	}
+
+	if m.markdownRenderer == nil {
+		m.updateMarkdownRenderer()
+	}
+
+	out, err := m.markdownRenderer.Render(body)
+	if err != nil {
+		return body
+	}
+
+	return out
+}
+
+func (m *Model) updateMarkdownRenderer() {
+	width := m.viewport.Width() - 4
+	if width < 20 {
+		width = 20
+	}
+
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		m.logger.Error("failed to create markdown renderer", "error", err)
+		return
+	}
+	m.markdownRenderer = renderer
 }
 
 func (m *Model) renderTabs() string {

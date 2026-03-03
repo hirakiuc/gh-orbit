@@ -16,6 +16,7 @@ type KeyMap struct {
 	CheckoutPR      key.Binding
 	ViewContextual  key.Binding
 	OpenBrowser     key.Binding
+	ToggleDetail    key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings for the application.
@@ -69,6 +70,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "open (browser)"),
 		),
+		ToggleDetail: key.NewBinding(
+			key.WithKeys(" ", "space", "i"),
+			key.WithHelp("space/i", "peek detail"),
+		),
 	}
 }
 
@@ -77,7 +82,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.Sync,
 		k.ToggleRead,
-		k.NextTab,
+		k.ToggleDetail,
 		k.OpenBrowser,
 	}
 }
@@ -86,7 +91,8 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
-		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh, k.ClearPriority},
-		{k.ToggleRead, k.NextTab, k.PrevTab, k.CheckoutPR},
+		{k.ToggleDetail, k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh},
+		{k.ClearPriority, k.ToggleRead, k.NextTab, k.PrevTab},
+		{k.CheckoutPR},
 	}
 }

@@ -63,6 +63,11 @@ func (c *Client) MarkThreadAsRead(threadID string) error {
 	return c.rest.Patch(path, nil, nil)
 }
 
+// REST returns the underlying REST client configured by go-gh.
+func (c *Client) REST() *api.RESTClient {
+	return c.rest
+}
+
 // HTTP returns the underlying http.Client configured by go-gh.
 func (c *Client) HTTP() *http.Client {
 	return c.http
