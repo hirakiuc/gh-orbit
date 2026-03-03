@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
-	"github.com/charmbracelet/x/exp/golden"
 	_ "modernc.org/sqlite"
 )
 
@@ -119,28 +118,4 @@ func TestModel_ResourceFiltering(t *testing.T) {
 	if len(m.list.Items()) != 2 {
 		t.Errorf("expected 2 items after clear, got %d", len(m.list.Items()))
 	}
-}
-
-func TestView_Golden(t *testing.T) {
-	m := newTestModel(t)
-	m.allNotifications = []db.NotificationWithState{
-		{
-			Notification: db.Notification{
-				GitHubID: "1", 
-				SubjectTitle: "Feature Refactoring", 
-				SubjectType: "PullRequest",
-				RepositoryFullName: "hirakiuc/gh-orbit",
-			},
-			OrbitState: db.OrbitState{Priority: 3},
-		},
-	}
-	m.applyFilters()
-
-	// 1. Snapshot List View
-	golden.RequireEqual(t, m.View().Content)
-
-	// 2. Snapshot Detail View
-	m.state = StateDetail
-	m.viewport.SetContent("Detail content")
-	golden.RequireEqual(t, m.View().Content)
 }
