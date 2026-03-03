@@ -71,8 +71,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("enter", "open (browser)"),
 		),
 		ToggleDetail: key.NewBinding(
-			key.WithKeys(" "),
-			key.WithHelp("space", "peek detail"),
+			key.WithKeys(" ", "space", "i"),
+			key.WithHelp("space/i", "peek detail"),
 		),
 	}
 }

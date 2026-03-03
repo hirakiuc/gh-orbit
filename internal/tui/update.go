@@ -18,6 +18,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		m.logger.Debug("Key pressed", "key", msg.String())
+		// Temporary debug status
+		// m.status = fmt.Sprintf("Key: [%s]", msg.String())
 		if m.showDetail {
 			if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
 				m.showDetail = false
@@ -45,20 +48,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.spinner.Tick,
 			)
 		case key.Matches(msg, m.keys.ToggleDetail):
+			m.logger.Debug("ToggleDetail key pressed")
 			if i, ok := m.list.SelectedItem().(item); ok {
 				m.showDetail = true
 				if !i.notification.IsEnriched {
 					m.fetchingDetail = true
+					m.status = "Fetching details..."
 					return m, tea.Batch(
 						m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType),
 						m.spinner.Tick,
 					)
 				}
 				// Prepare viewport content
+				m.status = "Showing detail"
 				m.activeDetail = m.renderMarkdown(i.notification.Body)
 				m.viewport.SetContent(m.activeDetail)
 				return m, nil
 			}
+			m.status = "No item selected for detail"
+			return m, nil
 		case key.Matches(msg, m.keys.CopyURL):
 			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
 				if isValidGitHubURL(i.notification.HTMLURL) {
