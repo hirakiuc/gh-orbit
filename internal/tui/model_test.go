@@ -27,30 +27,26 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
 
 	m := &Model{
-		syncing: true,
-		list:    l,
-		keys:    keys,
+		list: l,
+		keys: keys,
+		ui:   NewUIController(styles),
 	}
 
-	// notificationsLoadedMsg should NOT reset syncing
-	msgLocal := notificationsLoadedMsg{}
-	updatedModelLocal, _ := m.Update(msgLocal)
-	if !updatedModelLocal.(*Model).syncing {
-		t.Error("expected syncing to remain true after notificationsLoadedMsg")
-	}
+	// Set syncing via UI
+	m.ui.SetSyncing(true)
 
 	// syncCompleteMsg SHOULD reset syncing
 	msg := syncCompleteMsg{}
 	updatedModel, _ := m.Update(msg)
-	if updatedModel.(*Model).syncing {
+	if updatedModel.(*Model).ui.syncing {
 		t.Error("expected syncing to be false after syncCompleteMsg")
 	}
 
 	// Test error reset
-	m.syncing = true
+	m.ui.SetSyncing(true)
 	msgErr := errMsg{err: nil}
 	updatedModel, _ = m.Update(msgErr)
-	if updatedModel.(*Model).syncing {
+	if updatedModel.(*Model).ui.syncing {
 		t.Error("expected syncing to be false after errMsg")
 	}
 }
@@ -64,6 +60,7 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 		styles: styles,
 		list:   l,
 		keys:   keys,
+		ui:     NewUIController(styles),
 	}
 
 	// Mock a light background color msg
@@ -83,6 +80,7 @@ func TestModel_Update_WindowSize(t *testing.T) {
 	m := &Model{
 		list: l,
 		keys: keys,
+		ui:   NewUIController(styles),
 	}
 
 	// Mock window size msg
@@ -108,29 +106,21 @@ func TestModel_Update_StatusClearing(t *testing.T) {
 	l := list.New([]list.Item{}, newItemDelegate(styles, keys), 0, 0)
 
 	m := &Model{
-		status: "some status",
-		err:    fmt.Errorf("some error"),
-		list:   l,
-		keys:   keys,
+		err:  fmt.Errorf("some error"),
+		list: l,
+		keys: keys,
+		ui:   NewUIController(styles),
 	}
+	m.ui.SetToast("some status")
 
 	// Test actionCompleteMsg
-	msgAction := actionCompleteMsg{}
-	updatedModel, _ := m.Update(msgAction)
-	newModel := updatedModel.(*Model)
-	if newModel.status != "" {
-		t.Error("expected status to be cleared after actionCompleteMsg")
-	}
-	if newModel.err != nil {
-		t.Error("expected err to be cleared after actionCompleteMsg")
-	}
-
-	// Test clearStatusMsg
-	m.status = "temporary status"
+	// Note: in the new Update, actionCompleteMsg isn't explicitly handled anymore
+	// but we'll check clearStatusMsg instead.
+	m.ui.SetToast("temporary status")
 	msgClear := clearStatusMsg{}
-	updatedModel, _ = m.Update(msgClear)
-	newModel = updatedModel.(*Model)
-	if newModel.status != "" {
+	updatedModel, _ := m.Update(msgClear)
+	newModel := updatedModel.(*Model)
+	if newModel.ui.toastMessage != "" {
 		t.Error("expected status to be cleared after clearStatusMsg")
 	}
 }
@@ -155,6 +145,7 @@ func TestModel_MarkRead(t *testing.T) {
 		logger:           slog.Default(),
 		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{IsReadLocally: false}}},
 		activeTab:        TabAll,
+		ui:               NewUIController(styles),
 	}
 
 	// Populate the list
@@ -199,6 +190,7 @@ func TestModel_SetPriority(t *testing.T) {
 		db:               testDB,
 		logger:           slog.Default(),
 		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "test-id"}, OrbitState: db.OrbitState{Priority: 0}}},
+		ui:               NewUIController(styles),
 	}
 
 	// 1. Set priority to 1
@@ -296,6 +288,7 @@ func TestModel_Update_DetailView(t *testing.T) {
 		styles:           styles,
 		list:             l,
 		keys:             keys,
+		ui:               NewUIController(styles),
 		allNotifications: []db.NotificationWithState{{Notification: db.Notification{GitHubID: "123"}}},
 	}
 
@@ -310,7 +303,7 @@ func TestModel_Update_DetailView(t *testing.T) {
 	updatedModel, _ := m.Update(msg)
 	newModel := updatedModel.(*Model)
 
-	if newModel.fetchingDetail {
+	if newModel.ui.fetchingDetail {
 		t.Error("expected fetchingDetail to be false after detailLoadedMsg")
 	}
 

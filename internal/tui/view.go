@@ -12,12 +12,13 @@ func (m *Model) View() tea.View {
 	var viewContent string
 	windowTitle := "gh-orbit"
 
-	if m.showDetail {
+	switch m.state {
+	case StateDetail:
 		if i, ok := m.list.SelectedItem().(item); ok {
 			windowTitle = fmt.Sprintf("gh-orbit: %s", i.notification.SubjectTitle)
 		}
 		viewContent = m.renderDetailView()
-	} else {
+	case StateList:
 		// Build the view content from components
 		viewContent = m.renderTabs()
 		viewContent += "\n" + m.renderList()
@@ -28,64 +29,16 @@ func (m *Model) View() tea.View {
 		viewContent += "\n" + footer
 	}
 
-	v := tea.NewView(viewContent)
+	// Delegate overlays to UIController
+	content := m.ui.View(
+		viewContent,
+		m.state == StateDetail,
+		m.viewport.ScrollPercent(),
+		m.viewport.Height(),
+		m.viewport.TotalLineCount(),
+	)
 
-	// Overlays via Compositor
-	// We only use the compositor if we have overlays to show.
-	// This avoids issues with the base layer being misrendered.
-	hasToast := m.toastMessage != ""
-	hasScrollbar := m.showDetail && !m.fetchingDetail && m.viewport.ScrollPercent() >= 0
-
-	if (hasToast || hasScrollbar) && m.width > 0 && m.height > 0 {
-		// Base layer
-		base := lipgloss.NewLayer(viewContent).X(0).Y(0).Z(0)
-		cptr := lipgloss.NewCompositor(base)
-
-		// 1. Toast Notification
-		if hasToast {
-			toast := m.styles.Toast.Render(m.toastMessage)
-			// Place toast at the bottom center
-			toastWidth := lipgloss.Width(toast)
-			toastY := m.height - 2
-			if toastY < 0 { toastY = 0 }
-			
-			toastLayer := lipgloss.NewLayer(toast).
-				X((m.width - toastWidth) / 2).
-				Y(toastY).
-				Z(100)
-			cptr.AddLayers(toastLayer)
-		}
-
-		// 2. Scrollbar for Detail View
-		if hasScrollbar {
-			percent := m.viewport.ScrollPercent()
-			scrollbarHeight := m.viewport.Height()
-			totalLines := m.viewport.TotalLineCount()
-			
-			thumbHeight := 3 // Minimal thumb size
-			if totalLines > 0 {
-				thumbHeight = int(float64(scrollbarHeight) * (float64(scrollbarHeight) / float64(totalLines)))
-				if thumbHeight < 3 { thumbHeight = 3 }
-			}
-			if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
-			
-			thumbPos := int(float64(scrollbarHeight-thumbHeight) * percent)
-			
-			thumb := m.styles.ScrollbarThumb.
-				Width(1).
-				Height(thumbHeight).
-				Render(" ")
-			
-			// Place scrollbar on the right edge of the viewport
-			sbLayer := lipgloss.NewLayer(thumb).
-				X(m.width - 2).
-				Y(4 + thumbPos). // Start after header
-				Z(50)
-			cptr.AddLayers(sbLayer)
-		}
-
-		v.SetContent(cptr.Render())
-	}
+	v := tea.NewView(content)
 
 	// Declarative terminal state
 	v.AltScreen = true
@@ -96,8 +49,8 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) renderDetailView() string {
-	if m.fetchingDetail {
-		return m.spinner.View() + " Fetching detail..."
+	if m.ui.fetchingDetail {
+		return m.ui.RenderSpinner() + " Fetching detail..."
 	}
 
 	i, ok := m.list.SelectedItem().(item)
@@ -188,15 +141,14 @@ func (m *Model) renderList() string {
 func (m *Model) renderFooter() string {
 	// Status and Error handling display
 	var footer string
-	if m.syncing {
-		footer = m.spinner.View() + " Syncing... "
+	spinner := m.ui.RenderSpinner()
+	if spinner != "" {
+		footer = spinner + " Syncing... "
 	}
 
-	// Priority: Error > Status
+	// Priority: Error only (status is now toasts)
 	if m.err != nil {
 		footer += m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
-	} else if m.status != "" {
-		footer += m.styles.StatusNormal.Render(fmt.Sprintf(" %s ", m.status))
 	}
 
 	return footer

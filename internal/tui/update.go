@@ -16,103 +16,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	// 1. Handle state-independent messages
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		if m.showDetail {
-			if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
-				m.showDetail = false
-				return m, nil
-			}
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
-		}
-
-		// Only handle custom keys if the list isn't filtering
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch {
-		case msg.String() == "ctrl+c" || msg.String() == "q":
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Sync):
-			if m.syncing {
-				return m, nil
-			}
-			m.syncing = true
-			return m, tea.Batch(
-				m.syncNotifications(),
-				m.spinner.Tick,
-			)
-		case key.Matches(msg, m.keys.ToggleDetail):
-			if i, ok := m.list.SelectedItem().(item); ok {
-				m.showDetail = true
-				if !i.notification.IsEnriched {
-					m.fetchingDetail = true
-					return m, tea.Batch(
-						m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType),
-						m.spinner.Tick,
-					)
-				}
-				// Prepare viewport content
-				m.activeDetail = m.renderMarkdown(i.notification.Body)
-				m.viewport.SetContent(m.activeDetail)
-				return m, nil
-			}
-			return m, nil
-		case key.Matches(msg, m.keys.CopyURL):
-			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-				if isValidGitHubURL(i.notification.HTMLURL) {
-					m.toastMessage = "Copied URL to clipboard"
-					return m, tea.Batch(
-						tea.SetClipboard(i.notification.HTMLURL),
-						m.clearStatusAfter(3*time.Second),
-					)
-				}
-				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
-			}
-		case key.Matches(msg, m.keys.ToggleRead):
-			if i, ok := m.list.SelectedItem().(item); ok {
-				cmds = append(cmds, m.ToggleRead(i))
-			}
-		case key.Matches(msg, m.keys.NextTab):
-			m.activeTab = (m.activeTab + 1) % 4
-			m.applyFilters()
-		case key.Matches(msg, m.keys.PrevTab):
-			m.activeTab = (m.activeTab - 1 + 4) % 4
-			m.applyFilters()
-		case key.Matches(msg, m.keys.OpenBrowser):
-			if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-				m.status = "Opening browser..."
-				return m, m.OpenBrowser(i.notification.HTMLURL)
-			}
-		case key.Matches(msg, m.keys.CheckoutPR):
-			if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-				prNumber := extractNumberFromURL(i.notification.SubjectURL)
-				if prNumber != "" {
-					m.status = "Launching gh pr checkout..."
-					return m, m.CheckoutPR(i.notification.RepositoryFullName, prNumber)
-				}
-				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
-			}
-		case key.Matches(msg, m.keys.ViewContextual):
-			if i, ok := m.list.SelectedItem().(item); ok {
-				return m, m.ViewItem(i)
-			}
-		case key.Matches(msg, m.keys.SetPriorityLow):
-			return m, m.setPriority(1)
-		case key.Matches(msg, m.keys.SetPriorityMed):
-			return m, m.setPriority(2)
-		case key.Matches(msg, m.keys.SetPriorityHigh):
-			return m, m.setPriority(3)
-		case key.Matches(msg, m.keys.ClearPriority):
-			return m, m.setPriority(0)
-		}
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list.SetSize(msg.Width, msg.Height-3) // 1 Header, 1 Tab bar, 1 Footer
+		m.list.SetSize(msg.Width, msg.Height-3)
 		
 		vpWidth := msg.Width - 4
 		if vpWidth < 0 { vpWidth = 0 }
@@ -123,6 +32,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetHeight(vpHeight)
 
 		m.updateMarkdownRenderer()
+		m.ui.SetSize(msg.Width, msg.Height)
 
 	case tea.BackgroundColorMsg:
 		m.isDark = msg.IsDark()
@@ -130,18 +40,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.Styles.Title = m.styles.Title
 		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
 		m.updateMarkdownRenderer()
+		m.ui.SetStyles(m.styles)
 
 	case notificationsLoadedMsg:
 		m.allNotifications = msg
 		m.applyFilters()
 
 	case syncCompleteMsg:
-		m.syncing = false
+		cmds = append(cmds, m.ui.SetSyncing(false))
 		m.allNotifications = msg
 		m.applyFilters()
 
 	case detailLoadedMsg:
-		m.fetchingDetail = false
+		cmds = append(cmds, m.ui.SetFetching(false))
 		// Update master copy
 		for idx, n := range m.allNotifications {
 			if n.GitHubID == msg.GitHubID {
@@ -157,31 +68,114 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFilters()
 
 	case spinner.TickMsg:
-		if m.syncing || m.fetchingDetail {
-			m.spinner, cmd = m.spinner.Update(msg)
-			cmds = append(cmds, cmd)
-		}
-
-	case actionCompleteMsg:
-		m.status = ""
-		m.err = nil
+		m.ui, cmd = m.ui.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case clearStatusMsg:
-		m.status = ""
-		m.toastMessage = ""
+		m.ui, cmd = m.ui.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case errMsg:
-		m.syncing = false
+		cmds = append(cmds, m.ui.SetSyncing(false))
+		cmds = append(cmds, m.ui.SetFetching(false))
 		m.err = msg.err
 	}
 
-	// Only update list if it's not filtering
-	if m.list.FilterState() != list.Filtering {
-		m.list, cmd = m.list.Update(msg)
-		cmds = append(cmds, cmd)
-	} else {
-		// Even if filtering, we need to pass the message to the list
-		// but bubbles/v2/list handles it internally in its Update.
+	// 2. Handle state-dependent messages
+	switch m.state {
+	case StateDetail:
+		if msg, ok := msg.(tea.KeyPressMsg); ok {
+			if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
+				m.state = StateList
+				return m, nil
+			}
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+
+	case StateList:
+		switch msg := msg.(type) {
+		case tea.KeyPressMsg:
+			// Only handle custom keys if the list isn't filtering
+			if m.list.FilterState() == list.Filtering {
+				break
+			}
+
+			switch {
+			case msg.String() == "ctrl+c" || msg.String() == "q":
+				return m, tea.Quit
+			case key.Matches(msg, m.keys.Sync):
+				if m.ui.syncing {
+					return m, nil
+				}
+				return m, tea.Batch(
+					m.ui.SetSyncing(true),
+					m.syncNotifications(),
+				)
+			case key.Matches(msg, m.keys.ToggleDetail):
+				if i, ok := m.list.SelectedItem().(item); ok {
+					m.state = StateDetail
+					if !i.notification.IsEnriched {
+						return m, tea.Batch(
+							m.ui.SetFetching(true),
+							m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType),
+						)
+					}
+					// Prepare viewport content
+					m.activeDetail = m.renderMarkdown(i.notification.Body)
+					m.viewport.SetContent(m.activeDetail)
+					return m, nil
+				}
+				return m, nil
+			case key.Matches(msg, m.keys.CopyURL):
+				if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
+					if isValidGitHubURL(i.notification.HTMLURL) {
+						return m, tea.Batch(
+							tea.SetClipboard(i.notification.HTMLURL),
+							m.ui.SetToast("Copied URL to clipboard"),
+						)
+					}
+					m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
+				}
+			case key.Matches(msg, m.keys.ToggleRead):
+				if i, ok := m.list.SelectedItem().(item); ok {
+					cmds = append(cmds, m.ToggleRead(i))
+				}
+			case key.Matches(msg, m.keys.NextTab):
+				m.activeTab = (m.activeTab + 1) % 4
+				m.applyFilters()
+			case key.Matches(msg, m.keys.PrevTab):
+				m.activeTab = (m.activeTab - 1 + 4) % 4
+				m.applyFilters()
+			case key.Matches(msg, m.keys.OpenBrowser):
+				if i, ok := m.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
+					cmds = append(cmds, m.ui.SetToast("Opening browser..."))
+					return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), tea.Batch(cmds...))
+				}
+			case key.Matches(msg, m.keys.CheckoutPR):
+				if i, ok := m.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+					prNumber := extractNumberFromURL(i.notification.SubjectURL)
+					if prNumber != "" {
+						cmds = append(cmds, m.ui.SetToast("Launching gh pr checkout..."))
+						return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), tea.Batch(cmds...))
+					}
+					m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
+				}
+			case key.Matches(msg, m.keys.ViewContextual):
+				if i, ok := m.list.SelectedItem().(item); ok {
+					return m, m.ViewItem(i)
+				}
+			case key.Matches(msg, m.keys.SetPriorityLow):
+				return m, m.setPriority(1)
+			case key.Matches(msg, m.keys.SetPriorityMed):
+				return m, m.setPriority(2)
+			case key.Matches(msg, m.keys.SetPriorityHigh):
+				return m, m.setPriority(3)
+			case key.Matches(msg, m.keys.ClearPriority):
+				return m, m.setPriority(0)
+			}
+		}
+
 		m.list, cmd = m.list.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -217,7 +211,6 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 		case 3:
 			msg = "Priority set to High"
 		}
-		m.toastMessage = msg
 
 		// Update allNotifications master copy
 		for idx, n := range m.allNotifications {
@@ -228,7 +221,7 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 		}
 		m.applyFilters()
 
-		return m.clearStatusAfter(3 * time.Second)
+		return m.ui.SetToast(msg)
 	}
 	return nil
 }

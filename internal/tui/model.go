@@ -4,10 +4,8 @@ import (
 	"log/slog"
 
 	"charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
@@ -21,11 +19,20 @@ const (
 	TabAll
 )
 
+type AppState int
+
+const (
+	StateList AppState = iota
+	StateDetail
+)
+
 type Model struct {
 	list             list.Model
 	db               *db.DB
 	client           *api.Client
 	sync             *api.SyncEngine
+	enrich           *api.EnrichmentEngine
+	ui               UIController
 	config           *config.Config
 	logger           *slog.Logger
 	userID           string
@@ -34,20 +41,14 @@ type Model struct {
 	activeTab        int
 	allNotifications []db.NotificationWithState
 	err              error
-	status           string
-	spinner          spinner.Model
-	syncing          bool
+	state            AppState
 	viewport         viewport.Model
-	showDetail       bool
-	fetchingDetail   bool
 	activeDetail     string
 	isDark           bool
 	markdownRenderer *glamour.TermRenderer
-	toastMessage     string
 	width            int
 	height           int
 }
-
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
 	styles := DefaultStyles(true) // Default to dark theme
@@ -57,11 +58,6 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.Title = "GitHub Orbit"
 	l.Styles.Title = styles.Title
-
-	s := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))),
-	)
 
 	vp := viewport.New()
 
@@ -73,25 +69,26 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		db:       database,
 		client:   client,
 		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
+		enrich:   api.NewEnrichmentEngine(client, logger),
+		ui:       NewUIController(styles),
 		config:   cfg,
 		logger:   logger,
 		userID:   userID,
 		styles:   styles,
 		keys:     keys,
-		spinner:  s,
 		viewport: vp,
 		isDark:   true,
+		state:    StateList,
 	}
 }
 
 func (m *Model) Init() tea.Cmd {
-	m.syncing = true
 	return tea.Sequence(
 		m.loadNotifications(),
 		tea.Batch(
 			tea.RequestBackgroundColor,
+			m.ui.SetSyncing(true),
 			m.syncNotifications(),
-			m.spinner.Tick,
 		),
 	)
 }
