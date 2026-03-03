@@ -41,6 +41,10 @@ type Styles struct {
 	// Overlays
 	Toast          lipgloss.Style
 	ScrollbarThumb lipgloss.Style
+	FilterChip     lipgloss.Style
+
+	// Search
+	FuzzyMatch lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -101,11 +105,11 @@ func DefaultStyles(isDark bool) Styles {
 		s.Assign = lipgloss.NewStyle().Foreground(lipgloss.Color("#3FB950"))
 		s.Member = lipgloss.NewStyle().Foreground(lipgloss.Color("#2F81F7"))
 		s.Subscribed = lipgloss.NewStyle().Foreground(lipgloss.Color("#8B949E"))
-		s.Unread = lipgloss.NewStyle().Foreground(lipgloss.Color("#58A6FF"))
+		s.Unread = lipgloss.NewStyle().Foreground(lipgloss.Color("#2F81F7")) // Brighter Blue
 	} else {
 		s.Mention = lipgloss.NewStyle().Foreground(lipgloss.Color("#8957E5"))
 		s.ReviewRequested = lipgloss.NewStyle().Foreground(lipgloss.Color("#9E6A03"))
-		s.ActionRequired = lipgloss.NewStyle().Foreground(lipgloss.Color("#CF222E"))
+		s.ActionRequired = lipgloss.NewStyle().Foreground(lipgloss.Color("#D1242F"))
 		s.Assign = lipgloss.NewStyle().Foreground(lipgloss.Color("#1A7F37"))
 		s.Member = lipgloss.NewStyle().Foreground(lipgloss.Color("#0969DA"))
 		s.Subscribed = lipgloss.NewStyle().Foreground(lipgloss.Color("#6E7781"))
@@ -158,6 +162,17 @@ func DefaultStyles(isDark bool) Styles {
 	s.ScrollbarThumb = lipgloss.NewStyle().
 		Foreground(accent).
 		Background(accent)
+
+	s.FilterChip = lipgloss.NewStyle().
+		Padding(0, 1).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(lipgloss.Color("#DB6109")).
+		Bold(true)
+
+	s.FuzzyMatch = lipgloss.NewStyle().
+		Foreground(accent).
+		Bold(true).
+		Underline(true)
 
 	return s
 }

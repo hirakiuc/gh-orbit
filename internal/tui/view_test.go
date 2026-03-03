@@ -104,8 +104,8 @@ func TestRenderList(t *testing.T) {
 	if !strings.Contains(stripped, "sync") {
 		t.Errorf("renderList() help should contain 'sync'")
 	}
-	if !strings.Contains(stripped, "open (browser)") {
-		t.Errorf("renderList() help should contain 'open (browser)'")
+	if !strings.Contains(stripped, "filter PRs") {
+		t.Errorf("renderList() help should contain 'filter PRs'")
 	}
 }
 

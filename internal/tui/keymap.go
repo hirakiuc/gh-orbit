@@ -17,6 +17,9 @@ type KeyMap struct {
 	ViewContextual  key.Binding
 	OpenBrowser     key.Binding
 	ToggleDetail    key.Binding
+	FilterPR        key.Binding
+	FilterIssue     key.Binding
+	FilterDiscussion key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings for the application.
@@ -74,6 +77,18 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys(" ", "space", "i"),
 			key.WithHelp("space/i", "peek detail"),
 		),
+		FilterPR: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "filter PRs"),
+		),
+		FilterIssue: key.NewBinding(
+			key.WithKeys("i"),
+			key.WithHelp("i", "filter issues"),
+		),
+		FilterDiscussion: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "filter discussions"),
+		),
 	}
 }
 
@@ -83,7 +98,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 		k.Sync,
 		k.ToggleRead,
 		k.ToggleDetail,
-		k.OpenBrowser,
+		k.FilterPR,
 	}
 }
 
@@ -91,8 +106,8 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
-		{k.ToggleDetail, k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh},
-		{k.ClearPriority, k.ToggleRead, k.NextTab, k.PrevTab},
-		{k.CheckoutPR},
+		{k.ToggleDetail, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
+		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh, k.ClearPriority},
+		{k.ToggleRead, k.NextTab, k.PrevTab, k.CheckoutPR},
 	}
 }

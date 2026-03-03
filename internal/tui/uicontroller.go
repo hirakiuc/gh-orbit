@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -14,6 +16,7 @@ type UIController struct {
 	syncing        bool
 	fetchingDetail bool
 	toastMessage   string
+	resourceFilter string
 	styles         Styles
 	width          int
 	height         int
@@ -77,6 +80,10 @@ func (c *UIController) SetFetching(fetching bool) tea.Cmd {
 	return nil
 }
 
+func (c *UIController) SetResourceFilter(filter string) {
+	c.resourceFilter = filter
+}
+
 // View composes the overlays on top of the provided base content.
 func (c *UIController) View(baseContent string, showDetail bool, viewportScrollPercent float64, viewportHeight int, totalLines int) string {
 	if c.width <= 0 || c.height <= 0 {
@@ -124,6 +131,19 @@ func (c *UIController) View(baseContent string, showDetail bool, viewportScrollP
 			Y(4 + thumbPos). // Start after header
 			Z(50)
 		cptr.AddLayers(sbLayer)
+	}
+
+	// 3. Filter Chip (Floating top-right)
+	if c.resourceFilter != "" {
+		chipText := fmt.Sprintf(" FILTER: %s ", strings.ToUpper(c.resourceFilter))
+		chip := c.styles.FilterChip.Render(chipText)
+		chipWidth := lipgloss.Width(chip)
+		
+		chipLayer := lipgloss.NewLayer(chip).
+			X(c.width - chipWidth - 2).
+			Y(0).
+			Z(110)
+		cptr.AddLayers(chipLayer)
 	}
 
 	return cptr.Render()
