@@ -45,15 +45,16 @@ func (db *DB) UpsertMetadata(n Notification) error {
 }
 
 // EnrichNotification updates a notification with detailed content (body, author).
-func (db *DB) EnrichNotification(id, body, author, htmlURL string) error {
+func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string) error {
 	_, err := db.Exec(`
 		UPDATE notifications
 		SET body = ?,
 		    author_login = ?,
 		    html_url = COALESCE(NULLIF(?, ''), html_url),
+		    resource_state = ?,
 		    is_enriched = TRUE
 		WHERE github_id = ?
-	`, body, author, htmlURL, id)
+	`, body, author, htmlURL, resourceState, id)
 	if err != nil {
 		return fmt.Errorf("failed to enrich notification: %w", err)
 	}
@@ -74,7 +75,7 @@ type NotificationWithState struct {
 func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 	row := db.QueryRow(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -83,7 +84,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 
 	var ns NotificationWithState
 	err := row.Scan(
-		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.IsEnriched, &ns.UpdatedAt,
+		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.IsEnriched, &ns.UpdatedAt,
 		&ns.Priority, &ns.Status, &ns.IsReadLocally,
 	)
 	if err == sql.ErrNoRows {
@@ -99,7 +100,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	rows, err := db.Query(`
 		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -114,7 +115,7 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	for rows.Next() {
 		var ns NotificationWithState
 		err := rows.Scan(
-			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.IsEnriched, &ns.UpdatedAt,
+			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.IsEnriched, &ns.UpdatedAt,
 			&ns.Priority, &ns.Status, &ns.IsReadLocally,
 		)
 		if err != nil {

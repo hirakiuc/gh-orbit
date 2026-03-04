@@ -16,6 +16,7 @@ type Notification struct {
 	HTMLURL            string    `json:"html_url"`
 	Body               string    `json:"body"`
 	AuthorLogin        string    `json:"author_login"`
+	ResourceState      string    `json:"resource_state"`
 	IsEnriched         bool      `json:"is_enriched"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

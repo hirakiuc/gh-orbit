@@ -12,9 +12,10 @@ import (
 
 // EnrichmentResult holds the fetched details for a notification.
 type EnrichmentResult struct {
-	Body    string
-	HTMLURL string
-	Author  string
+	Body          string
+	HTMLURL       string
+	Author        string
+	ResourceState string
 }
 
 // EnrichmentEngine handles fetching and caching of notification details.
@@ -51,6 +52,9 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 	path := strings.TrimPrefix(u, e.client.BaseURL())
 
 	var data struct {
+		State   string `json:"state"`
+		Merged  bool   `json:"merged"`
+		Draft   bool   `json:"draft"`
 		Body    string `json:"body"`
 		HTMLURL string `json:"html_url"`
 		User    struct {
@@ -73,6 +77,20 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 		Body:    data.Body,
 		Author:  data.User.Login,
 		HTMLURL: data.HTMLURL,
+	}
+
+	// Calculate Resource State
+	if data.State != "" {
+		if data.Merged {
+			res.ResourceState = "Merged"
+		} else if data.Draft {
+			res.ResourceState = "Draft"
+		} else {
+			// Title case the state (open -> Open, closed -> Closed)
+			if len(data.State) > 0 {
+				res.ResourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
+			}
+		}
 	}
 
 	// Handle specific types
@@ -103,7 +121,7 @@ func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMs
 		}
 
 		// Persist to DB
-		err = e.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL)
+		err = e.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
 			return errorMsg(err)
 		}

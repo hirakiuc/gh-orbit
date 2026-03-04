@@ -257,16 +257,17 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 		}
 
 		// Update database with granular enrich method
-		err = m.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL)
+		err = m.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
 			return errMsg{err: err}
 		}
 
 		return detailLoadedMsg{
-			GitHubID: id,
-			Body:     res.Body,
-			Author:   res.Author,
-			HTMLURL:  res.HTMLURL,
+			GitHubID:      id,
+			Body:          res.Body,
+			Author:        res.Author,
+			HTMLURL:       res.HTMLURL,
+			ResourceState: res.ResourceState,
 		}
 	}
 }

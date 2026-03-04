@@ -59,6 +59,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.allNotifications[idx].Body = msg.Body
 				m.allNotifications[idx].AuthorLogin = msg.Author
 				m.allNotifications[idx].HTMLURL = msg.HTMLURL
+				m.allNotifications[idx].ResourceState = msg.ResourceState
 				m.allNotifications[idx].IsEnriched = true
 				break
 			}
@@ -150,12 +151,14 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 							i.notification.SubjectType,
 							func(res api.EnrichmentResult) tea.Msg {
 								return detailLoadedMsg{
-									GitHubID: i.notification.GitHubID,
-									Body:     res.Body,
-									Author:   res.Author,
-									HTMLURL:  res.HTMLURL,
+									GitHubID:      i.notification.GitHubID,
+									Body:          res.Body,
+									Author:        res.Author,
+									HTMLURL:       res.HTMLURL,
+									ResourceState: res.ResourceState,
 								}
 							},
+
 							func(err error) tea.Msg { return errMsg{err: err} },
 						),
 					)
