@@ -72,15 +72,20 @@ type NotificationWithState struct {
 	OrbitState
 }
 
-func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
-	row := db.QueryRow(`
+func baseNotificationSelect() string {
+	return `
 		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
+			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
+			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
-		WHERE n.github_id = ?
-	`, id)
+	`
+}
+
+func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
+	query := baseNotificationSelect() + " WHERE n.github_id = ?"
+	row := db.QueryRow(query, id)
 
 	var ns NotificationWithState
 	err := row.Scan(
@@ -98,14 +103,8 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 
 // ListNotifications returns all notifications with their state.
 func (db *DB) ListNotifications() ([]NotificationWithState, error) {
-	rows, err := db.Query(`
-		SELECT
-			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url, COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
-			s.priority, s.status, s.is_read_locally
-		FROM notifications n
-		JOIN orbit_state s ON n.github_id = s.notification_id
-		ORDER BY n.updated_at DESC
-	`)
+	query := baseNotificationSelect() + " ORDER BY n.updated_at DESC"
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}

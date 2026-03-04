@@ -36,73 +36,17 @@ var reasonIcons = map[string]semanticIcon{
 
 // RenderTargetHeader provides a unified header for notifications in both list and detail views.
 func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter string, isSelected bool) string {
-	// 1. Type Icon
-	typeIcon := "•"
-	switch n.SubjectType {
-	case "PullRequest":
-		typeIcon = ""
-	case "Issue":
-		typeIcon = ""
-	case "Discussion":
-		typeIcon = ""
-	case "Commit":
-		typeIcon = ""
-	case "Release":
-		typeIcon = ""
-	}
-	if !strings.ContainsAny(typeIcon, "") {
-		switch n.SubjectType {
-		case "PullRequest":
-			typeIcon = "PR"
-		case "Issue":
-			typeIcon = "#"
-		case "Discussion":
-			typeIcon = "D"
-		default:
-			typeIcon = "•"
-		}
-	}
-	iconStr := ctx.Styles.IconContainer.Render(typeIcon)
+	iconStr := getResourceIcon(ctx, n.SubjectType)
 
-	// 2. Unread status
+	// Unread status
 	statusDot := " "
 	if !n.IsReadLocally {
 		statusDot = ctx.Styles.Unread.Render("•")
 	}
 
-	// 3. Status Badge (Smooth Transition Layout)
-	badgeWidth := 12
-	statusBadge := ""
+	statusBadge := getStatusBadge(ctx, n.ResourceState)
 
-	if ctx.IsFetching {
-		// State 1: Fetching (Skeleton)
-		statusBadge = ctx.Styles.StateSkeleton.Width(badgeWidth).Align(lipgloss.Left).Render(" [LOADING] ")
-	} else if n.ResourceState != "" {
-		// State 2: Enriched
-		style := ctx.Styles.StateDraft
-		icon := ""
-		switch n.ResourceState {
-		case "Open":
-			style = ctx.Styles.StateOpen
-			icon = " "
-		case "Merged":
-			style = ctx.Styles.StateMerged
-			icon = " "
-		case "Closed":
-			style = ctx.Styles.StateClosed
-			icon = " "
-		case "Draft":
-			style = ctx.Styles.StateDraft
-			icon = " "
-		}
-		badgeText := fmt.Sprintf("%s[%s]", icon, n.ResourceState)
-		statusBadge = style.Width(badgeWidth).Align(lipgloss.Left).Render(badgeText)
-	} else {
-		// State 3: Un-enriched (Empty Placeholder of fixed width)
-		statusBadge = lipgloss.NewStyle().Width(badgeWidth).Render("")
-	}
-
-	// 4. Title + #ID (with Adaptive Truncation)
+	// Title + #ID (with Adaptive Truncation)
 	title := n.SubjectTitle
 	number := extractNumberFromURL(n.SubjectURL)
 	if number != "" {
@@ -110,6 +54,7 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 	}
 
 	// Always calculate available width assuming badge is present (for perfect alignment)
+	badgeWidth := 12
 	occupied := 6 + badgeWidth + 1
 	avail := ctx.Width - occupied
 	if avail < 10 {
@@ -124,17 +69,77 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 		title = ctx.Styles.SelectedTitle.Render(title)
 	}
 
-	// 5. Reason Badge
-	reasonBadge := ""
-	if si, ok := reasonIcons[n.Reason]; ok {
-		style := si.style(ctx.Styles)
-		badgeText := strings.ToUpper(strings.ReplaceAll(n.Reason, "_", " "))
-		reasonBadge = style.
-			Padding(0, 1).
-			Render(badgeText)
-	}
+	reasonBadge := getReasonBadge(ctx, n.Reason)
 
 	return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, reasonBadge)
+}
+
+func getResourceIcon(ctx RenderContext, subjectType string) string {
+	typeIcon := "•"
+	switch subjectType {
+	case "PullRequest":
+		typeIcon = ""
+	case "Issue":
+		typeIcon = ""
+	case "Discussion":
+		typeIcon = ""
+	case "Commit":
+		typeIcon = ""
+	case "Release":
+		typeIcon = ""
+	}
+	if !strings.ContainsAny(typeIcon, "") {
+		switch subjectType {
+		case "PullRequest":
+			typeIcon = "PR"
+		case "Issue":
+			typeIcon = "#"
+		case "Discussion":
+			typeIcon = "D"
+		default:
+			typeIcon = "•"
+		}
+	}
+	return ctx.Styles.IconContainer.Render(typeIcon)
+}
+
+func getStatusBadge(ctx RenderContext, state string) string {
+	badgeWidth := 12
+	if ctx.IsFetching {
+		return ctx.Styles.StateSkeleton.Width(badgeWidth).Align(lipgloss.Left).Render(" [LOADING] ")
+	}
+
+	if state == "" {
+		return lipgloss.NewStyle().Width(badgeWidth).Render("")
+	}
+
+	style := ctx.Styles.StateDraft
+	icon := ""
+	switch state {
+	case "Open":
+		style = ctx.Styles.StateOpen
+		icon = " "
+	case "Merged":
+		style = ctx.Styles.StateMerged
+		icon = " "
+	case "Closed":
+		style = ctx.Styles.StateClosed
+		icon = " "
+	case "Draft":
+		style = ctx.Styles.StateDraft
+		icon = " "
+	}
+	badgeText := fmt.Sprintf("%s[%s]", icon, state)
+	return style.Width(badgeWidth).Align(lipgloss.Left).Render(badgeText)
+}
+
+func getReasonBadge(ctx RenderContext, reason string) string {
+	if si, ok := reasonIcons[reason]; ok {
+		style := si.style(ctx.Styles)
+		badgeText := strings.ToUpper(strings.ReplaceAll(reason, "_", " "))
+		return style.Padding(0, 1).Render(badgeText)
+	}
+	return ""
 }
 
 func highlightMatches(ctx RenderContext, text, filter string) string {

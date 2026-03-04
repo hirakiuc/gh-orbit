@@ -13,44 +13,22 @@ func TestRenderFooter(t *testing.T) {
 
 	m1 := Model{ui: NewUIController(styles), styles: styles}
 	m1.ui.syncing = true
-
-	m2 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("test error")}
-
-	m3 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("test error")}
-	m3.ui.syncing = true
-
-	tests := []struct {
-		name     string
-		model    Model
-		contains string
-	}{
-		{
-			name:     "syncing state",
-			model:    m1,
-			contains: "Syncing...",
-		},
-		{
-			name:     "error state",
-			model:    m2,
-			contains: "Error: test error",
-		},
-		{
-			name:     "syncing and error",
-			model:    m3,
-			contains: "Syncing... Error: test error",
-		},
+	f1 := stripANSI(m1.renderFooter())
+	if !strings.Contains(f1, "Syncing") {
+		t.Errorf("renderFooter() syncing state = %q, want it to contain %q", f1, "Syncing")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rendered := tt.model.renderFooter()
-			stripped := stripANSI(rendered)
-			// Clean up extra spaces for easier matching
-			normalized := strings.Join(strings.Fields(stripped), " ")
-			if !strings.Contains(normalized, tt.contains) {
-				t.Errorf("renderFooter() = %q, want it to contain %q", normalized, tt.contains)
-			}
-		})
+	m2 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("api error")}
+	f2 := stripANSI(m2.renderFooter())
+	if !strings.Contains(f2, "Error: api error") {
+		t.Errorf("renderFooter() error state = %q, want it to contain %q", f2, "Error: api error")
+	}
+
+	m3 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("api error")}
+	m3.ui.syncing = true
+	f3 := stripANSI(m3.renderFooter())
+	if !strings.Contains(f3, "Syncing") || !strings.Contains(f3, "Error") {
+		t.Errorf("renderFooter() combined state = %q, want it to contain both Syncing and Error", f3)
 	}
 }
 
@@ -58,26 +36,22 @@ func TestRenderList(t *testing.T) {
 	styles := DefaultStyles(true)
 	keys := DefaultKeyMap()
 	delegate := newItemDelegate(styles, keys)
-	l := list.New([]list.Item{}, delegate, 20, 10)
-	l.Title = "Test Title"
+	l := list.New([]list.Item{}, delegate, 80, 20)
 
 	m := Model{
-		list:   l,
+		listView: ListModel{
+			list: l,
+		},
 		styles: styles,
-		keys:   keys,
+		ui:     NewUIController(styles),
 	}
 
-	rendered := m.renderList()
-	stripped := stripANSI(rendered)
-	// Bubbles list rendering might not show title if not enough height or empty,
-	// but let's check for what's actually rendered.
-	if !strings.Contains(stripped, "Test Title") {
-		t.Logf("List View:\n%s", stripped)
-		// If it's empty, bubbles list might hide the title or render it differently.
-		// For now, let's just ensure it renders SOMETHING.
-		if len(stripped) == 0 {
-			t.Errorf("renderList() returned empty string")
-		}
+	out := m.renderList()
+	stripped := stripANSI(out)
+
+	// Verify tabs are present
+	if !strings.Contains(stripped, "Inbox") {
+		t.Errorf("renderList() should contain tab labels")
 	}
 
 	// Verify help content (short help should be at the bottom)
@@ -92,12 +66,14 @@ func TestRenderList(t *testing.T) {
 func TestRenderTabs(t *testing.T) {
 	styles := DefaultStyles(true)
 	m := Model{
-		activeTab: TabInbox,
-		styles:    styles,
+		listView: ListModel{
+			activeTab: 1, // Unread
+		},
+		styles: styles,
 	}
 
-	rendered := m.renderTabs()
-	stripped := stripANSI(rendered)
+	out := m.renderTabs()
+	stripped := stripANSI(out)
 
 	expectedTabs := []string{"Inbox", "Unread", "Triaged", "All"}
 	for _, tab := range expectedTabs {

@@ -95,7 +95,7 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 
 	// Find the item to mark as read
 	var selectedItem item
-	if i, ok := m.list.SelectedItem().(item); ok {
+	if i, ok := m.listView.list.SelectedItem().(item); ok {
 		selectedItem = i
 	}
 
@@ -132,7 +132,7 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 
 	// 2. Optimistic UI update
 	i.notification.IsReadLocally = true
-	m.list.SetItem(m.list.Index(), i)
+	m.listView.list.SetItem(m.listView.list.Index(), i)
 
 	// 3. Persistent Local Update
 	err := m.db.UpdateOrbitState(db.OrbitState{
@@ -173,7 +173,7 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 
 	// 2. Update UI
 	i.notification.IsReadLocally = newState
-	m.list.SetItem(m.list.Index(), i)
+	m.listView.list.SetItem(m.listView.list.Index(), i)
 
 	// 3. Update DB
 	err := m.db.UpdateOrbitState(db.OrbitState{
