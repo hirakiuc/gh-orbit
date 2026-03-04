@@ -83,7 +83,35 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 		title = ctx.Styles.SelectedTitle.Render(title)
 	}
 
-	// 4. Reason Badge
+	// 4. Resource Status Badge (Draft, Open, Merged, etc.)
+	statusBadge := ""
+	if n.ResourceState != "" {
+		style := ctx.Styles.StateDraft
+		icon := ""
+		switch n.ResourceState {
+		case "Open":
+			style = ctx.Styles.StateOpen
+			icon = " "
+		case "Merged":
+			style = ctx.Styles.StateMerged
+			icon = " "
+		case "Closed":
+			style = ctx.Styles.StateClosed
+			icon = " "
+		case "Draft":
+			style = ctx.Styles.StateDraft
+			icon = " "
+		}
+		
+		// Fixed-width container (width: 12) to prevent title jumping
+		badgeText := fmt.Sprintf("%s[%s]", icon, n.ResourceState)
+		statusBadge = style.Width(12).Align(lipgloss.Left).Render(badgeText)
+	} else {
+		// Empty space to maintain layout stability
+		statusBadge = lipgloss.NewStyle().Width(12).Render("")
+	}
+
+	// 5. Reason Badge
 	badge := ""
 	if si, ok := reasonIcons[n.Reason]; ok {
 		style := si.style(ctx.Styles)
@@ -93,7 +121,7 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 			Render(badgeText)
 	}
 
-	return fmt.Sprintf("%s%s %s  %s", iconStr, statusDot, title, badge)
+	return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, badge)
 }
 
 func highlightMatches(ctx RenderContext, text, filter string) string {

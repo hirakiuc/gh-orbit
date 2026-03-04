@@ -101,10 +101,11 @@ type (
 	actionCompleteMsg      struct{}
 	clearStatusMsg         struct{}
 	detailLoadedMsg        struct {
-		GitHubID string
-		Body     string
-		Author   string
-		HTMLURL  string
+		GitHubID      string
+		Body          string
+		Author        string
+		HTMLURL       string
+		ResourceState string
 	}
 	errMsg struct{ err error }
 )

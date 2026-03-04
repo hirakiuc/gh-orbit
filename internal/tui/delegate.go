@@ -18,7 +18,7 @@ type item struct {
 func (i item) Title() string       { return i.notification.SubjectTitle }
 func (i item) Description() string { return i.notification.RepositoryFullName }
 func (i item) FilterValue() string {
-	return i.notification.SubjectTitle + " " + i.notification.RepositoryFullName
+	return i.notification.SubjectTitle + " " + i.notification.RepositoryFullName + " " + i.notification.ResourceState
 }
 
 type itemDelegate struct {

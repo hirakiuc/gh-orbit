@@ -43,6 +43,12 @@ type Styles struct {
 	ScrollbarThumb lipgloss.Style
 	FilterChip     lipgloss.Style
 
+	// Resource States
+	StateOpen   lipgloss.Style
+	StateMerged lipgloss.Style
+	StateClosed lipgloss.Style
+	StateDraft  lipgloss.Style
+
 	// Search
 	FuzzyMatch lipgloss.Style
 }
@@ -173,6 +179,24 @@ func DefaultStyles(isDark bool) Styles {
 		Foreground(accent).
 		Bold(true).
 		Underline(true)
+
+	// Resource States (Desaturated Professional Palette)
+	openColor := lipgloss.Color("#2EA043")   // Dark
+	mergedColor := lipgloss.Color("#8957E5") // Dark
+	closedColor := lipgloss.Color("#F85149") // Dark
+	draftColor := lipgloss.Color("#8B949E")  // Dark
+
+	if !isDark {
+		openColor = lipgloss.Color("#1A7F37")
+		mergedColor = lipgloss.Color("#6E39D1")
+		closedColor = lipgloss.Color("#D1242F")
+		draftColor = lipgloss.Color("#6E7781")
+	}
+
+	s.StateOpen = lipgloss.NewStyle().Padding(0, 1).Foreground(openColor)
+	s.StateMerged = lipgloss.NewStyle().Padding(0, 1).Foreground(mergedColor)
+	s.StateClosed = lipgloss.NewStyle().Padding(0, 1).Foreground(closedColor)
+	s.StateDraft = lipgloss.NewStyle().Padding(0, 1).Foreground(draftColor)
 
 	return s
 }

@@ -168,3 +168,35 @@ func TestListNotifications(t *testing.T) {
 		t.Errorf("Expected notification '2' first due to sorting")
 	}
 }
+
+func TestEnrichNotification(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	id := "enrich-test"
+	n := Notification{
+		GitHubID:     id,
+		SubjectTitle: "PR",
+		UpdatedAt:    time.Now(),
+	}
+	_ = db.UpsertNotification(n)
+
+	// Enrich
+	err := db.EnrichNotification(id, "Body Content", "author-1", "https://github.com/url", "Merged")
+	if err != nil {
+		t.Fatalf("EnrichNotification failed: %v", err)
+	}
+
+	// Verify
+	ns, err := db.GetNotification(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ns.Body != "Body Content" || ns.AuthorLogin != "author-1" || ns.ResourceState != "Merged" {
+		t.Errorf("Enrichment failed to persist correctly: %+v", ns)
+	}
+	if !ns.IsEnriched {
+		t.Error("expected IsEnriched to be true")
+	}
+}

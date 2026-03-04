@@ -40,4 +40,6 @@ var migrations = []string{
 	// Version 4: Add body and author_login for detail view
 	`ALTER TABLE notifications ADD COLUMN body TEXT DEFAULT '';
 	 ALTER TABLE notifications ADD COLUMN author_login TEXT DEFAULT '';`,
+	// Version 5: Add resource_state for live status (Open, Merged, etc.)
+	`ALTER TABLE notifications ADD COLUMN resource_state TEXT DEFAULT '';`,
 }
