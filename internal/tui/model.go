@@ -27,8 +27,26 @@ const (
 	StateDetail
 )
 
+// ListModel encapsulates the state for the notification list view.
+type ListModel struct {
+	list           list.Model
+	delegate       itemDelegate
+	activeTab      int
+	resourceFilter string
+}
+
+// DetailModel encapsulates the state for the notification detail view.
+type DetailModel struct {
+	viewport     viewport.Model
+	activeDetail string
+}
+
 type Model struct {
-	list             list.Model
+	// Sub-Models
+	listView   ListModel
+	detailView DetailModel
+
+	// Shared State & Services
 	db               *db.DB
 	client           *api.Client
 	sync             *api.SyncEngine
@@ -40,14 +58,9 @@ type Model struct {
 	userID           string
 	styles           Styles
 	keys             KeyMap
-	delegate         itemDelegate
-	activeTab        int
 	allNotifications []db.NotificationWithState
 	err              error
 	state            AppState
-	resourceFilter   string
-	viewport         viewport.Model
-	activeDetail     string
 	isDark           bool
 	markdownRenderer *glamour.TermRenderer
 	width            int
@@ -69,7 +82,13 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
-		list:     l,
+		listView: ListModel{
+			list:     l,
+			delegate: delegate,
+		},
+		detailView: DetailModel{
+			viewport: vp,
+		},
 		db:       database,
 		client:   client,
 		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
@@ -81,8 +100,6 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		userID:   userID,
 		styles:   styles,
 		keys:     keys,
-		delegate: delegate,
-		viewport: vp,
 		isDark:   true,
 		state:    StateList,
 	}

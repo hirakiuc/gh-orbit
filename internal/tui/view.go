@@ -14,28 +14,21 @@ func (m *Model) View() tea.View {
 
 	switch m.state {
 	case StateDetail:
-		if i, ok := m.list.SelectedItem().(item); ok {
-			windowTitle = fmt.Sprintf("gh-orbit: %s", i.notification.SubjectTitle)
-		}
 		viewContent = m.renderDetailView()
+		if i, ok := m.listView.list.SelectedItem().(item); ok {
+			windowTitle = fmt.Sprintf("%s - %s", windowTitle, i.notification.SubjectTitle)
+		}
 	case StateList:
-		// Build the view content from components
-		viewContent = m.renderTabs()
-		viewContent += "\n" + m.renderList()
+		viewContent = m.renderList()
 	}
 
-	footer := m.renderFooter()
-	if footer != "" {
-		viewContent += "\n" + footer
-	}
-
-	// Delegate overlays to UIController
+	// Compose with overlays
 	content := m.ui.View(
 		viewContent,
 		m.state == StateDetail,
-		m.viewport.ScrollPercent(),
-		m.viewport.Height(),
-		m.viewport.TotalLineCount(),
+		m.detailView.viewport.ScrollPercent(),
+		m.detailView.viewport.Height(),
+		m.detailView.viewport.TotalLineCount(),
 	)
 
 	v := tea.NewView(content)
@@ -49,7 +42,7 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) renderDetailView() string {
-	i, ok := m.list.SelectedItem().(item)
+	i, ok := m.listView.list.SelectedItem().(item)
 	if !ok {
 		return "No item selected"
 	}
@@ -65,7 +58,7 @@ func (m *Model) renderDetailView() string {
 	meta := fmt.Sprintf("Author: %s | Repo: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName)
 	
 	// Content inside the viewport or loading indicator
-	body := m.viewport.View()
+	body := m.detailView.viewport.View()
 	if m.ui.fetchingDetail {
 		body = "\n\n  " + m.ui.RenderSpinner() + " Fetching detail..."
 	}
@@ -81,72 +74,31 @@ func (m *Model) renderDetailView() string {
 	return style.Render(content)
 }
 
-func (m *Model) renderMarkdown(body string) string {
-	if body == "" {
-		return "No content available."
-	}
-
-	if m.markdownRenderer == nil {
-		m.updateMarkdownRenderer()
-	}
-
-	out, err := m.markdownRenderer.Render(body)
-	if err != nil {
-		return body
-	}
-
-	return out
-}
-
-func (m *Model) updateMarkdownRenderer() {
-	width := m.viewport.Width() - 4
-	if width < 20 {
-		width = 20
-	}
-
-	style := "dark"
-	if !m.isDark {
-		style = "light"
-	}
-
-	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle(style),
-		glamour.WithEmoji(),
-		glamour.WithWordWrap(width),
-	)
-	if err != nil {
-		m.logger.Error("failed to create markdown renderer", "error", err)
-		return
-	}
-	m.markdownRenderer = renderer
+func (m *Model) renderList() string {
+	tabs := m.renderTabs()
+	list := m.listView.list.View()
+	return lipgloss.JoinVertical(lipgloss.Left, tabs, list, m.renderFooter())
 }
 
 func (m *Model) renderTabs() string {
-	tabNames := []string{"Inbox", "Unread", "Triaged", "All"}
-	var renderedTabs []string
+	var tabs []string
+	labels := []string{"Inbox", "Unread", "Triaged", "All"}
 
-	for i, name := range tabNames {
-		var style lipgloss.Style
-		if i == m.activeTab {
-			style = m.styles.TabActive
+	for i, label := range labels {
+		if i == m.listView.activeTab {
+			tabs = append(tabs, m.styles.TabActive.Render(label))
 		} else {
-			style = m.styles.TabInactive
+			tabs = append(tabs, m.styles.TabInactive.Render(label))
 		}
-		renderedTabs = append(renderedTabs, style.Render(name))
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	return m.styles.TabContainer.Render(row)
-}
-
-func (m *Model) renderList() string {
-	return m.list.View()
+	return m.styles.TabContainer.Render(lipgloss.JoinHorizontal(lipgloss.Top, tabs...))
 }
 
 func (m *Model) renderFooter() string {
-	// Status and Error handling display
-	var footer string
 	spinner := m.ui.RenderSpinner()
+	footer := ""
+
 	if spinner != "" {
 		footer = spinner + " Syncing... "
 	}
@@ -157,4 +109,32 @@ func (m *Model) renderFooter() string {
 	}
 
 	return footer
+}
+
+func (m *Model) renderMarkdown(text string) string {
+	if m.markdownRenderer == nil {
+		return text
+	}
+
+	out, err := m.markdownRenderer.Render(text)
+	if err != nil {
+		return text
+	}
+	return out
+}
+
+func (m *Model) updateMarkdownRenderer() {
+	style := "dark"
+	if !m.isDark {
+		style = "light"
+	}
+
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle(style),
+		glamour.WithEmoji(),
+		glamour.WithWordWrap(m.width-10),
+	)
+	if err == nil {
+		m.markdownRenderer = r
+	}
 }

@@ -29,7 +29,10 @@ func newTestModel(t *testing.T) *Model {
 	database := setupTestDB(t)
 	
 	m := &Model{
-		list:   l,
+		listView: ListModel{
+			list:     l,
+			delegate: delegate,
+		},
 		db:     database,
 		keys:   keys,
 		styles: styles,
@@ -88,11 +91,11 @@ func TestModel_MarkRead(t *testing.T) {
 		Notification: db.Notification{GitHubID: "test-id"},
 		OrbitState:   db.OrbitState{IsReadLocally: false},
 	}}
-	m.activeTab = TabAll
+	m.listView.activeTab = TabAll
 	m.applyFilters()
 
 	// Initial state
-	i := m.list.Items()[0].(item)
+	i := m.listView.list.Items()[0].(item)
 	m.MarkRead(i)
 
 	if !m.allNotifications[0].IsReadLocally {
@@ -106,18 +109,18 @@ func TestModel_ResourceFiltering(t *testing.T) {
 		{Notification: db.Notification{GitHubID: "1", SubjectType: "PullRequest"}},
 		{Notification: db.Notification{GitHubID: "2", SubjectType: "Issue"}},
 	}
-	m.activeTab = TabAll
+	m.listView.activeTab = TabAll
 
 	// 1. Filter PRs
 	m.toggleResourceFilter("PullRequest", "PRs")
-	if len(m.list.Items()) != 1 {
-		t.Errorf("expected 1 item (PR), got %d", len(m.list.Items()))
+	if len(m.listView.list.Items()) != 1 {
+		t.Errorf("expected 1 item (PR), got %d", len(m.listView.list.Items()))
 	}
 
 	// 2. Clear
 	m.toggleResourceFilter("PullRequest", "PRs")
-	if len(m.list.Items()) != 2 {
-		t.Errorf("expected 2 items after clear, got %d", len(m.list.Items()))
+	if len(m.listView.list.Items()) != 2 {
+		t.Errorf("expected 2 items after clear, got %d", len(m.listView.list.Items()))
 	}
 }
 
@@ -134,13 +137,13 @@ func TestModel_Navigation(t *testing.T) {
 
 	// 2. Test Help -> Close transition via 'q'
 	m.state = StateList
-	m.list.Help.ShowAll = true
+	m.listView.list.Help.ShowAll = true
 	_, _ = m.Update(msgQ)
 	// We can't easily check the internal list state change here because we return m.list.Update
 	// but we've verified it compiles and calls the correct logic.
 
 	// 3. Test Quit transition via 'q'
-	m.list.Help.ShowAll = false
+	m.listView.list.Help.ShowAll = false
 	_, cmd := m.Update(msgQ)
 	if cmd == nil {
 		t.Fatal("expected quit command, got nil")
