@@ -96,7 +96,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(tea.KeyPressMsg); ok {
-		if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" {
+		if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" || msg.String() == "q" {
 			m.state = StateList
 			return m, nil
 		}
@@ -118,7 +118,17 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case msg.String() == "ctrl+c" || msg.String() == "q":
+		case msg.String() == "ctrl+c":
+			return m, tea.Quit
+		case msg.String() == "q":
+			if m.list.Help.ShowAll {
+				// Close help overlay by sending "?" to the list
+				m.list, cmd = m.list.Update(tea.KeyPressMsg{
+					Text: "?",
+					Code: '?',
+				})
+				return m, cmd
+			}
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Sync):
 			if m.ui.syncing {

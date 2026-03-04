@@ -17,6 +17,7 @@ type KeyMap struct {
 	ViewContextual  key.Binding
 	OpenBrowser     key.Binding
 	ToggleDetail    key.Binding
+	Back            key.Binding
 	FilterPR        key.Binding
 	FilterIssue     key.Binding
 	FilterDiscussion key.Binding
@@ -77,6 +78,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys(" ", "space"),
 			key.WithHelp("space", "peek detail"),
 		),
+		Back: key.NewBinding(
+			key.WithKeys("q", "esc"),
+			key.WithHelp("q/esc", "back/close"),
+		),
 		FilterPR: key.NewBinding(
 			key.WithKeys("p"),
 			key.WithHelp("p", "filter PRs"),
@@ -98,7 +103,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 		k.Sync,
 		k.ToggleRead,
 		k.ToggleDetail,
-		k.FilterPR,
+		k.Back,
 	}
 }
 
@@ -106,7 +111,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
-		{k.ToggleDetail, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
+		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
 		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh, k.ClearPriority},
 		{k.ToggleRead, k.NextTab, k.PrevTab, k.CheckoutPR},
 	}
