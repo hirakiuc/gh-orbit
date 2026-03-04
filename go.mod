@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/dustin/go-humanize v1.0.1
+	github.com/ebitengine/purego v0.10.0
 	github.com/gen2brain/beeep v0.11.2
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/spf13/cobra v1.10.2

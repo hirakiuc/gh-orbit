@@ -62,7 +62,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 
 	vp := viewport.New()
 
-	alerts := api.NewAlertService(cfg, logger)
+	alerts := api.NewAlertService(cfg, database, logger)
 	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
