@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	_ "modernc.org/sqlite"
 )
@@ -143,5 +144,43 @@ func TestModel_Navigation(t *testing.T) {
 	_, cmd := m.Update(msgQ)
 	if cmd == nil {
 		t.Fatal("expected quit command, got nil")
+	}
+}
+
+func TestRenderTargetHeader_Geometry(t *testing.T) {
+	styles := DefaultStyles(true)
+	ctx := RenderContext{
+		Styles: styles,
+		Width:  80,
+	}
+	notif := db.NotificationWithState{
+		Notification: db.Notification{
+			SubjectTitle: "A very long title that should be truncated when a badge is present",
+			SubjectType:  "PullRequest",
+		},
+	}
+
+	// 1. Un-enriched (No badge, maximum density)
+	h1 := RenderTargetHeader(ctx, notif, "", false)
+	w1 := lipgloss.Width(h1)
+
+	// 2. Fetching (Skeleton badge)
+	ctx.IsFetching = true
+	h2 := RenderTargetHeader(ctx, notif, "", false)
+	w2 := lipgloss.Width(h2)
+
+	// 3. Enriched (Status badge)
+	ctx.IsFetching = false
+	notif.ResourceState = "Merged"
+	h3 := RenderTargetHeader(ctx, notif, "", false)
+	w3 := lipgloss.Width(h3)
+
+	if w1 >= w2 {
+		t.Errorf("expected un-enriched header width %d to be less than skeleton header width %d", w1, w2)
+	}
+
+	// Skeleton and Enriched should have stable geometry
+	if w2 != w3 {
+		t.Errorf("expected skeleton width %d and enriched width %d to be same", w2, w3)
 	}
 }

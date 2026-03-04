@@ -44,10 +44,11 @@ type Styles struct {
 	FilterChip     lipgloss.Style
 
 	// Resource States
-	StateOpen   lipgloss.Style
-	StateMerged lipgloss.Style
-	StateClosed lipgloss.Style
-	StateDraft  lipgloss.Style
+	StateOpen     lipgloss.Style
+	StateMerged   lipgloss.Style
+	StateClosed   lipgloss.Style
+	StateDraft    lipgloss.Style
+	StateSkeleton lipgloss.Style
 
 	// Search
 	FuzzyMatch lipgloss.Style
@@ -181,22 +182,45 @@ func DefaultStyles(isDark bool) Styles {
 		Underline(true)
 
 	// Resource States (Desaturated Professional Palette)
-	openColor := lipgloss.Color("#2EA043")   // Dark
-	mergedColor := lipgloss.Color("#8957E5") // Dark
-	closedColor := lipgloss.Color("#F85149") // Dark
-	draftColor := lipgloss.Color("#8B949E")  // Dark
+	openBG := lipgloss.Color("#1B3A24")
+	openFG := lipgloss.Color("#3FB950")
+
+	mergedBG := lipgloss.Color("#2D1F4D")
+	mergedFG := lipgloss.Color("#A371F7")
+
+	closedBG := lipgloss.Color("#351D22")
+	closedFG := lipgloss.Color("#F85149")
+
+	draftBG := lipgloss.Color("#21262D")
+	draftFG := lipgloss.Color("#8B949E")
+
+	skeletonBG := lipgloss.Color("#21262D")
+	skeletonFG := lipgloss.Color("#484F58")
 
 	if !isDark {
-		openColor = lipgloss.Color("#1A7F37")
-		mergedColor = lipgloss.Color("#6E39D1")
-		closedColor = lipgloss.Color("#D1242F")
-		draftColor = lipgloss.Color("#6E7781")
+		openBG = lipgloss.Color("#DAFBE1")
+		openFG = lipgloss.Color("#1A7F37")
+
+		mergedBG = lipgloss.Color("#FBEFFF")
+		mergedFG = lipgloss.Color("#6E39D1")
+
+		closedBG = lipgloss.Color("#FFEBE9")
+		closedFG = lipgloss.Color("#D1242F")
+
+		draftBG = lipgloss.Color("#F6F8FA")
+		draftFG = lipgloss.Color("#6E7781")
+
+		skeletonBG = lipgloss.Color("#F6F8FA")
+		skeletonFG = lipgloss.Color("#AFB8C1")
 	}
 
-	s.StateOpen = lipgloss.NewStyle().Padding(0, 1).Foreground(openColor)
-	s.StateMerged = lipgloss.NewStyle().Padding(0, 1).Foreground(mergedColor)
-	s.StateClosed = lipgloss.NewStyle().Padding(0, 1).Foreground(closedColor)
-	s.StateDraft = lipgloss.NewStyle().Padding(0, 1).Foreground(draftColor)
+	pill := lipgloss.NewStyle().Padding(0, 1).Bold(true)
+
+	s.StateOpen = pill.Background(openBG).Foreground(openFG)
+	s.StateMerged = pill.Background(mergedBG).Foreground(mergedFG)
+	s.StateClosed = pill.Background(closedBG).Foreground(closedFG)
+	s.StateDraft = pill.Background(draftBG).Foreground(draftFG)
+	s.StateSkeleton = pill.Background(skeletonBG).Foreground(skeletonFG).Blink(true)
 
 	return s
 }

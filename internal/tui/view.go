@@ -49,10 +49,6 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) renderDetailView() string {
-	if m.ui.fetchingDetail {
-		return m.ui.RenderSpinner() + " Fetching detail..."
-	}
-
 	i, ok := m.list.SelectedItem().(item)
 	if !ok {
 		return "No item selected"
@@ -60,17 +56,21 @@ func (m *Model) renderDetailView() string {
 
 	// 1. Unified Header using shared component
 	headerCtx := RenderContext{
-		Styles: m.styles,
-		Width:  m.width,
+		Styles:     m.styles,
+		Width:      m.width,
+		IsFetching: m.ui.fetchingDetail,
 	}
 	header := RenderTargetHeader(headerCtx, i.notification, "", true)
 	
 	meta := fmt.Sprintf("Author: %s | Repo: %s", i.notification.AuthorLogin, i.notification.RepositoryFullName)
 	
-	// Content inside the viewport
-	vpView := m.viewport.View()
+	// Content inside the viewport or loading indicator
+	body := m.viewport.View()
+	if m.ui.fetchingDetail {
+		body = "\n\n  " + m.ui.RenderSpinner() + " Fetching detail..."
+	}
 	
-	content := header + "\n" + meta + "\n\n" + vpView
+	content := header + "\n" + meta + "\n\n" + body
 
 	// If we have dimensions, ensure the style doesn't clip
 	style := m.styles.Viewport

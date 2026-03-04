@@ -38,6 +38,7 @@ type Model struct {
 	userID           string
 	styles           Styles
 	keys             KeyMap
+	delegate         itemDelegate
 	activeTab        int
 	allNotifications []db.NotificationWithState
 	err              error
@@ -77,6 +78,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		userID:   userID,
 		styles:   styles,
 		keys:     keys,
+		delegate: delegate,
 		viewport: vp,
 		isDark:   true,
 		state:    StateList,

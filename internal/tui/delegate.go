@@ -22,8 +22,9 @@ func (i item) FilterValue() string {
 }
 
 type itemDelegate struct {
-	styles Styles
-	keys   KeyMap
+	styles     Styles
+	keys       KeyMap
+	IsFetching bool
 }
 
 func newItemDelegate(s Styles, k KeyMap) itemDelegate {
@@ -58,8 +59,9 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	// 2. Target Identity Header (Icon + Title + #ID + Badge)
 	ctx := RenderContext{
-		Styles: d.styles,
-		Width:  m.Width(),
+		Styles:     d.styles,
+		Width:      m.Width(),
+		IsFetching: isSelected && d.IsFetching,
 	}
 	header := RenderTargetHeader(ctx, i.notification, m.FilterValue(), isSelected)
 

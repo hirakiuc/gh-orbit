@@ -11,8 +11,9 @@ import (
 
 // RenderContext holds shared configuration for component rendering.
 type RenderContext struct {
-	Styles Styles
-	Width  int
+	Styles     Styles
+	Width      int
+	IsFetching bool
 }
 
 type semanticIcon struct {
@@ -69,23 +70,17 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 		statusDot = ctx.Styles.Unread.Render("•")
 	}
 
-	// 3. Title + #ID
-	title := n.SubjectTitle
-	number := extractNumberFromURL(n.SubjectURL)
-	if number != "" {
-		title = fmt.Sprintf("%s #%s", title, number)
-	}
-
-	// Highlight matches
-	if filter != "" {
-		title = highlightMatches(ctx, title, filter)
-	} else if isSelected {
-		title = ctx.Styles.SelectedTitle.Render(title)
-	}
-
-	// 4. Resource Status Badge (Draft, Open, Merged, etc.)
+	// 3. Status Badge (Smooth Transition Layout)
+	badgeWidth := 12
 	statusBadge := ""
-	if n.ResourceState != "" {
+	hasBadge := false
+
+	if ctx.IsFetching {
+		// State 1: Fetching (Skeleton)
+		statusBadge = ctx.Styles.StateSkeleton.Width(badgeWidth).Align(lipgloss.Left).Render(" [LOADING] ")
+		hasBadge = true
+	} else if n.ResourceState != "" {
+		// State 2: Enriched
 		style := ctx.Styles.StateDraft
 		icon := ""
 		switch n.ResourceState {
@@ -102,26 +97,51 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 			style = ctx.Styles.StateDraft
 			icon = " "
 		}
-		
-		// Fixed-width container (width: 12) to prevent title jumping
 		badgeText := fmt.Sprintf("%s[%s]", icon, n.ResourceState)
-		statusBadge = style.Width(12).Align(lipgloss.Left).Render(badgeText)
-	} else {
-		// Empty space to maintain layout stability
-		statusBadge = lipgloss.NewStyle().Width(12).Render("")
+		statusBadge = style.Width(badgeWidth).Align(lipgloss.Left).Render(badgeText)
+		hasBadge = true
+	}
+
+	// 4. Title + #ID (with Adaptive Truncation)
+	title := n.SubjectTitle
+	number := extractNumberFromURL(n.SubjectURL)
+	if number != "" {
+		title = fmt.Sprintf("%s #%s", title, number)
+	}
+
+	// Calculate available width for title
+	// 4 (icon+dot) + (12 if badge) + extra padding
+	occupied := 6
+	if hasBadge {
+		occupied += badgeWidth + 1
+	}
+	avail := ctx.Width - occupied
+	if avail < 10 {
+		avail = 10
+	}
+	title = truncateString(title, avail)
+
+	// Highlight matches
+	if filter != "" {
+		title = highlightMatches(ctx, title, filter)
+	} else if isSelected {
+		title = ctx.Styles.SelectedTitle.Render(title)
 	}
 
 	// 5. Reason Badge
-	badge := ""
+	reasonBadge := ""
 	if si, ok := reasonIcons[n.Reason]; ok {
 		style := si.style(ctx.Styles)
 		badgeText := strings.ToUpper(strings.ReplaceAll(n.Reason, "_", " "))
-		badge = style.
+		reasonBadge = style.
 			Padding(0, 1).
 			Render(badgeText)
 	}
 
-	return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, badge)
+	if hasBadge {
+		return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, reasonBadge)
+	}
+	return fmt.Sprintf("%s%s %s %s", iconStr, statusDot, title, reasonBadge)
 }
 
 func highlightMatches(ctx RenderContext, text, filter string) string {
@@ -132,4 +152,14 @@ func highlightMatches(ctx RenderContext, text, filter string) string {
 
 	// sahilm/fuzzy returns indices for the first match
 	return lipgloss.StyleRunes(text, matches[0].MatchedIndexes, ctx.Styles.FuzzyMatch, ctx.Styles.SelectedTitle)
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen < 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }
