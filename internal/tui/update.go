@@ -38,7 +38,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isDark = msg.IsDark()
 		m.styles = DefaultStyles(m.isDark)
 		m.list.Styles.Title = m.styles.Title
-		m.list.SetDelegate(newItemDelegate(m.styles, m.keys))
+		m.delegate = newItemDelegate(m.styles, m.keys)
+		m.list.SetDelegate(m.delegate)
 		m.updateMarkdownRenderer()
 		m.ui.SetStyles(m.styles)
 
@@ -80,6 +81,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.ui.SetSyncing(false))
 		cmds = append(cmds, m.ui.SetFetching(false))
 		m.err = msg.err
+	}
+
+	// Sync fetching state to delegate for skeleton UI
+	if m.delegate.IsFetching != m.ui.fetchingDetail {
+		m.delegate.IsFetching = m.ui.fetchingDetail
+		m.list.SetDelegate(m.delegate)
 	}
 
 	// 2. Handle state-dependent messages (Router Pattern)
@@ -158,7 +165,6 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 									ResourceState: res.ResourceState,
 								}
 							},
-
 							func(err error) tea.Msg { return errMsg{err: err} },
 						),
 					)
