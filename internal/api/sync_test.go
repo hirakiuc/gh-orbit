@@ -98,9 +98,10 @@ func TestConditionalRequest(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client, _ := NewClient()
-	// Override base URL for test
-	client.baseURL = ts.URL + "/"
+	client := &Client{
+		http:    ts.Client(),
+		baseURL: ts.URL + "/",
+	}
 	
 	fetcher := NewNotificationFetcher(client, slog.Default())
 	meta := &db.SyncMeta{ETag: "etag-123"}
