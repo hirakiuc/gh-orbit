@@ -134,7 +134,7 @@ func TestModel_Navigation(t *testing.T) {
 	// 2. Test Help -> Close transition via 'q'
 	m.state = StateList
 	m.list.Help.ShowAll = true
-	model, _ = m.Update(msgQ)
+	_, _ = m.Update(msgQ)
 	// We can't easily check the internal list state change here because we return m.list.Update
 	// but we've verified it compiles and calls the correct logic.
 
