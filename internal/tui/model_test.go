@@ -175,12 +175,7 @@ func TestRenderTargetHeader_Geometry(t *testing.T) {
 	h3 := RenderTargetHeader(ctx, notif, "", false)
 	w3 := lipgloss.Width(h3)
 
-	if w1 >= w2 {
-		t.Errorf("expected un-enriched header width %d to be less than skeleton header width %d", w1, w2)
-	}
-
-	// Skeleton and Enriched should have stable geometry
-	if w2 != w3 {
-		t.Errorf("expected skeleton width %d and enriched width %d to be same", w2, w3)
+	if w1 != w2 || w2 != w3 {
+		t.Errorf("expected all header states to have identical width for alignment: w1=%d, w2=%d, w3=%d", w1, w2, w3)
 	}
 }

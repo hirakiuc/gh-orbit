@@ -33,13 +33,15 @@ func (s *SyncEngine) Fetcher() Fetcher {
 }
 
 // Sync performs a full synchronization cycle for notifications.
-func (s *SyncEngine) Sync(userID string) error {
+// It returns the remaining rate limit if known.
+func (s *SyncEngine) Sync(userID string) (int, error) {
 	s.logger.Info("starting notification sync", "user_id", userID)
 	metaKey := "notifications"
+	remaining := 5000 // Default
 
 	meta, err := s.db.GetSyncMeta(userID, metaKey)
 	if err != nil {
-		return err
+		return remaining, err
 	}
 
 	// Initialize meta if not exists
@@ -54,16 +56,16 @@ func (s *SyncEngine) Sync(userID string) error {
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
 		s.logger.Debug("skipping sync, poll interval not reached", "interval", meta.PollInterval)
-		return nil // Too soon to poll
+		return remaining, nil // Too soon to poll
 	}
 
-	notifications, newMeta, err := s.fetcher.FetchNotifications(meta)
+	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(meta)
 	if err != nil {
 		s.logger.Error("failed to fetch notifications", "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
 		_ = s.db.UpdateSyncMeta(*meta)
-		return err
+		return remaining, err
 	}
 
 	// If 304 Not Modified, notifications will be empty but newMeta might have updated PollInterval
@@ -80,7 +82,7 @@ func (s *SyncEngine) Sync(userID string) error {
 				UpdatedAt:          n.UpdatedAt,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to save notification %s: %w", n.ID, err)
+				return remaining, fmt.Errorf("failed to save notification %s: %w", n.ID, err)
 			}
 
 			// Trigger system alert for new notifications
@@ -93,5 +95,5 @@ func (s *SyncEngine) Sync(userID string) error {
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	s.logger.Info("notification sync complete", "user_id", userID)
-	return s.db.UpdateSyncMeta(*newMeta)
+	return remaining, s.db.UpdateSyncMeta(*newMeta)
 }

@@ -73,12 +73,10 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 	// 3. Status Badge (Smooth Transition Layout)
 	badgeWidth := 12
 	statusBadge := ""
-	hasBadge := false
 
 	if ctx.IsFetching {
 		// State 1: Fetching (Skeleton)
 		statusBadge = ctx.Styles.StateSkeleton.Width(badgeWidth).Align(lipgloss.Left).Render(" [LOADING] ")
-		hasBadge = true
 	} else if n.ResourceState != "" {
 		// State 2: Enriched
 		style := ctx.Styles.StateDraft
@@ -99,7 +97,9 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 		}
 		badgeText := fmt.Sprintf("%s[%s]", icon, n.ResourceState)
 		statusBadge = style.Width(badgeWidth).Align(lipgloss.Left).Render(badgeText)
-		hasBadge = true
+	} else {
+		// State 3: Un-enriched (Empty Placeholder of fixed width)
+		statusBadge = lipgloss.NewStyle().Width(badgeWidth).Render("")
 	}
 
 	// 4. Title + #ID (with Adaptive Truncation)
@@ -109,12 +109,8 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 		title = fmt.Sprintf("%s #%s", title, number)
 	}
 
-	// Calculate available width for title
-	// 4 (icon+dot) + (12 if badge) + extra padding
-	occupied := 6
-	if hasBadge {
-		occupied += badgeWidth + 1
-	}
+	// Always calculate available width assuming badge is present (for perfect alignment)
+	occupied := 6 + badgeWidth + 1
 	avail := ctx.Width - occupied
 	if avail < 10 {
 		avail = 10
@@ -138,10 +134,7 @@ func RenderTargetHeader(ctx RenderContext, n db.NotificationWithState, filter st
 			Render(badgeText)
 	}
 
-	if hasBadge {
-		return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, reasonBadge)
-	}
-	return fmt.Sprintf("%s%s %s %s", iconStr, statusDot, title, reasonBadge)
+	return fmt.Sprintf("%s%s %s %s %s", iconStr, statusDot, statusBadge, title, reasonBadge)
 }
 
 func highlightMatches(ctx RenderContext, text, filter string) string {
