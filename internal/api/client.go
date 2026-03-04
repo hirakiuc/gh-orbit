@@ -8,9 +8,10 @@ import (
 	"github.com/cli/go-gh/v2/pkg/auth"
 )
 
-// Client wraps the GitHub REST API client.
+// Client wraps the GitHub REST and GQL API clients.
 type Client struct {
 	rest    *api.RESTClient
+	gql     *api.GraphQLClient
 	http    *http.Client
 	host    string
 	baseURL string
@@ -21,12 +22,18 @@ func NewClient() (*Client, error) {
 	host, _ := auth.DefaultHost()
 
 	opts := api.ClientOptions{
-		Host: host,
+		Host:        host,
+		EnableCache: true, // Enable ETag support for quota preservation
 	}
 
 	rest, err := api.NewRESTClient(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST client: %w", err)
+	}
+
+	gql, err := api.NewGraphQLClient(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GQL client: %w", err)
 	}
 
 	httpClient, err := api.NewHTTPClient(opts)
@@ -41,6 +48,7 @@ func NewClient() (*Client, error) {
 
 	return &Client{
 		rest:    rest,
+		gql:     gql,
 		http:    httpClient,
 		host:    host,
 		baseURL: baseURL,
@@ -66,6 +74,11 @@ func (c *Client) MarkThreadAsRead(threadID string) error {
 // REST returns the underlying REST client configured by go-gh.
 func (c *Client) REST() *api.RESTClient {
 	return c.rest
+}
+
+// GQL returns the underlying GQL client configured by go-gh.
+func (c *Client) GQL() *api.GraphQLClient {
+	return c.gql
 }
 
 // HTTP returns the underlying http.Client configured by go-gh.

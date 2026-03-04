@@ -24,9 +24,10 @@ func NewNotificationFetcher(client *Client, logger *slog.Logger) *NotificationFe
 	}
 }
 
-func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, error) {
+func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, int, error) {
 	var allNotifications []GHNotification
 	newMeta := *meta
+	remainingRateLimit := 5000 // Default assume healthy
 
 	path := "notifications?per_page=100"
 
@@ -43,7 +44,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 
 		req, err := http.NewRequest(http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, remainingRateLimit, err
 		}
 
 		if meta.LastModified != "" {
@@ -55,23 +56,30 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 
 		resp, err := f.client.HTTP().Do(req) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, remainingRateLimit, err
 		}
 		defer func() { _ = resp.Body.Close() }()
 
 		f.logger.Debug("received API response", "status", resp.StatusCode, "url", url)
 
+		// Update rate limit info if available
+		if rl := resp.Header.Get("X-RateLimit-Remaining"); rl != "" {
+			if remaining, err := strconv.Atoi(rl); err == nil {
+				remainingRateLimit = remaining
+			}
+		}
+
 		if resp.StatusCode == http.StatusNotModified {
-			return nil, &newMeta, nil
+			return nil, &newMeta, remainingRateLimit, nil
 		}
 
 		if resp.StatusCode >= 400 {
-			return nil, nil, fmt.Errorf("API error: %s", resp.Status)
+			return nil, nil, remainingRateLimit, fmt.Errorf("API error: %s", resp.Status)
 		}
 
 		var page []GHNotification
 		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			return nil, nil, err
+			return nil, nil, remainingRateLimit, err
 		}
 
 		allNotifications = append(allNotifications, page...)
@@ -101,7 +109,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 		}
 	}
 
-	return allNotifications, &newMeta, nil
+	return allNotifications, &newMeta, remainingRateLimit, nil
 }
 
 func parseLinkHeader(header string) map[string]string {

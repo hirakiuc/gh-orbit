@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"log/slog"
 
 	"charm.land/bubbles/v2/list"
@@ -32,6 +33,7 @@ type Model struct {
 	client           *api.Client
 	sync             *api.SyncEngine
 	enrich           *api.EnrichmentEngine
+	traffic          *api.APITrafficController
 	ui               UIController
 	config           *config.Config
 	logger           *slog.Logger
@@ -72,6 +74,7 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		client:   client,
 		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
 		enrich:   api.NewEnrichmentEngine(client, database, logger),
+		traffic:  api.NewAPITrafficController(logger),
 		ui:       NewUIController(styles),
 		config:   cfg,
 		logger:   logger,
@@ -102,6 +105,7 @@ type (
 	syncCompleteMsg        []db.NotificationWithState
 	actionCompleteMsg      struct{}
 	clearStatusMsg         struct{}
+	viewportEnrichMsg      struct{}
 	detailLoadedMsg        struct {
 		GitHubID      string
 		Body          string
@@ -123,16 +127,20 @@ func (m *Model) loadNotifications() tea.Cmd {
 }
 
 func (m *Model) syncNotifications() tea.Cmd {
-	return func() tea.Msg {
-		err := m.sync.Sync(m.userID)
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		remaining, err := m.sync.Sync(m.userID)
 		if err != nil {
 			return errMsg{err}
 		}
+		
+		// Update traffic controller with latest quota info
+		m.traffic.UpdateRateLimit(remaining)
+
 		// Reload after sync
 		notifs, err := m.db.ListNotifications()
 		if err != nil {
 			return errMsg{err}
 		}
 		return syncCompleteMsg(notifs)
-	}
+	})
 }

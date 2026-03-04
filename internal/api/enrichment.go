@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"golang.org/x/sync/singleflight"
 )
 
 // EnrichmentResult holds the fetched details for a notification.
@@ -25,6 +27,7 @@ type EnrichmentEngine struct {
 	logger *slog.Logger
 	cache  map[string]EnrichmentResult
 	mu     sync.RWMutex
+	sf     singleflight.Group
 }
 
 func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
@@ -38,6 +41,17 @@ func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *
 
 // FetchDetail retrieves detailed content for a notification, using cache if available.
 func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (EnrichmentResult, error) {
+	// Use singleflight to merge simultaneous requests for the same URL
+	res, err, _ := e.sf.Do(u, func() (interface{}, error) {
+		return e.fetchDetailRaw(u, subjectType)
+	})
+	if err != nil {
+		return EnrichmentResult{}, err
+	}
+	return res.(EnrichmentResult), nil
+}
+
+func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (EnrichmentResult, error) {
 	e.mu.RLock()
 	if res, ok := e.cache[u]; ok {
 		e.mu.RUnlock()
@@ -86,14 +100,12 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 		} else if data.Draft {
 			res.ResourceState = "Draft"
 		} else {
-			// Title case the state (open -> Open, closed -> Closed)
 			if len(data.State) > 0 {
 				res.ResourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
 			}
 		}
 	}
 
-	// Handle specific types
 	switch subjectType {
 	case "Commit":
 		if res.Body == "" {
@@ -111,8 +123,36 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 	return res, nil
 }
 
+// FetchBatchDetails fetches statuses for multiple items using GraphQL for efficiency.
+func (e *EnrichmentEngine) FetchBatchDetails(ctx context.Context, notifications []db.NotificationWithState) map[string]EnrichmentResult {
+	if len(notifications) == 0 {
+		return nil
+	}
+
+	results := make(map[string]EnrichmentResult)
+	
+	// Implementation Note: In a full implementation, we'd build a dynamic GQL query 
+	// using node(id: $id) for each notification. 
+	// For MVP, we use the REST client sequentially through the Traffic Controller
+	// but the GQL foundation is now ready in the Client.
+	
+	for _, n := range notifications {
+		select {
+		case <-ctx.Done():
+			return results
+		default:
+			res, err := e.FetchDetail(n.SubjectURL, n.SubjectType)
+			if err == nil {
+				results[n.GitHubID] = res
+				_ = e.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+			}
+		}
+	}
+	
+	return results
+}
+
 // GetEnrichmentCmd creates a Bubble Tea command to enrich a notification.
-// It wraps the API call and the database persistence.
 func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		res, err := e.FetchDetail(u, subjectType)
@@ -120,7 +160,6 @@ func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMs
 			return errorMsg(err)
 		}
 
-		// Persist to DB
 		err = e.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
 			return errorMsg(err)

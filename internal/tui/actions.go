@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
@@ -250,7 +252,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 // URL extraction helpers
 
 func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
-	return func() tea.Msg {
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		res, err := m.enrich.FetchDetail(u, subjectType)
 		if err != nil {
 			return errMsg{err: err}
@@ -269,7 +271,7 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 			HTMLURL:       res.HTMLURL,
 			ResourceState: res.ResourceState,
 		}
-	}
+	})
 }
 
 func extractNumberFromURL(u string) string {

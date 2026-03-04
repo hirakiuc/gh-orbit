@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
@@ -46,11 +48,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case notificationsLoadedMsg:
 		m.allNotifications = msg
 		m.applyFilters()
+		// Auto-enrich visible items on load
+		cmds = append(cmds, m.enrichViewport())
 
 	case syncCompleteMsg:
 		cmds = append(cmds, m.ui.SetSyncing(false))
 		m.allNotifications = msg
 		m.applyFilters()
+		// Auto-enrich visible items after sync
+		cmds = append(cmds, m.enrichViewport())
+
+	case viewportEnrichMsg:
+		cmds = append(cmds, m.enrichViewport())
 
 	case detailLoadedMsg:
 		cmds = append(cmds, m.ui.SetFetching(false))
@@ -65,8 +74,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		m.activeDetail = m.renderMarkdown(msg.Body)
-		m.viewport.SetContent(m.activeDetail)
+		// If we are in detail view and this is the active item, update viewport
+		if m.state == StateDetail {
+			if i, ok := m.list.SelectedItem().(item); ok && i.notification.GitHubID == msg.GitHubID {
+				m.activeDetail = m.renderMarkdown(msg.Body)
+				m.viewport.SetContent(m.activeDetail)
+			}
+		}
 		m.applyFilters()
 
 	case spinner.TickMsg:
@@ -91,6 +105,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// 2. Handle state-dependent messages (Router Pattern)
 	var stateCmd tea.Cmd
+	oldIndex := m.list.Index()
 	switch m.state {
 	case StateDetail:
 		_, stateCmd = m.updateDetail(msg)
@@ -98,6 +113,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		_, stateCmd = m.updateList(msg)
 	}
 	cmds = append(cmds, stateCmd)
+
+	// Trigger debounced enrichment if viewport might have changed
+	if m.state == StateList && m.list.Index() != oldIndex {
+		cmds = append(cmds, tea.Tick(250*time.Millisecond, func(_ time.Time) tea.Msg {
+			return viewportEnrichMsg{}
+		}))
+	}
 
 	return m, tea.Batch(cmds...)
 }
@@ -232,6 +254,47 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) enrichViewport() tea.Cmd {
+	// Identify visible items
+	start, end := m.list.Paginator.GetSliceBounds(len(m.list.Items()))
+	if start < 0 || end > len(m.list.Items()) || start >= end {
+		return nil
+	}
+	visible := m.list.Items()[start:end]
+
+	var toEnrich []db.NotificationWithState
+	for _, li := range visible {
+		if i, ok := li.(item); ok {
+			if !i.notification.IsEnriched {
+				toEnrich = append(toEnrich, i.notification)
+			}
+		}
+	}
+
+	if len(toEnrich) == 0 {
+		return nil
+	}
+
+	// Sequential background enrichment through the Traffic Controller
+	return m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+		n := toEnrich[0]
+		res, err := m.enrich.FetchDetail(n.SubjectURL, n.SubjectType)
+		if err != nil {
+			return nil // Silently fail background enrichment
+		}
+
+		_ = m.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+
+		return detailLoadedMsg{
+			GitHubID:      n.GitHubID,
+			Body:          res.Body,
+			Author:        res.Author,
+			HTMLURL:       res.HTMLURL,
+			ResourceState: res.ResourceState,
+		}
+	})
 }
 
 func (m *Model) setPriority(priority int) tea.Cmd {
