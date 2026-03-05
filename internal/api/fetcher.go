@@ -30,17 +30,27 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 	newMeta := *meta
 	remainingRateLimit := 5000 // Default assume healthy
 
-	path := "notifications?per_page=100"
+	path := "notifications?per_page=100&all=true"
 
-	// Only fetch all notifications on first sync
+	// Use conditional requests if metadata is available
 	if meta.LastModified != "" || meta.ETag != "" {
-		path = "notifications"
+		path = "notifications?all=true"
 	}
 
 	for path != "" {
 		url := path
 		if !strings.HasPrefix(url, "http") {
 			url = f.client.BaseURL() + path
+		}
+
+		// Ensure all=true is present even if the 'next' URL from GitHub might omit it 
+		// (though usually GitHub preserves params in Link headers)
+		if !strings.Contains(url, "all=true") {
+			if strings.Contains(url, "?") {
+				url += "&all=true"
+			} else {
+				url += "?all=true"
+			}
 		}
 
 		req, err := http.NewRequest(http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
