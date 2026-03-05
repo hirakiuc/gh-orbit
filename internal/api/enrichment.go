@@ -41,8 +41,26 @@ func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *
 
 // FetchDetail retrieves detailed content for a notification, using cache if available.
 func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (EnrichmentResult, error) {
-	// Use singleflight to merge simultaneous requests for the same URL
-	res, err, shared := e.sf.Do(u, func() (interface{}, error) {
+	// 1. Semantic Cache Validation (Optimistic Read)
+	e.mu.RLock()
+	res, ok := e.cache[u]
+	e.mu.RUnlock()
+
+	if ok && res.ResourceState != "" {
+		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+			e.logger.Debug("enrichment: cache hit (valid)", "url", u)
+		}
+		return res, nil
+	}
+
+	if ok && res.ResourceState == "" {
+		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+			e.logger.Debug("enrichment: cache hit but missing state, forcing refresh", "url", u)
+		}
+	}
+
+	// 2. Use singleflight to merge simultaneous requests for the same URL
+	val, err, shared := e.sf.Do(u, func() (interface{}, error) {
 		return e.fetchDetailRaw(u, subjectType)
 	})
 
@@ -53,22 +71,12 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 	if err != nil {
 		return EnrichmentResult{}, err
 	}
-	return res.(EnrichmentResult), nil
+	return val.(EnrichmentResult), nil
 }
 
 func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (EnrichmentResult, error) {
-	e.mu.RLock()
-	if res, ok := e.cache[u]; ok {
-		e.mu.RUnlock()
-		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
-			e.logger.Debug("enrichment: cache hit", "url", u)
-		}
-		return res, nil
-	}
-	e.mu.RUnlock()
-
 	if e.logger.Enabled(context.Background(), slog.LevelDebug) {
-		e.logger.Debug("enrichment: cache miss, fetching from API", "url", u, "type", subjectType)
+		e.logger.Debug("enrichment: cache miss or invalid, fetching from API", "url", u, "type", subjectType)
 	}
 
 	// Strip base URL if present to use with REST client
@@ -125,9 +133,12 @@ func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (Enrichm
 		}
 	}
 
-	e.mu.Lock()
-	e.cache[u] = res
-	e.mu.Unlock()
+	// Only cache if we have meaningful data
+	if res.ResourceState != "" || res.Body != "" {
+		e.mu.Lock()
+		e.cache[u] = res
+		e.mu.Unlock()
+	}
 
 	return res, nil
 }
@@ -155,10 +166,12 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 		}
 	}
 
+	// 1. Fetch Known IDs via nodes()
 	if len(knownIDs) > 0 {
 		e.fetchByNodeIDs(ctx, knownIDs, results)
 	}
 
+	// 2. Fetch Discovery URLs via individual REST calls (fallback)
 	for _, u := range discoveryURLs {
 		select {
 		case <-ctx.Done():
@@ -232,6 +245,11 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 
 		if state != "" {
 			_ = e.db.UpdateResourceStateByNodeID(node.ID, state)
+			
+			// Populate results for immediate TUI refresh
+			results[node.ID] = EnrichmentResult{
+				ResourceState: state,
+			}
 		}
 	}
 }
