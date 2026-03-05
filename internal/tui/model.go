@@ -156,7 +156,8 @@ func (m *Model) loadNotifications() tea.Cmd {
 
 func (m *Model) syncNotifications(priority int) tea.Cmd {
 	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
-		remaining, err := m.sync.Sync(m.userID)
+		force := (priority == api.PriorityUser)
+		remaining, err := m.sync.Sync(m.userID, force)
 		if err != nil {
 			return errMsg{err}
 		}

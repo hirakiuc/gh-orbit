@@ -28,9 +28,11 @@ type mockFetcher struct {
 	notifs []GHNotification
 	meta   *db.SyncMeta
 	err    error
+	called bool
 }
 
 func (m *mockFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, int, error) {
+	m.called = true
 	return m.notifs, m.meta, 5000, m.err
 }
 
@@ -65,8 +67,8 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 	engine := NewSyncEngine(fetcher, database, nil, logger)
 
-	// 1. Initial Sync
-	if _, err := engine.Sync(userID); err != nil {
+	// 1. Initial Sync (Force=true)
+	if _, err := engine.Sync(userID, true); err != nil {
 		t.Fatalf("Initial sync failed: %v", err)
 	}
 
@@ -76,15 +78,22 @@ func TestSyncEngine_Sync(t *testing.T) {
 		t.Errorf("Expected 1 notification, got %d", len(list))
 	}
 
-	// 2. Second Sync (should poll only if interval passed, here we mock it by returning empty from fetcher if we wanted,
-	// but let's test that Sync actually calls FetchNotifications)
-	
-	// Mock If-Modified-Since behavior via a real httptest server if needed, but here we just verify
-	// the Sync logic flow.
-	
-	// Ensure we don't sync again too fast
-	if _, err := engine.Sync(userID); err != nil {
+	// 2. Automated Sync too soon (Force=false)
+	fetcher.called = false
+	if _, err := engine.Sync(userID, false); err != nil {
 		t.Fatalf("Second sync failed: %v", err)
+	}
+	if fetcher.called {
+		t.Error("Expected automated sync to be skipped due to interval")
+	}
+
+	// 3. Forced Sync (Force=true)
+	fetcher.called = false
+	if _, err := engine.Sync(userID, true); err != nil {
+		t.Fatalf("Forced sync failed: %v", err)
+	}
+	if !fetcher.called {
+		t.Error("Expected forced sync to bypass interval check")
 	}
 }
 

@@ -33,9 +33,10 @@ func (s *SyncEngine) Fetcher() Fetcher {
 }
 
 // Sync performs a full synchronization cycle for notifications.
+// If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.
-func (s *SyncEngine) Sync(userID string) (int, error) {
-	s.logger.Info("starting notification sync", "user_id", userID)
+func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
+	s.logger.Info("starting notification sync", "user_id", userID, "force", force)
 	metaKey := "notifications"
 	remaining := 5000 // Default
 
@@ -54,7 +55,7 @@ func (s *SyncEngine) Sync(userID string) (int, error) {
 	}
 
 	// Check if we should poll based on LastSyncAt and PollInterval
-	if time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
+	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
 		s.logger.Debug("skipping sync, poll interval not reached", "interval", meta.PollInterval)
 		return remaining, nil // Too soon to poll
 	}
