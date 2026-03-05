@@ -45,4 +45,6 @@ var migrations = []string{
 	// Version 6: Add subject_node_id for GraphQL batch fetching
 	`ALTER TABLE notifications ADD COLUMN subject_node_id TEXT DEFAULT '';
 	 CREATE INDEX IF NOT EXISTS idx_notifications_subject_node_id ON notifications(subject_node_id);`,
+	// Version 7: Add enriched_at for cache expiration logic
+	`ALTER TABLE notifications ADD COLUMN enriched_at DATETIME;`,
 }

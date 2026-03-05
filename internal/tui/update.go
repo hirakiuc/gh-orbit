@@ -295,7 +295,17 @@ func (m *Model) enrichViewport() tea.Cmd {
 	var toEnrich []db.NotificationWithState
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
-			if !i.notification.IsEnriched {
+			// Pick items that are not enriched OR have expired statuses
+			var isExpired bool
+			if i.notification.IsEnriched {
+				if i.notification.EnrichedAt.Valid {
+					isExpired = time.Since(i.notification.EnrichedAt.Time) > api.StatusTTL
+				} else {
+					isExpired = true // Enriched but no timestamp? Refresh.
+				}
+			}
+			
+			if !i.notification.IsEnriched || isExpired {
 				toEnrich = append(toEnrich, i.notification)
 			}
 		}
