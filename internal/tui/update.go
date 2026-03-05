@@ -50,13 +50,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFilters()
 		// Auto-enrich visible items on load
 		cmds = append(cmds, m.enrichViewport())
+		// Start background heartbeat
+		cmds = append(cmds, m.tickHeartbeat())
 
 	case syncCompleteMsg:
 		cmds = append(cmds, m.ui.SetSyncing(false))
 		m.allNotifications = msg
+		m.LastSyncAt = time.Now()
 		m.applyFilters()
 		// Auto-enrich visible items after sync
 		cmds = append(cmds, m.enrichViewport())
+		// Schedule next heartbeat
+		cmds = append(cmds, m.tickHeartbeat())
+
+	case pollTickMsg:
+		if !m.ui.syncing {
+			cmds = append(cmds, m.syncNotifications(api.PrioritySync))
+		} else {
+			// If already syncing, skip this tick but schedule next
+			cmds = append(cmds, m.tickHeartbeat())
+		}
+
+	case clockTickMsg:
+		cmds = append(cmds, m.tickClock())
 
 	case viewportEnrichMsg:
 		cmds = append(cmds, m.enrichViewport())
@@ -166,7 +182,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(
 				m.ui.SetSyncing(true),
-				m.syncNotifications(),
+				m.syncNotifications(api.PriorityUser),
 			)
 		case key.Matches(msg, m.keys.ToggleDetail):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {

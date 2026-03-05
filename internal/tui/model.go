@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/viewport"
@@ -65,6 +66,10 @@ type Model struct {
 	markdownRenderer *glamour.TermRenderer
 	width            int
 	height           int
+
+	// Background Sync State
+	LastSyncAt   time.Time
+	PollInterval int
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
@@ -102,6 +107,9 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		keys:     keys,
 		isDark:   true,
 		state:    StateList,
+		// Background Sync Defaults
+		LastSyncAt:   time.Now(),
+		PollInterval: cfg.Notifications.SyncInterval,
 	}
 }
 
@@ -111,7 +119,8 @@ func (m *Model) Init() tea.Cmd {
 		tea.Batch(
 			tea.RequestBackgroundColor,
 			m.ui.SetSyncing(true),
-			m.syncNotifications(),
+			m.syncNotifications(api.PriorityUser),
+			m.tickClock(), // Start UI clock
 		),
 	)
 }
@@ -123,6 +132,8 @@ type (
 	actionCompleteMsg      struct{}
 	clearStatusMsg         struct{}
 	viewportEnrichMsg      struct{}
+	pollTickMsg            struct{}
+	clockTickMsg           struct{}
 	detailLoadedMsg        struct {
 		GitHubID      string
 		Body          string
@@ -143,8 +154,8 @@ func (m *Model) loadNotifications() tea.Cmd {
 	}
 }
 
-func (m *Model) syncNotifications() tea.Cmd {
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+func (m *Model) syncNotifications(priority int) tea.Cmd {
+	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
 		remaining, err := m.sync.Sync(m.userID)
 		if err != nil {
 			return errMsg{err}
@@ -158,6 +169,28 @@ func (m *Model) syncNotifications() tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
+
+		// Refresh PollInterval from metadata
+		if meta, err := m.db.GetSyncMeta(m.userID, "notifications"); err == nil && meta != nil {
+			m.PollInterval = meta.PollInterval
+		}
+
 		return syncCompleteMsg(notifs)
+	})
+}
+
+func (m *Model) tickHeartbeat() tea.Cmd {
+	duration := time.Duration(m.PollInterval) * time.Second
+	if duration <= 0 {
+		duration = 60 * time.Second
+	}
+	return tea.Tick(duration, func(_ time.Time) tea.Msg {
+		return pollTickMsg{}
+	})
+}
+
+func (m *Model) tickClock() tea.Cmd {
+	return tea.Tick(30*time.Second, func(_ time.Time) tea.Msg {
+		return clockTickMsg{}
 	})
 }
