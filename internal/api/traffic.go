@@ -30,6 +30,7 @@ type apiTask struct {
 
 // APITrafficController ensures serialized, prioritized access to the GitHub API.
 type APITrafficController struct {
+	ctx    context.Context // Application root context
 	logger *slog.Logger
 	mu     sync.Mutex
 	wg     sync.WaitGroup
@@ -48,6 +49,7 @@ type APITrafficController struct {
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	tc := &APITrafficController{
+		ctx:                ctx,
 		logger:             logger,
 		high:               make(chan *apiTask),
 		med:                make(chan *apiTask),
@@ -161,7 +163,7 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
-			ctx:      context.Background(), // TUI context typically doesn't have traces, start fresh
+			ctx:      c.ctx, // Use root context for trace linkage and cancellation
 		}
 
 		if c.logger.Enabled(task.ctx, slog.LevelDebug) {
