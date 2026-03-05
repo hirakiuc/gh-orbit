@@ -16,8 +16,8 @@ func (db *DB) UpsertMetadata(n Notification) error {
 	// 1. Upsert notification metadata (API fields only)
 	_, err = tx.Exec(`
 		INSERT INTO notifications (
-			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, subject_node_id, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(github_id) DO UPDATE SET
 			subject_title = excluded.subject_title,
 			subject_url = excluded.subject_url,
@@ -25,8 +25,9 @@ func (db *DB) UpsertMetadata(n Notification) error {
 			reason = excluded.reason,
 			repository_full_name = excluded.repository_full_name,
 			html_url = excluded.html_url,
+			subject_node_id = COALESCE(NULLIF(excluded.subject_node_id, ''), notifications.subject_node_id),
 			updated_at = excluded.updated_at
-	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.UpdatedAt)
+	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.SubjectNodeID, n.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to upsert metadata: %w", err)
 	}
@@ -61,6 +62,26 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 	return nil
 }
 
+// UpdateResourceStateByNodeID updates the live status of a resource using its GraphQL ID.
+func (db *DB) UpdateResourceStateByNodeID(nodeID, state string) error {
+	_, err := db.Exec(`
+		UPDATE notifications
+		SET resource_state = ?
+		WHERE subject_node_id = ?
+	`, state, nodeID)
+	return err
+}
+
+// UpdateSubjectNodeID specifically updates the GraphQL Global Node ID for a resource.
+func (db *DB) UpdateSubjectNodeID(id, nodeID string) error {
+	_, err := db.Exec(`
+		UPDATE notifications
+		SET subject_node_id = ?
+		WHERE github_id = ?
+	`, nodeID, id)
+	return err
+}
+
 // UpsertNotification is a compatibility helper that performs a metadata upsert.
 func (db *DB) UpsertNotification(n Notification) error {
 	return db.UpsertMetadata(n)
@@ -76,7 +97,8 @@ func baseNotificationSelect() string {
 	return `
 		SELECT
 			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
-			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), n.is_enriched, n.updated_at,
+			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.subject_node_id, ''),
+			n.is_enriched, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -89,7 +111,8 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 
 	var ns NotificationWithState
 	err := row.Scan(
-		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.IsEnriched, &ns.UpdatedAt,
+		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
+		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.UpdatedAt,
 		&ns.Priority, &ns.Status, &ns.IsReadLocally,
 	)
 	if err == sql.ErrNoRows {
@@ -114,7 +137,8 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 	for rows.Next() {
 		var ns NotificationWithState
 		err := rows.Scan(
-			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL, &ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.IsEnriched, &ns.UpdatedAt,
+			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
+			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.UpdatedAt,
 			&ns.Priority, &ns.Status, &ns.IsReadLocally,
 		)
 		if err != nil {

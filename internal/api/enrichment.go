@@ -123,33 +123,105 @@ func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (Enrichm
 	return res, nil
 }
 
-// FetchBatchDetails fetches statuses for multiple items using GraphQL for efficiency.
-func (e *EnrichmentEngine) FetchBatchDetails(ctx context.Context, notifications []db.NotificationWithState) map[string]EnrichmentResult {
+// FetchHybridBatch resolves statuses for multiple items using GraphQL for efficiency.
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []db.NotificationWithState) map[string]EnrichmentResult {
 	if len(notifications) == 0 {
 		return nil
 	}
 
 	results := make(map[string]EnrichmentResult)
 	
-	// Implementation Note: In a full implementation, we'd build a dynamic GQL query 
-	// using node(id: $id) for each notification. 
-	// For MVP, we use the REST client sequentially through the Traffic Controller
-	// but the GQL foundation is now ready in the Client.
+	var knownIDs []string
+	var discoveryURLs []string
 	
 	for _, n := range notifications {
+		if n.SubjectNodeID != "" {
+			knownIDs = append(knownIDs, n.SubjectNodeID)
+		} else {
+			discoveryURLs = append(discoveryURLs, n.SubjectURL)
+		}
+	}
+
+	if len(knownIDs) > 0 {
+		e.fetchByNodeIDs(ctx, knownIDs, results)
+	}
+
+	for _, u := range discoveryURLs {
 		select {
 		case <-ctx.Done():
 			return results
 		default:
-			res, err := e.FetchDetail(n.SubjectURL, n.SubjectType)
-			if err == nil {
-				results[n.GitHubID] = res
-				_ = e.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+			for _, n := range notifications {
+				if n.SubjectURL == u {
+					res, err := e.FetchDetail(u, n.SubjectType)
+					if err == nil {
+						results[n.GitHubID] = res
+						_ = e.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+					}
+					break
+				}
 			}
 		}
 	}
 	
 	return results
+}
+
+func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]EnrichmentResult) {
+	// go-gh/v2 GQL Query uses a struct for the query or a string for the query
+	// Let's use a string for the query as it's easier for nodes().
+	
+	queryString := `
+		query($ids: [ID!]!) {
+			nodes(ids: $ids) {
+				... on PullRequest { id, state, merged, isDraft }
+				... on Issue { id, state }
+			}
+			rateLimit { cost, remaining }
+		}
+	`
+	variables := map[string]interface{}{"ids": ids}
+	
+	var data struct {
+		Nodes []struct {
+			ID      string `json:"id"`
+			State   string `json:"state"`
+			Merged  bool   `json:"merged"`
+			IsDraft bool   `json:"isDraft"`
+		} `json:"nodes"`
+		RateLimit struct {
+			Cost      int `json:"cost"`
+			Remaining int `json:"remaining"`
+		} `json:"rateLimit"`
+	}
+
+	// Correct go-gh/v2 GQL signature:
+	// func (c *GQLClient) Do(query string, variables map[string]interface{}, response interface{}) error
+	// Wait, I saw 'Query' in go doc. Let me re-verify the signature.
+	err := e.client.GQL().Do(queryString, variables, &data)
+	if err != nil {
+		e.logger.Error("graphql batch fetch failed", "error", err)
+		return
+	}
+
+	e.logger.Debug("graphql batch fetch complete", "cost", data.RateLimit.Cost, "remaining", data.RateLimit.Remaining)
+
+	for _, node := range data.Nodes {
+		if node.ID == "" { continue }
+		
+		state := ""
+		if node.Merged {
+			state = "Merged"
+		} else if node.IsDraft {
+			state = "Draft"
+		} else if node.State != "" {
+			state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+		}
+
+		if state != "" {
+			_ = e.db.UpdateResourceStateByNodeID(node.ID, state)
+		}
+	}
 }
 
 // GetEnrichmentCmd creates a Bubble Tea command to enrich a notification.

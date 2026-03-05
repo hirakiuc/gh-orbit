@@ -19,6 +19,7 @@ type GHNotification struct {
 		Title string `json:"title"`
 		URL   string `json:"url"`
 		Type  string `json:"type"`
+		NodeID string `json:"node_id"`
 	} `json:"subject"`
 }
 

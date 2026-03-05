@@ -11,6 +11,14 @@ import (
 // Config represents the application configuration.
 type Config struct {
 	Notifications NotificationsConfig `yaml:"notifications"`
+	Enrichment    EnrichmentConfig    `yaml:"enrichment"`
+}
+
+// EnrichmentConfig represents the settings for background metadata enrichment.
+type EnrichmentConfig struct {
+	DebounceMS  int `yaml:"debounce_ms"`
+	Concurrency int `yaml:"concurrency"`
+	BatchSize   int `yaml:"batch_size"`
 }
 
 // NotificationsConfig represents the settings for system alerts.
@@ -31,6 +39,11 @@ func DefaultConfig() *Config {
 			SyncInterval: 60,
 			Reasons:      []string{"assign", "mention", "review_requested"},
 			IgnoreRepos:  []string{},
+		},
+		Enrichment: EnrichmentConfig{
+			DebounceMS:  250,
+			Concurrency: 1,
+			BatchSize:   20,
 		},
 	}
 }

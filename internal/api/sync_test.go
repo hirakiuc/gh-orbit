@@ -45,10 +45,11 @@ func TestSyncEngine_Sync(t *testing.T) {
 	userID := "user-1"
 	notifs := []GHNotification{
 		{ID: "1", Subject: struct {
-			Title string `json:"title"`
-			URL   string `json:"url"`
-			Type  string `json:"type"`
-		}{Title: "T1", URL: "U1", Type: "PullRequest"}, Reason: "mention", Repository: struct {
+			Title  string `json:"title"`
+			URL    string `json:"url"`
+			Type   string `json:"type"`
+			NodeID string `json:"node_id"`
+		}{Title: "T1", URL: "U1", Type: "PullRequest", NodeID: "N1"}, Reason: "mention", Repository: struct {
 			FullName string `json:"full_name"`
 		}{FullName: "R1"}, UpdatedAt: time.Now()},
 	}

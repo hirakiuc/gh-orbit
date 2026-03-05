@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
@@ -77,12 +78,45 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 			return nil, nil, remainingRateLimit, fmt.Errorf("API error: %s", resp.Status)
 		}
 
-		var page []GHNotification
+		var page []struct {
+			ID         string    `json:"id"`
+			Reason     string    `json:"reason"`
+			UpdatedAt  time.Time `json:"updated_at"`
+			Repository struct {
+				FullName string `json:"full_name"`
+			} `json:"repository"`
+			Subject struct {
+				Title  string `json:"title"`
+				URL    string `json:"url"`
+				Type   string `json:"type"`
+				NodeID string `json:"node_id"`
+			} `json:"subject"`
+		}
 		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 			return nil, nil, remainingRateLimit, err
 		}
 
-		allNotifications = append(allNotifications, page...)
+		for _, p := range page {
+			allNotifications = append(allNotifications, GHNotification{
+				ID: p.ID,
+				Reason: p.Reason,
+				UpdatedAt: p.UpdatedAt,
+				Repository: struct {
+					FullName string `json:"full_name"`
+				}{FullName: p.Repository.FullName},
+				Subject: struct {
+					Title  string `json:"title"`
+					URL    string `json:"url"`
+					Type   string `json:"type"`
+					NodeID string `json:"node_id"`
+				}{
+					Title:  p.Subject.Title,
+					URL:    p.Subject.URL,
+					Type:   p.Subject.Type,
+					NodeID: p.Subject.NodeID,
+				},
+			})
+		}
 
 		// Update metadata from headers
 		if strings.Contains(url, "notifications") {
