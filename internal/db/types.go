@@ -17,6 +17,7 @@ type Notification struct {
 	Body               string    `json:"body"`
 	AuthorLogin        string    `json:"author_login"`
 	ResourceState      string    `json:"resource_state"`
+	SubjectNodeID      string    `json:"subject_node_id"`
 	IsEnriched         bool      `json:"is_enriched"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

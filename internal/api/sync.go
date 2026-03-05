@@ -78,6 +78,7 @@ func (s *SyncEngine) Sync(userID string) (int, error) {
 				SubjectType:        n.Subject.Type,
 				Reason:             n.Reason,
 				RepositoryFullName: n.Repository.FullName,
+				SubjectNodeID:      n.Subject.NodeID,
 				HTMLURL:            "", // Will be enriched in later phases if needed
 				UpdatedAt:          n.UpdatedAt,
 			})

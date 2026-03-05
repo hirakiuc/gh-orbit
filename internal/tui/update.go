@@ -132,7 +132,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Trigger debounced enrichment if viewport might have changed
 	if m.state == StateList && m.listView.list.Index() != oldIndex {
-		cmds = append(cmds, tea.Tick(250*time.Millisecond, func(_ time.Time) tea.Msg {
+		duration := time.Duration(m.config.Enrichment.DebounceMS) * time.Millisecond
+		cmds = append(cmds, tea.Tick(duration, func(_ time.Time) tea.Msg {
 			return viewportEnrichMsg{}
 		}))
 	}
@@ -293,23 +294,21 @@ func (m *Model) enrichViewport() tea.Cmd {
 		return nil
 	}
 
-	// Sequential background enrichment through the Traffic Controller
+	// Bulk background enrichment using the Traffic Controller
 	return m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
-		n := toEnrich[0]
-		res, err := m.enrich.FetchDetail(n.SubjectURL, n.SubjectType)
+		// Use GraphQL Batching for efficient viewport enrichment
+		results := m.enrich.FetchHybridBatch(ctx, toEnrich)
+		if len(results) == 0 {
+			return nil
+		}
+
+		// Since multiple items were updated in DB, we trigger a refresh of the local list state.
+		// We could send multiple detailLoadedMsg, but a simple list reload is cleaner for bulk updates.
+		notifs, err := m.db.ListNotifications()
 		if err != nil {
-			return nil // Silently fail background enrichment
+			return errMsg{err: err}
 		}
-
-		_ = m.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
-
-		return detailLoadedMsg{
-			GitHubID:      n.GitHubID,
-			Body:          res.Body,
-			Author:        res.Author,
-			HTMLURL:       res.HTMLURL,
-			ResourceState: res.ResourceState,
-		}
+		return notificationsLoadedMsg(notifs)
 	})
 }
 

@@ -42,4 +42,7 @@ var migrations = []string{
 	 ALTER TABLE notifications ADD COLUMN author_login TEXT DEFAULT '';`,
 	// Version 5: Add resource_state for live status (Open, Merged, etc.)
 	`ALTER TABLE notifications ADD COLUMN resource_state TEXT DEFAULT '';`,
+	// Version 6: Add subject_node_id for GraphQL batch fetching
+	`ALTER TABLE notifications ADD COLUMN subject_node_id TEXT DEFAULT '';
+	 CREATE INDEX IF NOT EXISTS idx_notifications_subject_node_id ON notifications(subject_node_id);`,
 }
