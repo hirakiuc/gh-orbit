@@ -46,8 +46,17 @@ func (db *DB) UpsertMetadata(n Notification) error {
 }
 
 // EnrichNotification updates a notification with detailed content (body, author).
+// It also propagates the state to all notifications sharing the same subject_node_id for consistency.
 func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string) error {
-	_, err := db.Exec(`
+	// 1. Get the subject_node_id for this notification
+	var nodeID string
+	err := db.QueryRow("SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
+	}
+
+	// 2. Update the primary target
+	_, err = db.Exec(`
 		UPDATE notifications
 		SET body = ?,
 		    author_login = ?,
@@ -59,17 +68,37 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 	if err != nil {
 		return fmt.Errorf("failed to enrich notification: %w", err)
 	}
+
+	// 3. Propagate to peers sharing the same subject (visual continuity win!)
+	if nodeID != "" {
+		_, err = db.Exec(`
+			UPDATE notifications
+			SET resource_state = ?,
+			    body = CASE WHEN body = '' THEN ? ELSE body END,
+			    author_login = CASE WHEN author_login = '' THEN ? ELSE author_login END,
+			    is_enriched = CASE WHEN body != '' THEN TRUE ELSE is_enriched END
+			WHERE subject_node_id = ? AND github_id != ?
+		`, resourceState, body, author, nodeID, id)
+		if err != nil {
+			db.logger.Warn("failed to propagate enrichment to peers", "node_id", nodeID, "error", err)
+		}
+	}
+
 	return nil
 }
 
-// UpdateResourceStateByNodeID updates the live status of a resource using its GraphQL ID.
+// UpdateResourceStateByNodeID updates the live status of all resources sharing a GraphQL ID.
 func (db *DB) UpdateResourceStateByNodeID(nodeID, state string) error {
+	db.logger.Debug("db: updating resource state by node_id", "node_id", nodeID, "state", state)
 	_, err := db.Exec(`
 		UPDATE notifications
 		SET resource_state = ?
 		WHERE subject_node_id = ?
 	`, state, nodeID)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to update resource state by node_id: %w", err)
+	}
+	return nil
 }
 
 // UpdateSubjectNodeID specifically updates the GraphQL Global Node ID for a resource.
