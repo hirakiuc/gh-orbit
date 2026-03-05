@@ -121,3 +121,45 @@ func TestConditionalRequest(t *testing.T) {
 		t.Fatalf("Fetch failed: %v", err)
 	}
 }
+
+func TestETagSanitization(t *testing.T) {
+	// 1. Verify Fetcher ignores invalid ETags
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", `W/""`) // Corrupted header
+		_ = json.NewEncoder(w).Encode([]GHNotification{})
+	}))
+	defer ts.Close()
+
+	client := &Client{http: ts.Client(), baseURL: ts.URL + "/"}
+	fetcher := NewNotificationFetcher(client, slog.Default())
+	
+	meta := &db.SyncMeta{ETag: "old-etag"}
+	_, newMeta, _, _ := fetcher.FetchNotifications(meta)
+	
+	if newMeta.ETag == `W/""` {
+		t.Error("Fetcher should have ignored the invalid W/\"\" ETag")
+	}
+	if newMeta.ETag != "old-etag" {
+		t.Errorf("Fetcher should have preserved the old ETag, got %s", newMeta.ETag)
+	}
+
+	// 2. Verify SyncEngine self-heals
+	logger := slog.Default()
+	database, _ := db.OpenInMemory(logger)
+	defer func() { _ = database.Close() }()
+
+	userID := "user-1"
+	_ = database.UpdateSyncMeta(db.SyncMeta{
+		UserID: userID,
+		Key:    "notifications",
+		ETag:   `W/""`, // Seed with corrupted data
+	})
+
+	engine := NewSyncEngine(fetcher, database, nil, logger)
+	_, _ = engine.Sync(userID, true)
+
+	finalMeta, _ := database.GetSyncMeta(userID, "notifications")
+	if finalMeta.ETag == `W/""` {
+		t.Error("SyncEngine failed to self-heal the corrupted ETag in database")
+	}
+}

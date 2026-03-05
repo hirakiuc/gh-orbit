@@ -60,6 +60,14 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 		}
 	}
 
+	// 1. Self-Healing: Detect and clear corrupted ETags (e.g., W/"")
+	if meta.ETag == `W/""` {
+		if s.logger.Enabled(context.Background(), slog.LevelDebug) {
+			s.logger.Debug("sync: self-healing corrupted ETag", "sync_id", syncID, "etag", meta.ETag)
+		}
+		meta.ETag = ""
+	}
+
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
 		if s.logger.Enabled(context.Background(), slog.LevelDebug) {
