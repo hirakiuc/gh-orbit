@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"image/color"
 	"log/slog"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	_ "modernc.org/sqlite"
 )
@@ -27,18 +29,21 @@ func newTestModel(t *testing.T) *Model {
 	l := list.New([]list.Item{}, delegate, 80, 24)
 	
 	database := setupTestDB(t)
+	ctx := context.Background()
 	
 	m := &Model{
 		listView: ListModel{
 			list:     l,
 			delegate: delegate,
 		},
-		db:     database,
-		keys:   keys,
-		styles: styles,
-		ui:     NewUIController(styles),
-		logger: slog.Default(),
-		state:  StateList,
+		db:      database,
+		enrich:  api.NewEnrichmentEngine(ctx, nil, database, slog.Default()),
+		traffic: api.NewAPITrafficController(ctx, slog.Default()),
+		keys:    keys,
+		styles:  styles,
+		ui:      NewUIController(styles),
+		logger:  slog.Default(),
+		state:   StateList,
 	}
 	m.ui.SetSize(80, 24)
 	return m

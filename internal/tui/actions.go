@@ -253,7 +253,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 
 func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		res, err := m.enrich.FetchDetail(u, subjectType)
+		res, err := m.enrich.FetchDetail(ctx, u, subjectType)
 		if err != nil {
 			return errMsg{err: err}
 		}

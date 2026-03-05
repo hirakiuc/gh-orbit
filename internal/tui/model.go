@@ -75,7 +75,7 @@ type Model struct {
 	syncCounter  int
 }
 
-func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
+func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
 	styles := DefaultStyles(true) // Default to dark theme
 	keys := DefaultKeyMap()
 	delegate := newItemDelegate(styles, keys)
@@ -100,8 +100,8 @@ func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Co
 		db:       database,
 		client:   client,
 		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
-		enrich:   api.NewEnrichmentEngine(client, database, logger),
-		traffic:  api.NewAPITrafficController(logger),
+		enrich:   api.NewEnrichmentEngine(ctx, client, database, logger),
+		traffic:  api.NewAPITrafficController(ctx, logger),
 		ui:       NewUIController(styles),
 		config:   cfg,
 		logger:   logger,
@@ -165,7 +165,7 @@ func (m *Model) syncNotificationsWithForce(priority int, force bool) tea.Cmd {
 	}
 
 	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
-		remaining, err := m.sync.Sync(m.userID, force)
+		remaining, err := m.sync.Sync(ctx, m.userID, force)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -209,4 +209,8 @@ func (m *Model) tickClock() tea.Cmd {
 	return tea.Tick(30*time.Second, func(_ time.Time) tea.Msg {
 		return clockTickMsg{ID: id}
 	})
+}
+
+func (m *Model) Shutdown() {
+	m.traffic.Shutdown()
 }
