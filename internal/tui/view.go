@@ -109,8 +109,11 @@ func (m *Model) renderFooter() string {
 	lastSync := fmt.Sprintf("Last Sync: %s", humanize.Time(m.LastSyncAt))
 	lastSyncStr := m.styles.Help.Render(lastSync)
 
-	// 3. Quota Info (Optional/Subtle)
+	// 3. Quota Info (Subtle)
 	quotaStr := ""
+	if m.traffic != nil {
+		quotaStr = m.styles.Help.Render(fmt.Sprintf(" [%d]", m.traffic.Remaining()))
+	}
 
 	footer := lipgloss.JoinHorizontal(lipgloss.Bottom, syncStatus, lastSyncStr, quotaStr)
 

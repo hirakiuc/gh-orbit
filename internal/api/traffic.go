@@ -104,6 +104,13 @@ func (c *APITrafficController) UpdateRateLimit(remaining int) {
 	c.logger.Debug("traffic controller: updated rate limit", "remaining", remaining)
 }
 
+// Remaining returns the last known remaining rate limit.
+func (c *APITrafficController) Remaining() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.remainingRateLimit
+}
+
 // Submit wraps an API operation in a serialized, prioritized command.
 func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
