@@ -111,9 +111,6 @@ func (m *Model) renderFooter() string {
 
 	// 3. Quota Info (Optional/Subtle)
 	quotaStr := ""
-	if m.traffic != nil {
-		// quotaStr = fmt.Sprintf(" [%d]", m.traffic.Remaining())
-	}
 
 	footer := lipgloss.JoinHorizontal(lipgloss.Bottom, syncStatus, lastSyncStr, quotaStr)
 
