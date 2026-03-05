@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -61,7 +62,7 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
-		if s.logger.Enabled(nil, slog.LevelDebug) {
+		if s.logger.Enabled(context.Background(), slog.LevelDebug) {
 			s.logger.Debug("sync: skipping poll, interval not reached", 
 				"sync_id", syncID, 
 				"interval", meta.PollInterval,
@@ -70,7 +71,7 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 		return remaining, nil // Too soon to poll
 	}
 
-	if s.logger.Enabled(nil, slog.LevelDebug) {
+	if s.logger.Enabled(context.Background(), slog.LevelDebug) {
 		s.logger.Debug("sync: executing API fetch", 
 			"sync_id", syncID, 
 			"etag", meta.ETag, 
@@ -88,7 +89,7 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 
 	// If 304 Not Modified, notifications will be empty but newMeta might have updated PollInterval
 	if len(notifications) == 0 {
-		if s.logger.Enabled(nil, slog.LevelDebug) {
+		if s.logger.Enabled(context.Background(), slog.LevelDebug) {
 			s.logger.Debug("sync: no new notifications (304 or empty)", "sync_id", syncID)
 		}
 	} else {
