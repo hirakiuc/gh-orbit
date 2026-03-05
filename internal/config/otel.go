@@ -85,7 +85,7 @@ func resolveTracePath() (string, error) {
 		stateHome = filepath.Join(home, ".local", "state")
 	}
 
-	return filepath.Join(stateHome, "gh-orbit", "orbit.traces.json"), nil
+	return filepath.Clean(filepath.Join(stateHome, "gh-orbit", "orbit.traces.json")), nil
 }
 
 // GetTracer returns a tracer instance for the package.

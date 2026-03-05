@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -119,8 +120,22 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
-	// Ensure TUI is stopped before final resource cleanup
-	m.Shutdown()
+	// 5. Shutdown Sequence with Timeout Guard
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	done := make(chan struct{})
+	go func() {
+		m.Shutdown()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-shutdownCtx.Done():
+		logger.Warn("shutdown timeout reached, forcing exit")
+	}
 
 	return nil
 }
