@@ -128,13 +128,18 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 			})
 		}
 
-		// Update metadata from headers
-		if strings.Contains(url, "notifications") {
+		// Update metadata from headers ONLY on successful data fetch (200 OK)
+		if resp.StatusCode == http.StatusOK && strings.Contains(url, "notifications") {
 			if lm := resp.Header.Get("Last-Modified"); lm != "" {
 				newMeta.LastModified = lm
 			}
 			if et := resp.Header.Get("ETag"); et != "" {
-				newMeta.ETag = et
+				// Validate ETag: ignore empty weak ETags like W/""
+				if et != `W/""` {
+					newMeta.ETag = et
+				} else {
+					f.logger.Debug("ignoring invalid empty weak ETag", "etag", et)
+				}
 			}
 			if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
 				if interval, err := strconv.Atoi(pi); err == nil {
