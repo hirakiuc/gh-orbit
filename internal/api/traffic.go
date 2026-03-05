@@ -17,6 +17,7 @@ const (
 )
 
 type apiTask struct {
+	id       uint64
 	priority int
 	fn       func(ctx context.Context) tea.Msg
 	resp     chan tea.Msg
@@ -26,6 +27,8 @@ type apiTask struct {
 type APITrafficController struct {
 	logger *slog.Logger
 	mu     sync.Mutex
+
+	taskCounter uint64
 
 	// Channels for prioritized tasks
 	high chan *apiTask
@@ -70,6 +73,9 @@ func (c *APITrafficController) worker() {
 			}
 		}
 
+		if c.logger.Enabled(context.Background(), slog.LevelDebug) {
+			c.logger.Debug("traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
+		}
 		c.executeTask(task)
 	}
 }
@@ -82,12 +88,12 @@ func (c *APITrafficController) executeTask(t *apiTask) {
 	c.mu.Unlock()
 
 	if t.priority == PriorityEnrich && remaining < threshold {
-		c.logger.Warn("traffic controller: skipping enrichment due to low quota", "remaining", remaining)
+		c.logger.Warn("traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
 		t.resp <- nil
 		return
 	}
 
-	c.logger.Debug("traffic controller: executing task", "priority", t.priority)
+	c.logger.Debug("traffic controller: executing task", "task_id", t.id, "priority", t.priority)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -101,7 +107,9 @@ func (c *APITrafficController) UpdateRateLimit(remaining int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.remainingRateLimit = remaining
-	c.logger.Debug("traffic controller: updated rate limit", "remaining", remaining)
+	if c.logger.Enabled(context.Background(), slog.LevelDebug) {
+		c.logger.Debug("traffic controller: updated rate limit", "remaining", remaining)
+	}
 }
 
 // Remaining returns the last known remaining rate limit.
@@ -114,10 +122,20 @@ func (c *APITrafficController) Remaining() int {
 // Submit wraps an API operation in a serialized, prioritized command.
 func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
+		c.mu.Lock()
+		c.taskCounter++
+		id := c.taskCounter
+		c.mu.Unlock()
+
 		task := &apiTask{
+			id:       id,
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
+		}
+
+		if c.logger.Enabled(context.Background(), slog.LevelDebug) {
+			c.logger.Debug("traffic controller: task submitted", "task_id", id, "priority", priority)
 		}
 
 		switch priority {

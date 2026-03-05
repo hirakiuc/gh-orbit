@@ -42,9 +42,14 @@ func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *
 // FetchDetail retrieves detailed content for a notification, using cache if available.
 func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (EnrichmentResult, error) {
 	// Use singleflight to merge simultaneous requests for the same URL
-	res, err, _ := e.sf.Do(u, func() (interface{}, error) {
+	res, err, shared := e.sf.Do(u, func() (interface{}, error) {
 		return e.fetchDetailRaw(u, subjectType)
 	})
+
+	if shared && e.logger.Enabled(context.Background(), slog.LevelDebug) {
+		e.logger.Debug("enrichment: request merged via singleflight", "url", u)
+	}
+
 	if err != nil {
 		return EnrichmentResult{}, err
 	}
@@ -55,12 +60,16 @@ func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (Enrichm
 	e.mu.RLock()
 	if res, ok := e.cache[u]; ok {
 		e.mu.RUnlock()
-		e.logger.Debug("using cached notification detail", "url", u)
+		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+			e.logger.Debug("enrichment: cache hit", "url", u)
+		}
 		return res, nil
 	}
 	e.mu.RUnlock()
 
-	e.logger.Debug("fetching notification detail", "url", u, "type", subjectType)
+	if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+		e.logger.Debug("enrichment: cache miss, fetching from API", "url", u, "type", subjectType)
+	}
 
 	// Strip base URL if present to use with REST client
 	path := strings.TrimPrefix(u, e.client.BaseURL())
@@ -129,6 +138,10 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 		return nil
 	}
 
+	if e.logger.Enabled(ctx, slog.LevelDebug) {
+		e.logger.Debug("enrichment: starting hybrid batch fetch", "count", len(notifications))
+	}
+
 	results := make(map[string]EnrichmentResult)
 	
 	var knownIDs []string
@@ -168,9 +181,6 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 }
 
 func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]EnrichmentResult) {
-	// go-gh/v2 GQL Query uses a struct for the query or a string for the query
-	// Let's use a string for the query as it's easier for nodes().
-	
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
@@ -195,16 +205,18 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		} `json:"rateLimit"`
 	}
 
-	// Correct go-gh/v2 GQL signature:
-	// func (c *GQLClient) Do(query string, variables map[string]interface{}, response interface{}) error
-	// Wait, I saw 'Query' in go doc. Let me re-verify the signature.
 	err := e.client.GQL().Do(queryString, variables, &data)
 	if err != nil {
-		e.logger.Error("graphql batch fetch failed", "error", err)
+		e.logger.Error("enrichment: graphql batch fetch failed", "error", err)
 		return
 	}
 
-	e.logger.Debug("graphql batch fetch complete", "cost", data.RateLimit.Cost, "remaining", data.RateLimit.Remaining)
+	if e.logger.Enabled(ctx, slog.LevelDebug) {
+		e.logger.Debug("enrichment: graphql batch fetch complete", 
+			"cost", data.RateLimit.Cost, 
+			"remaining", data.RateLimit.Remaining,
+			"node_count", len(data.Nodes))
+	}
 
 	for _, node := range data.Nodes {
 		if node.ID == "" { continue }
