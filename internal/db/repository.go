@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // UpsertMetadata inserts or updates core notification metadata from API polling.
@@ -55,6 +56,8 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 		return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
 	}
 
+	now := time.Now()
+
 	// 2. Update the primary target
 	_, err = db.Exec(`
 		UPDATE notifications
@@ -62,9 +65,10 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 		    author_login = ?,
 		    html_url = COALESCE(NULLIF(?, ''), html_url),
 		    resource_state = ?,
-		    is_enriched = TRUE
+		    is_enriched = TRUE,
+		    enriched_at = ?
 		WHERE github_id = ?
-	`, body, author, htmlURL, resourceState, id)
+	`, body, author, htmlURL, resourceState, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to enrich notification: %w", err)
 	}
@@ -76,9 +80,10 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 			SET resource_state = ?,
 			    body = CASE WHEN body = '' THEN ? ELSE body END,
 			    author_login = CASE WHEN author_login = '' THEN ? ELSE author_login END,
-			    is_enriched = CASE WHEN body != '' THEN TRUE ELSE is_enriched END
+			    is_enriched = CASE WHEN body != '' THEN TRUE ELSE is_enriched END,
+			    enriched_at = ?
 			WHERE subject_node_id = ? AND github_id != ?
-		`, resourceState, body, author, nodeID, id)
+		`, resourceState, body, author, now, nodeID, id)
 		if err != nil {
 			db.logger.Warn("failed to propagate enrichment to peers", "node_id", nodeID, "error", err)
 		}
@@ -92,9 +97,10 @@ func (db *DB) UpdateResourceStateByNodeID(nodeID, state string) error {
 	db.logger.Debug("db: updating resource state by node_id", "node_id", nodeID, "state", state)
 	_, err := db.Exec(`
 		UPDATE notifications
-		SET resource_state = ?
+		SET resource_state = ?,
+		    enriched_at = ?
 		WHERE subject_node_id = ?
-	`, state, nodeID)
+	`, state, time.Now(), nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to update resource state by node_id: %w", err)
 	}
@@ -127,7 +133,7 @@ func baseNotificationSelect() string {
 		SELECT
 			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
 			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.subject_node_id, ''),
-			n.is_enriched, n.updated_at,
+			n.is_enriched, n.enriched_at, n.updated_at,
 			s.priority, s.status, s.is_read_locally
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
@@ -141,7 +147,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 	var ns NotificationWithState
 	err := row.Scan(
 		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
-		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.UpdatedAt,
+		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
 		&ns.Priority, &ns.Status, &ns.IsReadLocally,
 	)
 	if err == sql.ErrNoRows {
@@ -167,7 +173,7 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 		var ns NotificationWithState
 		err := rows.Scan(
 			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
-			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.UpdatedAt,
+			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
 			&ns.Priority, &ns.Status, &ns.IsReadLocally,
 		)
 		if err != nil {

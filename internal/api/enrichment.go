@@ -6,10 +6,18 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"golang.org/x/sync/singleflight"
+)
+
+const (
+	// StatusTTL is the duration for which a resource status (Open, Merged) is considered fresh.
+	StatusTTL = 2 * time.Minute
+	// ContentTTL is the duration for which the body content is considered fresh.
+	ContentTTL = 10 * time.Minute
 )
 
 // EnrichmentResult holds the fetched details for a notification.
@@ -18,6 +26,7 @@ type EnrichmentResult struct {
 	HTMLURL       string
 	Author        string
 	ResourceState string
+	FetchedAt     time.Time
 }
 
 // EnrichmentEngine handles fetching and caching of notification details.
@@ -31,31 +40,42 @@ type EnrichmentEngine struct {
 }
 
 func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
-	return &EnrichmentEngine{
+	e := &EnrichmentEngine{
 		client: client,
 		db:     database,
 		logger: logger,
 		cache:  make(map[string]EnrichmentResult),
 	}
+	
+	// Start background pruning worker
+	go e.pruningWorker(context.Background())
+	
+	return e
 }
 
-// FetchDetail retrieves detailed content for a notification, using cache if available.
+// FetchDetail retrieves detailed content for a notification, using cache if available and fresh.
 func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (EnrichmentResult, error) {
 	// 1. Semantic Cache Validation (Optimistic Read)
 	e.mu.RLock()
 	res, ok := e.cache[u]
 	e.mu.RUnlock()
 
-	if ok && res.ResourceState != "" {
-		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
-			e.logger.Debug("enrichment: cache hit (valid)", "url", u)
+	if ok {
+		age := time.Since(res.FetchedAt)
+		
+		// Tiered Validation
+		if age <= StatusTTL && res.ResourceState != "" {
+			if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+				e.logger.Debug("enrichment: cache hit (valid)", "url", u, "age", age)
+			}
+			return res, nil
 		}
-		return res, nil
-	}
 
-	if ok && res.ResourceState == "" {
-		if e.logger.Enabled(context.Background(), slog.LevelDebug) {
-			e.logger.Debug("enrichment: cache hit but missing state, forcing refresh", "url", u)
+		if age > StatusTTL && e.logger.Enabled(context.Background(), slog.LevelDebug) {
+			e.logger.Debug("enrichment: status expired, forcing refresh", 
+				"url", u, 
+				"age", fmt.Sprintf("%.0fs", age.Seconds()),
+				"threshold", fmt.Sprintf("%.0fs", StatusTTL.Seconds()))
 		}
 	}
 
@@ -105,9 +125,10 @@ func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (Enrichm
 	}
 
 	res := EnrichmentResult{
-		Body:    data.Body,
-		Author:  data.User.Login,
-		HTMLURL: data.HTMLURL,
+		Body:      data.Body,
+		Author:    data.User.Login,
+		HTMLURL:   data.HTMLURL,
+		FetchedAt: time.Now(),
 	}
 
 	// Calculate Resource State
@@ -249,8 +270,40 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			// Populate results for immediate TUI refresh
 			results[node.ID] = EnrichmentResult{
 				ResourceState: state,
+				FetchedAt:     time.Now(),
 			}
 		}
+	}
+}
+
+func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			e.pruneExpired()
+		}
+	}
+}
+
+func (e *EnrichmentEngine) pruneExpired() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	count := 0
+	for k, v := range e.cache {
+		if time.Since(v.FetchedAt) > ContentTTL {
+			delete(e.cache, k)
+			count++
+		}
+	}
+
+	if count > 0 && e.logger.Enabled(context.Background(), slog.LevelDebug) {
+		e.logger.Debug("enrichment: pruned expired cache entries", "count", count)
 	}
 }
 
