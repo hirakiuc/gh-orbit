@@ -12,10 +12,20 @@ import (
 var tokenRegex = regexp.MustCompile(`(ghp_|github_pat_|gho_|ghs_|ghr_)[a-zA-Z0-9]{36,}`)
 
 // SetupLogger initializes a structured slog logger with redaction and buffered file output.
-func SetupLogger() (*slog.Logger, func() error, error) {
+// It uses levelVar to allow dynamic, thread-safe log level updates.
+func SetupLogger(level *slog.LevelVar) (*slog.Logger, func() error, error) {
 	path, err := resolveLogPath()
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// 1. Log Rotation Guard (10MB)
+	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	if info, err := os.Stat(path); err == nil {
+		if info.Size() > 10*1024*1024 {
+			// Atomically truncate if too large
+			flags |= os.O_TRUNC
+		}
 	}
 
 	// Create parent directory with 0700 permissions
@@ -23,7 +33,7 @@ func SetupLogger() (*slog.Logger, func() error, error) {
 		return nil, nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304: Path is internally resolved following XDG specs
+	file, err := os.OpenFile(path, flags, 0o600) // #nosec G304: Path is internally resolved following XDG specs
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -33,7 +43,7 @@ func SetupLogger() (*slog.Logger, func() error, error) {
 
 	// Redacting handler options
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Value.Kind() == slog.KindString {
 				val := a.Value.String()

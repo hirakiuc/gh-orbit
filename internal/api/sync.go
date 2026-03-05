@@ -36,7 +36,12 @@ func (s *SyncEngine) Fetcher() Fetcher {
 // If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.
 func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
-	s.logger.Info("starting notification sync", "user_id", userID, "force", force)
+	syncID := time.Now().UnixNano()
+	s.logger.Info("starting notification sync", 
+		"user_id", userID, 
+		"force", force, 
+		"sync_id", syncID)
+	
 	metaKey := "notifications"
 	remaining := 5000 // Default
 
@@ -56,13 +61,25 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
-		s.logger.Debug("skipping sync, poll interval not reached", "interval", meta.PollInterval)
+		if s.logger.Enabled(nil, slog.LevelDebug) {
+			s.logger.Debug("sync: skipping poll, interval not reached", 
+				"sync_id", syncID, 
+				"interval", meta.PollInterval,
+				"last_sync", meta.LastSyncAt)
+		}
 		return remaining, nil // Too soon to poll
+	}
+
+	if s.logger.Enabled(nil, slog.LevelDebug) {
+		s.logger.Debug("sync: executing API fetch", 
+			"sync_id", syncID, 
+			"etag", meta.ETag, 
+			"last_modified", meta.LastModified)
 	}
 
 	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(meta)
 	if err != nil {
-		s.logger.Error("failed to fetch notifications", "error", err)
+		s.logger.Error("failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
 		_ = s.db.UpdateSyncMeta(*meta)
@@ -70,7 +87,15 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 	}
 
 	// If 304 Not Modified, notifications will be empty but newMeta might have updated PollInterval
-	if len(notifications) > 0 {
+	if len(notifications) == 0 {
+		if s.logger.Enabled(nil, slog.LevelDebug) {
+			s.logger.Debug("sync: no new notifications (304 or empty)", "sync_id", syncID)
+		}
+	} else {
+		s.logger.Info("sync: processing new notifications", 
+			"sync_id", syncID, 
+			"count", len(notifications))
+
 		for _, n := range notifications {
 			err := s.db.UpsertNotification(db.Notification{
 				GitHubID:           n.ID,
@@ -96,6 +121,6 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
-	s.logger.Info("notification sync complete", "user_id", userID)
+	s.logger.Info("notification sync complete", "user_id", userID, "sync_id", syncID)
 	return remaining, s.db.UpdateSyncMeta(*newMeta)
 }

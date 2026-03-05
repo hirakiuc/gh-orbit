@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
@@ -14,17 +15,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	verbose  bool
+	logLevel = &slog.LevelVar{} // Default is LevelInfo
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "gh-orbit",
 	Short: "gh-orbit is a GitHub CLI extension for TUI-based notification management",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if verbose {
+			logLevel.Set(slog.LevelDebug)
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return run()
 	},
 }
 
+func init() {
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")
+}
+
 func run() error {
-	// 0. Initialize Logger
-	logger, cleanup, err := config.SetupLogger()
+	// 0. Initialize Logger with dynamic level handle
+	logger, cleanup, err := config.SetupLogger(logLevel)
 	if err != nil {
 		return fmt.Errorf("error setting up logger: %w", err)
 	}
