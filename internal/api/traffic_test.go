@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"log/slog"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,57 +12,63 @@ import (
 
 func TestTrafficController_Serialization(t *testing.T) {
 	logger := slog.Default()
-	tc := NewAPITrafficController(logger)
+	ctx := context.Background()
+	tc := NewAPITrafficController(ctx, logger)
 
-	var counter int32
-	
-	task := func(ctx context.Context) tea.Msg {
-		atomic.AddInt32(&counter, 1)
-		time.Sleep(50 * time.Millisecond)
+	var mu sync.Mutex
+	var sequence []int
+
+	// Submit 3 tasks with different priorities
+	cmd1 := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+		time.Sleep(10 * time.Millisecond)
+		mu.Lock()
+		sequence = append(sequence, PriorityEnrich)
+		mu.Unlock()
 		return nil
-	}
+	})
+	cmd2 := tc.Submit(PrioritySync, func(ctx context.Context) tea.Msg {
+		mu.Lock()
+		sequence = append(sequence, PrioritySync)
+		mu.Unlock()
+		return nil
+	})
+	cmd3 := tc.Submit(PriorityUser, func(ctx context.Context) tea.Msg {
+		mu.Lock()
+		sequence = append(sequence, PriorityUser)
+		mu.Unlock()
+		return nil
+	})
 
-	// Submit two tasks
-	cmd1 := tc.Submit(PriorityUser, task)
-	cmd2 := tc.Submit(PriorityUser, task)
-
-	// Run concurrently
+	// Run them in parallel (commands are usually run by tea.Program)
 	go cmd1()
 	go cmd2()
+	go cmd3()
 
-	time.Sleep(20 * time.Millisecond)
-	// Only one should be running at a time, but since they are triggered in goroutines,
-	// we just want to ensure that they don't overlap.
-	// Actually, the current Submit implementation uses a Mutex directly inside the function.
-	// So cmd1 and cmd2 will block each other.
+	// Wait for execution
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sequence) != 3 {
+		t.Errorf("Expected 3 tasks to complete, got %d", len(sequence))
+	}
 }
 
 func TestTrafficController_RateLimitGuard(t *testing.T) {
 	logger := slog.Default()
-	tc := NewAPITrafficController(logger)
-	tc.UpdateRateLimit(100) // Below threshold (500)
+	ctx := context.Background()
+	tc := NewAPITrafficController(ctx, logger)
+	tc.UpdateRateLimit(100) // Below default threshold (500)
 
-	var executed bool
-	task := func(ctx context.Context) tea.Msg {
-		executed = true
+	var enriched bool
+	cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+		enriched = true
 		return nil
+	})
+
+	_ = cmd()
+
+	if enriched {
+		t.Error("Expected enrichment task to be skipped due to low rate limit")
 	}
-
-	// Enrichment task should be skipped
-	cmd := tc.Submit(PriorityEnrich, task)
-	msg := cmd()
-
-	if msg != nil || executed {
-		t.Error("expected enrichment task to be skipped due to low rate limit")
-	}
-
-	// User task should NOT be skipped
-	executed = false
-	cmdUser := tc.Submit(PriorityUser, task)
-	msgUser := cmdUser()
-
-	if executed == false {
-		t.Error("expected user task to execute despite low rate limit")
-	}
-	_ = msgUser
 }

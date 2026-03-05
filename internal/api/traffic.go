@@ -2,11 +2,15 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/config"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Priority levels
@@ -21,12 +25,14 @@ type apiTask struct {
 	priority int
 	fn       func(ctx context.Context) tea.Msg
 	resp     chan tea.Msg
+	ctx      context.Context // Trace-aware context
 }
 
 // APITrafficController ensures serialized, prioritized access to the GitHub API.
 type APITrafficController struct {
 	logger *slog.Logger
 	mu     sync.Mutex
+	wg     sync.WaitGroup
 
 	taskCounter uint64
 
@@ -40,7 +46,7 @@ type APITrafficController struct {
 	remainingRateLimit int
 }
 
-func NewAPITrafficController(logger *slog.Logger) *APITrafficController {
+func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	tc := &APITrafficController{
 		logger:             logger,
 		high:               make(chan *apiTask),
@@ -49,23 +55,32 @@ func NewAPITrafficController(logger *slog.Logger) *APITrafficController {
 		rateLimitThreshold: 500,
 		remainingRateLimit: 5000,
 	}
-	go tc.worker()
+	tc.wg.Add(1)
+	go tc.worker(ctx)
 	return tc
 }
 
-func (c *APITrafficController) worker() {
+func (c *APITrafficController) worker(ctx context.Context) {
+	defer c.wg.Done()
 	for {
 		var task *apiTask
 
-		// Nested select for genuine preemption
+		// Nested select for genuine preemption AND context awareness
 		select {
+		case <-ctx.Done():
+			c.logger.Debug("traffic controller: worker stopping (context canceled)")
+			return
 		case task = <-c.high:
 		default:
 			select {
+			case <-ctx.Done():
+				return
 			case task = <-c.high:
 			case task = <-c.med:
 			default:
 				select {
+				case <-ctx.Done():
+					return
 				case task = <-c.high:
 				case task = <-c.med:
 				case task = <-c.low:
@@ -73,7 +88,7 @@ func (c *APITrafficController) worker() {
 			}
 		}
 
-		if c.logger.Enabled(context.Background(), slog.LevelDebug) {
+		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.Debug("traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
 		}
 		c.executeTask(task)
@@ -81,6 +96,15 @@ func (c *APITrafficController) worker() {
 }
 
 func (c *APITrafficController) executeTask(t *apiTask) {
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(t.ctx, "traffic_controller.execute",
+		trace.WithAttributes(
+			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
+			attribute.Int("priority", t.priority),
+		),
+	)
+	defer span.End()
+
 	// Rate limit guard
 	c.mu.Lock()
 	remaining := c.remainingRateLimit
@@ -95,7 +119,7 @@ func (c *APITrafficController) executeTask(t *apiTask) {
 
 	c.logger.Debug("traffic controller: executing task", "task_id", t.id, "priority", t.priority)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	msg := t.fn(ctx)
@@ -119,6 +143,11 @@ func (c *APITrafficController) Remaining() int {
 	return c.remainingRateLimit
 }
 
+// Shutdown waits for the worker to finish processing.
+func (c *APITrafficController) Shutdown() {
+	c.wg.Wait()
+}
+
 // Submit wraps an API operation in a serialized, prioritized command.
 func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
@@ -132,9 +161,10 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
+			ctx:      context.Background(), // TUI context typically doesn't have traces, start fresh
 		}
 
-		if c.logger.Enabled(context.Background(), slog.LevelDebug) {
+		if c.logger.Enabled(task.ctx, slog.LevelDebug) {
 			c.logger.Debug("traffic controller: task submitted", "task_id", id, "priority", priority)
 		}
 

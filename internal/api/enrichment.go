@@ -9,7 +9,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -39,7 +42,7 @@ type EnrichmentEngine struct {
 	sf     singleflight.Group
 }
 
-func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(ctx context.Context, client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
 	e := &EnrichmentEngine{
 		client: client,
 		db:     database,
@@ -47,14 +50,23 @@ func NewEnrichmentEngine(client *Client, database *db.DB, logger *slog.Logger) *
 		cache:  make(map[string]EnrichmentResult),
 	}
 	
-	// Start background pruning worker
-	go e.pruningWorker(context.Background())
+	// Start background pruning worker with application context
+	go e.pruningWorker(ctx)
 	
 	return e
 }
 
 // FetchDetail retrieves detailed content for a notification, using cache if available and fresh.
-func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (EnrichmentResult, error) {
+func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error) {
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "enrichment.fetch_detail",
+		trace.WithAttributes(
+			attribute.String("url", u),
+			attribute.String("type", subjectType),
+		),
+	)
+	defer span.End()
+
 	// 1. Semantic Cache Validation (Optimistic Read)
 	e.mu.RLock()
 	res, ok := e.cache[u]
@@ -65,27 +77,30 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 		
 		// Tiered Validation
 		if age <= StatusTTL && res.ResourceState != "" {
-			if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+			if e.logger.Enabled(ctx, slog.LevelDebug) {
 				e.logger.Debug("enrichment: cache hit (valid)", "url", u, "age", age)
 			}
+			span.SetAttributes(attribute.Bool("cache_hit", true))
 			return res, nil
 		}
 
-		if age > StatusTTL && e.logger.Enabled(context.Background(), slog.LevelDebug) {
+		if age > StatusTTL {
 			e.logger.Debug("enrichment: status expired, forcing refresh", 
 				"url", u, 
 				"age", fmt.Sprintf("%.0fs", age.Seconds()),
 				"threshold", fmt.Sprintf("%.0fs", StatusTTL.Seconds()))
+			span.SetAttributes(attribute.String("cache_status", "expired"))
 		}
 	}
 
 	// 2. Use singleflight to merge simultaneous requests for the same URL
 	val, err, shared := e.sf.Do(u, func() (interface{}, error) {
-		return e.fetchDetailRaw(u, subjectType)
+		return e.fetchDetailRaw(ctx, u, subjectType)
 	})
 
-	if shared && e.logger.Enabled(context.Background(), slog.LevelDebug) {
+	if shared {
 		e.logger.Debug("enrichment: request merged via singleflight", "url", u)
+		span.SetAttributes(attribute.Bool("singleflight_merged", true))
 	}
 
 	if err != nil {
@@ -94,8 +109,12 @@ func (e *EnrichmentEngine) FetchDetail(u string, subjectType string) (Enrichment
 	return val.(EnrichmentResult), nil
 }
 
-func (e *EnrichmentEngine) fetchDetailRaw(u string, subjectType string) (EnrichmentResult, error) {
-	if e.logger.Enabled(context.Background(), slog.LevelDebug) {
+func (e *EnrichmentEngine) fetchDetailRaw(ctx context.Context, u string, subjectType string) (EnrichmentResult, error) {
+	tracer := config.GetTracer()
+	_, span := tracer.Start(ctx, "enrichment.api_fetch")
+	defer span.End()
+
+	if e.logger.Enabled(ctx, slog.LevelDebug) {
 		e.logger.Debug("enrichment: cache miss or invalid, fetching from API", "url", u, "type", subjectType)
 	}
 
@@ -170,6 +189,12 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 		return nil
 	}
 
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "enrichment.hybrid_batch",
+		trace.WithAttributes(attribute.Int("count", len(notifications))),
+	)
+	defer span.End()
+
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
 		e.logger.Debug("enrichment: starting hybrid batch fetch", "count", len(notifications))
 	}
@@ -200,7 +225,7 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 		default:
 			for _, n := range notifications {
 				if n.SubjectURL == u {
-					res, err := e.FetchDetail(u, n.SubjectType)
+					res, err := e.FetchDetail(ctx, u, n.SubjectType)
 					if err == nil {
 						results[n.GitHubID] = res
 						_ = e.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
@@ -215,6 +240,10 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 }
 
 func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]EnrichmentResult) {
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "enrichment.gql_batch")
+	defer span.End()
+
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
@@ -252,6 +281,11 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			"node_count", len(data.Nodes))
 	}
 
+	span.SetAttributes(
+		attribute.Int("gql.cost", data.RateLimit.Cost),
+		attribute.Int("gql.nodes", len(data.Nodes)),
+	)
+
 	for _, node := range data.Nodes {
 		if node.ID == "" { continue }
 		
@@ -283,6 +317,7 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			e.logger.Debug("enrichment: pruning worker stopping")
 			return
 		case <-ticker.C:
 			e.pruneExpired()
@@ -310,7 +345,8 @@ func (e *EnrichmentEngine) pruneExpired() {
 // GetEnrichmentCmd creates a Bubble Tea command to enrich a notification.
 func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		res, err := e.FetchDetail(u, subjectType)
+		ctx := context.Background()
+		res, err := e.FetchDetail(ctx, u, subjectType)
 		if err != nil {
 			return errorMsg(err)
 		}

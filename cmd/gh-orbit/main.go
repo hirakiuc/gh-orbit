@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -18,6 +21,7 @@ import (
 var (
 	verbose  bool
 	logLevel = &slog.LevelVar{} // Default is LevelInfo
+	version  = "dev"
 )
 
 var rootCmd = &cobra.Command{
@@ -30,7 +34,11 @@ var rootCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return run()
+		// Use signal.NotifyContext for modern Go signal handling
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		return run(ctx)
 	},
 }
 
@@ -38,13 +46,33 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")
 }
 
-func run() error {
+func run(ctx context.Context) error {
 	// 0. Initialize Logger with dynamic level handle
-	logger, cleanup, err := config.SetupLogger(logLevel)
+	logger, logCleanup, err := config.SetupLogger(logLevel)
 	if err != nil {
 		return fmt.Errorf("error setting up logger: %w", err)
 	}
-	defer func() { _ = cleanup() }()
+
+	// 0. Optional OpenTelemetry (Opt-in via --verbose)
+	var otelCleanup func()
+	if verbose {
+		_, otelCleanup, err = config.SetupOTel(ctx, version)
+		if err != nil {
+			logger.Warn("failed to initialize OpenTelemetry", "error", err)
+		}
+	}
+
+	// Define Cascading Cleanup Sequence
+	cleanup := func() {
+		// 1. Wait for background workers (via TUI model shutdown)
+		// 2. OTel Flush
+		if otelCleanup != nil {
+			otelCleanup()
+		}
+		// 3. Logger Flush
+		_ = logCleanup()
+	}
+	defer cleanup()
 
 	// 0. Check for gh CLI
 	if _, err := exec.LookPath("gh"); err != nil {
@@ -78,11 +106,21 @@ func run() error {
 	userID := strconv.FormatInt(user.ID, 10)
 
 	// 4. Start TUI
-	m := tui.NewModel(database, client, userID, cfg, logger)
+	m := tui.NewModel(ctx, database, client, userID, cfg, logger)
 	p := tea.NewProgram(&m)
+
+	// Background goroutine to handle context cancellation (Ctrl+C / SIGTERM)
+	go func() {
+		<-ctx.Done()
+		p.Quit()
+	}()
+
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
+
+	// Ensure TUI is stopped before final resource cleanup
+	m.Shutdown()
 
 	return nil
 }

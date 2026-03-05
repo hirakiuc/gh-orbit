@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -68,7 +69,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 	engine := NewSyncEngine(fetcher, database, nil, logger)
 
 	// 1. Initial Sync (Force=true)
-	if _, err := engine.Sync(userID, true); err != nil {
+	if _, err := engine.Sync(context.Background(), userID, true); err != nil {
 		t.Fatalf("Initial sync failed: %v", err)
 	}
 
@@ -80,7 +81,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 	// 2. Automated Sync too soon (Force=false)
 	fetcher.called = false
-	if _, err := engine.Sync(userID, false); err != nil {
+	if _, err := engine.Sync(context.Background(), userID, false); err != nil {
 		t.Fatalf("Second sync failed: %v", err)
 	}
 	if fetcher.called {
@@ -89,7 +90,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 	// 3. Forced Sync (Force=true)
 	fetcher.called = false
-	if _, err := engine.Sync(userID, true); err != nil {
+	if _, err := engine.Sync(context.Background(), userID, true); err != nil {
 		t.Fatalf("Forced sync failed: %v", err)
 	}
 	if !fetcher.called {
@@ -156,7 +157,7 @@ func TestETagSanitization(t *testing.T) {
 	})
 
 	engine := NewSyncEngine(fetcher, database, nil, logger)
-	_, _ = engine.Sync(userID, true)
+	_, _ = engine.Sync(context.Background(), userID, true)
 
 	finalMeta, _ := database.GetSyncMeta(userID, "notifications")
 	if finalMeta.ETag == `W/""` {
