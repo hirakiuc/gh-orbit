@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/charmbracelet/glamour"
 )
 
@@ -97,15 +98,28 @@ func (m *Model) renderTabs() string {
 
 func (m *Model) renderFooter() string {
 	spinner := m.ui.RenderSpinner()
-	footer := ""
-
+	
+	// 1. Sync Status / Spinner
+	syncStatus := ""
 	if spinner != "" {
-		footer = spinner + " Syncing... "
+		syncStatus = m.styles.Help.Render(spinner + " Syncing... ")
 	}
+
+	// 2. Last Sync Info
+	lastSync := fmt.Sprintf("Last Sync: %s", humanize.Time(m.LastSyncAt))
+	lastSyncStr := m.styles.Help.Render(lastSync)
+
+	// 3. Quota Info (Subtle)
+	quotaStr := ""
+	if m.traffic != nil {
+		quotaStr = m.styles.Help.Render(fmt.Sprintf(" [%d]", m.traffic.Remaining()))
+	}
+
+	footer := lipgloss.JoinHorizontal(lipgloss.Bottom, syncStatus, lastSyncStr, quotaStr)
 
 	// Priority: Error only (status is now toasts)
 	if m.err != nil {
-		footer += m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
+		footer += " " + m.styles.StatusError.Render(fmt.Sprintf(" Error: %v ", m.err))
 	}
 
 	return footer

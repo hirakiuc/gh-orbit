@@ -15,20 +15,22 @@ type Config struct {
 
 // NotificationsConfig represents the settings for system alerts.
 type NotificationsConfig struct {
-	Enabled     bool     `yaml:"enabled"`
-	Mute        bool     `yaml:"mute"`
-	Reasons     []string `yaml:"reasons"`
-	IgnoreRepos []string `yaml:"ignore_repos"`
+	Enabled      bool     `yaml:"enabled"`
+	Mute         bool     `yaml:"mute"`
+	SyncInterval int      `yaml:"sync_interval"`
+	Reasons      []string `yaml:"reasons"`
+	IgnoreRepos  []string `yaml:"ignore_repos"`
 }
 
 // DefaultConfig returns the default configuration values.
 func DefaultConfig() *Config {
 	return &Config{
 		Notifications: NotificationsConfig{
-			Enabled:     true,
-			Mute:        false,
-			Reasons:     []string{"assign", "mention", "review_requested"},
-			IgnoreRepos: []string{},
+			Enabled:      true,
+			Mute:         false,
+			SyncInterval: 60,
+			Reasons:      []string{"assign", "mention", "review_requested"},
+			IgnoreRepos:  []string{},
 		},
 	}
 }
