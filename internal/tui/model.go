@@ -70,6 +70,8 @@ type Model struct {
 	// Background Sync State
 	LastSyncAt   time.Time
 	PollInterval int
+	heartbeatID  uint64
+	clockID      uint64
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
@@ -129,11 +131,12 @@ func (m *Model) Init() tea.Cmd {
 type (
 	notificationsLoadedMsg []db.NotificationWithState
 	syncCompleteMsg        []db.NotificationWithState
+	enrichmentCompleteMsg  []db.NotificationWithState
 	actionCompleteMsg      struct{}
 	clearStatusMsg         struct{}
 	viewportEnrichMsg      struct{}
-	pollTickMsg            struct{}
-	clockTickMsg           struct{}
+	pollTickMsg            struct{ ID uint64 }
+	clockTickMsg           struct{ ID uint64 }
 	detailLoadedMsg        struct {
 		GitHubID      string
 		Body          string
@@ -155,6 +158,11 @@ func (m *Model) loadNotifications() tea.Cmd {
 }
 
 func (m *Model) syncNotifications(priority int) tea.Cmd {
+	// Increment heartbeatID on manual refresh to preempt any pending background ticks
+	if priority == api.PriorityUser {
+		m.heartbeatID++
+	}
+
 	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
 		force := (priority == api.PriorityUser)
 		remaining, err := m.sync.Sync(m.userID, force)
@@ -181,17 +189,24 @@ func (m *Model) syncNotifications(priority int) tea.Cmd {
 }
 
 func (m *Model) tickHeartbeat() tea.Cmd {
+	m.heartbeatID++
+	id := m.heartbeatID
+	
 	duration := time.Duration(m.PollInterval) * time.Second
 	if duration <= 0 {
 		duration = 60 * time.Second
 	}
+	
 	return tea.Tick(duration, func(_ time.Time) tea.Msg {
-		return pollTickMsg{}
+		return pollTickMsg{ID: id}
 	})
 }
 
 func (m *Model) tickClock() tea.Cmd {
+	m.clockID++
+	id := m.clockID
+	
 	return tea.Tick(30*time.Second, func(_ time.Time) tea.Msg {
-		return clockTickMsg{}
+		return clockTickMsg{ID: id}
 	})
 }

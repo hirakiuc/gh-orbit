@@ -48,9 +48,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case notificationsLoadedMsg:
 		m.allNotifications = msg
 		m.applyFilters()
-		// Auto-enrich visible items on load
+		// Start initial heartbeat and enrichment
 		cmds = append(cmds, m.enrichViewport())
-		// Start background heartbeat
 		cmds = append(cmds, m.tickHeartbeat())
 
 	case syncCompleteMsg:
@@ -58,21 +57,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.allNotifications = msg
 		m.LastSyncAt = time.Now()
 		m.applyFilters()
-		// Auto-enrich visible items after sync
-		cmds = append(cmds, m.enrichViewport())
 		// Schedule next heartbeat
 		cmds = append(cmds, m.tickHeartbeat())
 
+	case enrichmentCompleteMsg:
+		m.allNotifications = msg
+		m.applyFilters()
+		// No new heartbeat here - this breaks the recursive loop
+
 	case pollTickMsg:
-		if !m.ui.syncing {
-			cmds = append(cmds, m.syncNotifications(api.PrioritySync))
-		} else {
-			// If already syncing, skip this tick but schedule next
-			cmds = append(cmds, m.tickHeartbeat())
+		// Only process if ID matches current (Timer ID Tagging)
+		if msg.ID == m.heartbeatID {
+			if !m.ui.syncing {
+				cmds = append(cmds, m.syncNotifications(api.PrioritySync))
+			} else {
+				// If already busy, skip this poll but keep the pulse going
+				cmds = append(cmds, m.tickHeartbeat())
+			}
 		}
 
 	case clockTickMsg:
-		cmds = append(cmds, m.tickClock())
+		if msg.ID == m.clockID {
+			cmds = append(cmds, m.tickClock())
+		}
 
 	case viewportEnrichMsg:
 		cmds = append(cmds, m.enrichViewport())
@@ -303,12 +310,12 @@ func (m *Model) enrichViewport() tea.Cmd {
 		}
 
 		// Since multiple items were updated in DB, we trigger a refresh of the local list state.
-		// We could send multiple detailLoadedMsg, but a simple list reload is cleaner for bulk updates.
+		// We use the new enrichmentCompleteMsg to avoid recursive heartbeat storms.
 		notifs, err := m.db.ListNotifications()
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return notificationsLoadedMsg(notifs)
+		return enrichmentCompleteMsg(notifs)
 	})
 }
 
