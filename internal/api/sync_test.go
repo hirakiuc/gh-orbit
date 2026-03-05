@@ -31,7 +31,7 @@ type mockFetcher struct {
 	called bool
 }
 
-func (m *mockFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, int, error) {
+func (m *mockFetcher) FetchNotifications(meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
 	m.called = true
 	return m.notifs, m.meta, 5000, m.err
 }
@@ -116,7 +116,7 @@ func TestConditionalRequest(t *testing.T) {
 	fetcher := NewNotificationFetcher(client, slog.Default())
 	meta := &db.SyncMeta{ETag: "etag-123"}
 	
-	_, _, _, err := fetcher.FetchNotifications(meta)
+	_, _, _, err := fetcher.FetchNotifications(meta, false)
 	if err != nil {
 		t.Fatalf("Fetch failed: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestETagSanitization(t *testing.T) {
 	fetcher := NewNotificationFetcher(client, slog.Default())
 	
 	meta := &db.SyncMeta{ETag: "old-etag"}
-	_, newMeta, _, _ := fetcher.FetchNotifications(meta)
+	_, newMeta, _, _ := fetcher.FetchNotifications(meta, false)
 	
 	if newMeta.ETag == `W/""` {
 		t.Error("Fetcher should have ignored the invalid W/\"\" ETag")

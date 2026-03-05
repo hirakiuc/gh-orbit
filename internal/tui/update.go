@@ -69,12 +69,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Only process if ID matches current (Timer ID Tagging)
 		if msg.ID == m.heartbeatID {
 			if !m.ui.syncing {
-				cmds = append(cmds, m.syncNotifications(api.PrioritySync))
+				m.syncCounter++
+				// Every 5th background poll is a "Cold" refresh to ensure eventual consistency
+				force := (m.syncCounter%5 == 0)
+				cmds = append(cmds, m.syncNotificationsWithForce(api.PrioritySync, force))
 			} else {
-				// If already busy, skip this poll but keep the pulse going
+				// If already busy, skip this tick but keep the pulse going
 				cmds = append(cmds, m.tickHeartbeat())
 			}
 		}
+
 
 	case clockTickMsg:
 		if msg.ID == m.clockID {
@@ -190,7 +194,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(
 				m.ui.SetSyncing(true),
-				m.syncNotifications(api.PriorityUser),
+				m.syncNotificationsWithForce(api.PriorityUser, true), // Manual is always Cold
 			)
 		case key.Matches(msg, m.keys.ToggleDetail):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {

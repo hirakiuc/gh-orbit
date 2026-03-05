@@ -86,7 +86,7 @@ func (s *SyncEngine) Sync(userID string, force bool) (int, error) {
 			"last_modified", meta.LastModified)
 	}
 
-	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(meta)
+	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(meta, force)
 	if err != nil {
 		s.logger.Error("failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
