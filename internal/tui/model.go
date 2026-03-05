@@ -72,6 +72,7 @@ type Model struct {
 	PollInterval int
 	heartbeatID  uint64
 	clockID      uint64
+	syncCounter  int
 }
 
 func NewModel(database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
@@ -121,7 +122,7 @@ func (m *Model) Init() tea.Cmd {
 		tea.Batch(
 			tea.RequestBackgroundColor,
 			m.ui.SetSyncing(true),
-			m.syncNotifications(api.PriorityUser),
+			m.syncNotificationsWithForce(api.PriorityUser, true), // Initial is Cold
 			m.tickClock(), // Start UI clock
 		),
 	)
@@ -157,14 +158,13 @@ func (m *Model) loadNotifications() tea.Cmd {
 	}
 }
 
-func (m *Model) syncNotifications(priority int) tea.Cmd {
+func (m *Model) syncNotificationsWithForce(priority int, force bool) tea.Cmd {
 	// Increment heartbeatID on manual refresh to preempt any pending background ticks
 	if priority == api.PriorityUser {
 		m.heartbeatID++
 	}
 
 	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
-		force := (priority == api.PriorityUser)
 		remaining, err := m.sync.Sync(m.userID, force)
 		if err != nil {
 			return errMsg{err}

@@ -25,17 +25,16 @@ func NewNotificationFetcher(client *Client, logger *slog.Logger) *NotificationFe
 	}
 }
 
-func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotification, *db.SyncMeta, int, error) {
+func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
 	var allNotifications []GHNotification
 	newMeta := *meta
 	remainingRateLimit := 5000 // Default assume healthy
 
-	path := "notifications?per_page=100&all=true"
+	// True Cold Refresh: If force is true, we ignore all caching headers
+	useConditional := !force && (meta.LastModified != "" || meta.ETag != "")
 
-	// Use conditional requests if metadata is available
-	if meta.LastModified != "" || meta.ETag != "" {
-		path = "notifications?all=true"
-	}
+	// We always use all=true to ensure cross-device consistency
+	path := "notifications?per_page=100&all=true"
 
 	for path != "" {
 		url := path
@@ -43,8 +42,6 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 			url = f.client.BaseURL() + path
 		}
 
-		// Ensure all=true is present even if the 'next' URL from GitHub might omit it 
-		// (though usually GitHub preserves params in Link headers)
 		if !strings.Contains(url, "all=true") {
 			if strings.Contains(url, "?") {
 				url += "&all=true"
@@ -58,11 +55,14 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 			return nil, nil, remainingRateLimit, err
 		}
 
-		if meta.LastModified != "" {
-			req.Header.Set("If-Modified-Since", meta.LastModified)
-		}
-		if meta.ETag != "" {
-			req.Header.Set("If-None-Match", meta.ETag)
+		// Only apply conditional headers if NOT forcing a cold refresh
+		if useConditional {
+			if meta.LastModified != "" {
+				req.Header.Set("If-Modified-Since", meta.LastModified)
+			}
+			if meta.ETag != "" {
+				req.Header.Set("If-None-Match", meta.ETag)
+			}
 		}
 
 		resp, err := f.client.HTTP().Do(req) // #nosec G704: Trusted GitHub API URLs
@@ -71,7 +71,10 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 		}
 		defer func() { _ = resp.Body.Close() }()
 
-		f.logger.Debug("received API response", "status", resp.StatusCode, "url", url)
+		f.logger.Debug("received API response", 
+			"status", resp.StatusCode, 
+			"url", url, 
+			"force", force)
 
 		// Update rate limit info if available
 		if rl := resp.Header.Get("X-RateLimit-Remaining"); rl != "" {
@@ -81,6 +84,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 		}
 
 		if resp.StatusCode == http.StatusNotModified {
+			f.logger.Debug("sync: 304 Not Modified received", "url", url)
 			return nil, &newMeta, remainingRateLimit, nil
 		}
 
@@ -134,11 +138,8 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta) ([]GHNotific
 				newMeta.LastModified = lm
 			}
 			if et := resp.Header.Get("ETag"); et != "" {
-				// Validate ETag: ignore empty weak ETags like W/""
 				if et != `W/""` {
 					newMeta.ETag = et
-				} else {
-					f.logger.Debug("ignoring invalid empty weak ETag", "etag", et)
 				}
 			}
 			if pi := resp.Header.Get("X-Poll-Interval"); pi != "" {
