@@ -256,3 +256,37 @@ func (db *DB) UpdateSyncMeta(s SyncMeta) error {
 	`, s.UserID, s.Key, s.LastModified, s.ETag, s.PollInterval, s.LastSyncAt, s.LastError, s.LastErrorAt)
 	return err
 }
+
+// GetBridgeHealth retrieves the cached health status of the bridge.
+func (db *DB) GetBridgeHealth() (*BridgeHealth, error) {
+	row := db.QueryRow(`
+		SELECT status, os_version, binary_path, binary_version, updated_at
+		FROM bridge_health
+		WHERE id = 1
+	`)
+
+	var h BridgeHealth
+	err := row.Scan(&h.Status, &h.OSVersion, &h.BinaryPath, &h.BinaryVersion, &h.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
+// UpdateBridgeHealth updates the cached health status of the bridge.
+func (db *DB) UpdateBridgeHealth(h BridgeHealth) error {
+	_, err := db.Exec(`
+		INSERT INTO bridge_health (id, status, os_version, binary_path, binary_version, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			status = excluded.status,
+			os_version = excluded.os_version,
+			binary_path = excluded.binary_path,
+			binary_version = excluded.binary_version,
+			updated_at = excluded.updated_at
+	`, h.Status, h.OSVersion, h.BinaryPath, h.BinaryVersion, h.UpdatedAt)
+	return err
+}
