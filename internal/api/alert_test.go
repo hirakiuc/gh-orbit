@@ -38,7 +38,8 @@ func TestAlertService_Throttling(t *testing.T) {
 		config:         cfg,
 		db:             database,
 		logger:         logger,
-		notifier:       notifier,
+		native:         notifier,
+		fallback:       &mockNotifier{}, // Secondary mock
 		syncRepoCounts: make(map[string]int),
 	}
 
