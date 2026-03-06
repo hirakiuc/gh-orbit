@@ -20,6 +20,7 @@ type Notifier interface {
 	Notify(title, subtitle, body, url string, priority int) error
 	Shutdown()
 	Status() BridgeStatus
+	Warmup() // Proactive health check
 }
 
 // AlertService coordinates the logic for when and how to send system alerts.
@@ -45,14 +46,19 @@ func NewAlertService(ctx context.Context, cfg *config.Config, database *db.DB, l
 		db:             database,
 		logger:         logger,
 		native:         NewPlatformNotifier(ctx, logger),
-		fallback:       NewFallbackNotifier(ctx, logger),
+		fallback:       NewBeeepNotifier(logger),
 		syncRepoCounts: make(map[string]int),
 	}
 }
 
-// NewFallbackNotifier creates a guaranteed cross-platform notifier (beeep).
-func NewFallbackNotifier(ctx context.Context, logger *slog.Logger) Notifier {
-	return NewBeeepNotifier(logger)
+// Warmup proactively assesses the bridge health without firing an alert.
+func (a *AlertService) Warmup() {
+	if a.native != nil {
+		a.native.Warmup()
+	}
+	if a.fallback != nil {
+		a.fallback.Warmup()
+	}
 }
 
 // SyncStart prepares the service for a new synchronization cycle.
@@ -162,6 +168,9 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 	if runtime.GOOS != "darwin" {
 		return
 	}
+
+	// Ensure bridge is warmed up (probed) before checking status
+	a.Warmup()
 
 	// 1. Get current environment fingerprints
 	osVersion := "unknown"

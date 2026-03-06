@@ -90,3 +90,18 @@ Build a `gh` extension that consumes the GitHub Notifications API and structures
 
 * [GitHub REST API: Notifications](https://docs.github.com/en/rest/activity/notifications)
 * [GitHub CLI: Creating Extensions](https://docs.github.com/en/github-cli/github-cli/creating-github-cli-extensions)
+
+---
+
+## 9. Security & Platform Considerations
+
+### 9.1 macOS Native Integration
+
+`gh-orbit` uses a tiered approach to system notifications on macOS to balance rich features with system security:
+
+*   **Standalone Binary Mode**: Since extensions are typically distributed as standalone binaries, they lack the `.app` bundle structure required by macOS `UserNotifications`. 
+*   **Compatibility Shim (Masquerading)**: To enable native notifications from a raw binary, the extension employs a runtime shim that masquerades its process identifier as `com.apple.Terminal`. This allows the OS to correctly route and display alerts without requiring a full application bundle.
+*   **Ad-hoc Code Signing**: On macOS 15 (Sequoia) and later, the OS strictly enforces process identity. The `gh-orbit` build process automatically applies an **ad-hoc signature** (`codesign -s -`) to the binary. This is a minimum security requirement for the system to trust the masqueraded identifier.
+*   **Tiered Fallback**: If the native bridge is unavailable or restricted by system policy, `gh-orbit` automatically falls back to:
+    1.  **AppleScript (`osascript`)**: A secure, asynchronous method for displaying system banners.
+    2.  **Cross-Platform Notifier (`beeep`)**: A stable legacy fallback.

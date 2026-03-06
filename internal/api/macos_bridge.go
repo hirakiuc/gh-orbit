@@ -71,6 +71,8 @@ var (
 		sel_content = sel_registerName("content")
 		sel_userInfo = sel_registerName("userInfo")
 		sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
+		sel_mainBundle = sel_registerName("mainBundle")
+		sel_bundleIdentifier = sel_registerName("bundleIdentifier")
 
 		return frameworks{libobjc: objc, libUN: un}, nil
 	})
@@ -110,6 +112,8 @@ var (
 	//nolint:unused
 	sel_userInfo                           uintptr
 	sel_stringWithUTF8String               uintptr
+	sel_mainBundle                         uintptr
+	sel_bundleIdentifier                   uintptr
 
 	// ABI-Safe Explicit Signatures for common Objective-C calls
 	msgSend_id_void func(obj uintptr, sel uintptr) uintptr
@@ -153,6 +157,27 @@ func ProbeBridge() []BridgeProbe {
 		return probes
 	}
 
+	// Bundle Check
+	bundleCls := objc_getClass("NSBundle")
+	bundle, bErr := safeMsgSend0(bundleCls, sel_mainBundle)
+	hasBundle := (bErr == nil && bundle != 0)
+	
+	var bundleID string
+	if hasBundle {
+		bid, idErr := safeMsgSend0(bundle, sel_bundleIdentifier)
+		if idErr == nil && bid != 0 {
+			// We can't easily convert back to Go string here without more helpers, 
+			// but existence is enough for the probe.
+			bundleID = "present"
+		}
+	}
+
+	probes = append(probes, BridgeProbe{
+		Name:    "Application Bundle Identity",
+		Passed:  bundleID != "",
+		Message: func() string { if bundleID == "" { return "Raw binary (no CFBundleIdentifier)" }; return "OK" }(),
+	})
+
 	classes := []string{
 		"NSString", "NSBundle", "NSObject", "NSDictionary",
 		"UNMutableNotificationContent", "UNNotificationRequest", "UNUserNotificationCenter",
@@ -170,18 +195,18 @@ func ProbeBridge() []BridgeProbe {
 }
 
 // nsString converts a Go string to an Objective-C NSString safely.
-func nsString(s string) uintptr {
+func nsString(s string) (uintptr, error) {
 	f, err := getFrameworks()
 	if err != nil && f.libobjc == 0 {
-		return 0
+		return 0, err
 	}
 	
 	cls := objc_getClass("NSString")
 	if cls == 0 || sel_stringWithUTF8String == 0 {
-		return 0
+		return 0, errors.New("NSString or selector not available")
 	}
 	// #nosec G103 -- Required for purego Objective-C interop
-	return msgSend_id_id(cls, sel_stringWithUTF8String, uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0]))))
+	return msgSend_id_id(cls, sel_stringWithUTF8String, uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0])))), nil
 }
 
 // safeMsgSend0 verifies pointers before calling [obj sel]
