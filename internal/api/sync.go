@@ -159,14 +159,16 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 						_ = s.alerts.Notify(n)
 					}
 				}
-				// Even if we didn't fire a system alert (e.g. initial baseline),
-				// we mark it as "processed" for alerting purposes.
+				// Mark as "processed" even if alert failed (to prevent infinite retry storm)
 				newlyDiscoveredIDs = append(newlyDiscoveredIDs, n.ID)
 			}
 		}
 
 		// Batch mark as notified to preserve baseline state
 		if len(newlyDiscoveredIDs) > 0 {
+			if s.logger.Enabled(ctx, slog.LevelDebug) {
+				s.logger.Debug("sync: marking notifications as notified", "count", len(newlyDiscoveredIDs))
+			}
 			if err := s.db.MarkNotifiedBatch(newlyDiscoveredIDs); err != nil {
 				s.logger.Error("failed to mark notifications as notified", "error", err)
 			}
