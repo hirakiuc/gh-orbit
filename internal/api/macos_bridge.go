@@ -40,6 +40,7 @@ var (
 	sel_request                            uintptr
 	sel_content                            uintptr
 	sel_userInfo                           uintptr
+	sel_stringWithUTF8String               uintptr
 
 	// ABI-Safe Explicit Signatures for common Objective-C calls
 	// We register these with explicit types to ensure ARM64 register stability.
@@ -110,12 +111,13 @@ func init() {
 	sel_request = sel_registerName("request")
 	sel_content = sel_registerName("content")
 	sel_userInfo = sel_registerName("userInfo")
+	sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
 }
 
 // nsString converts a Go string to an Objective-C NSString
 func nsString(s string) uintptr {
 	cls := objc_getClass("NSString")
 	// #nosec G103 -- Required for purego Objective-C interop
-	str := msgSend_id_id(cls, sel_registerName("stringWithUTF8String:"), uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0]))))
+	str := msgSend_id_id(cls, sel_stringWithUTF8String, uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0]))))
 	return str
 }
