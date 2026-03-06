@@ -5,13 +5,16 @@ package api
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 )
 
 var (
-	libobjc uintptr
+	frameworksOnce sync.Once
+	libobjc        uintptr
+	libUN          uintptr
 	
 	objc_getClass     func(name string) uintptr
 	sel_registerName func(name string) uintptr
@@ -58,54 +61,67 @@ var (
 	msgSend_void_uint_id func(obj uintptr, sel uintptr, options uintptr, handler uintptr)
 )
 
-func init() {
+const (
+	pathLibObjC = "/usr/lib/libobjc.A.dylib"
+	pathLibUN   = "/System/Library/Frameworks/UserNotifications.framework/UserNotifications"
+)
+
+// LoadFrameworks ensures the required system libraries are mapped into memory.
+func LoadFrameworks() error {
 	var err error
-	libobjc, err = purego.Dlopen("/usr/lib/libobjc.A.dylib", purego.RTLD_GLOBAL)
-	if err != nil {
-		return
-	}
+	frameworksOnce.Do(func() {
+		libobjc, err = purego.Dlopen(pathLibObjC, purego.RTLD_GLOBAL)
+		if err != nil {
+			err = fmt.Errorf("failed to load %s: %w", pathLibObjC, err)
+			return
+		}
 
-	purego.RegisterLibFunc(&objc_getClass, libobjc, "objc_getClass")
-	purego.RegisterLibFunc(&sel_registerName, libobjc, "sel_registerName")
-	
-	purego.RegisterLibFunc(&objc_allocateClassPair, libobjc, "objc_allocateClassPair")
-	purego.RegisterLibFunc(&objc_registerClassPair, libobjc, "objc_registerClassPair")
-	purego.RegisterLibFunc(&class_addMethod, libobjc, "class_addMethod")
-	purego.RegisterLibFunc(&class_replaceMethod, libobjc, "class_replaceMethod")
-	
-	objc_msgSend, err = purego.Dlsym(libobjc, "objc_msgSend")
-	if err != nil {
-		return
-	}
+		libUN, _ = purego.Dlopen(pathLibUN, purego.RTLD_GLOBAL)
+		// We don't return error for UN yet, as it's handled by ProbeBridge/StatusBroken
 
-	// Register ABI-Safe Helpers (All mapped to objc_msgSend but with Go-defined signatures)
-	purego.RegisterLibFunc(&msgSend_id_void, libobjc, "objc_msgSend")
-	purego.RegisterLibFunc(&msgSend_id_id, libobjc, "objc_msgSend")
-	purego.RegisterLibFunc(&msgSend_id_id_id, libobjc, "objc_msgSend")
-	purego.RegisterLibFunc(&msgSend_id_id_id_id, libobjc, "objc_msgSend")
-	purego.RegisterLibFunc(&msgSend_void_id, libobjc, "objc_msgSend")
-	purego.RegisterLibFunc(&msgSend_void_uint_id, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&objc_getClass, libobjc, "objc_getClass")
+		purego.RegisterLibFunc(&sel_registerName, libobjc, "sel_registerName")
+		purego.RegisterLibFunc(&objc_allocateClassPair, libobjc, "objc_allocateClassPair")
+		purego.RegisterLibFunc(&objc_registerClassPair, libobjc, "objc_registerClassPair")
+		purego.RegisterLibFunc(&class_addMethod, libobjc, "class_addMethod")
+		purego.RegisterLibFunc(&class_replaceMethod, libobjc, "class_replaceMethod")
+		
+		objc_msgSend, _ = purego.Dlsym(libobjc, "objc_msgSend")
 
-	// Cache common selectors
-	sel_new = sel_registerName("new")
-	sel_setTitle = sel_registerName("setTitle:")
-	sel_setSubtitle = sel_registerName("setSubtitle:")
-	sel_setBody = sel_registerName("setBody:")
-	sel_setThreadIdentifier = sel_registerName("setThreadIdentifier:")
-	sel_setUserInfo = sel_registerName("setUserInfo:")
-	sel_setInterruptionLevel = sel_registerName("setInterruptionLevel:")
-	sel_setDelegate = sel_registerName("setDelegate:")
-	sel_currentNotificationCenter = sel_registerName("currentNotificationCenter")
-	sel_requestWithIdentifierContentTrigger = sel_registerName("requestWithIdentifier:content:trigger:")
-	sel_addNotificationRequest = sel_registerName("addNotificationRequest:withCompletionHandler:")
-	sel_requestAuthorization = sel_registerName("requestAuthorizationWithOptions:completionHandler:")
-	sel_dictionaryWithObjectForKey = sel_registerName("dictionaryWithObject:forKey:")
-	sel_objectForKey = sel_registerName("objectForKey:")
-	sel_notification = sel_registerName("notification")
-	sel_request = sel_registerName("request")
-	sel_content = sel_registerName("content")
-	sel_userInfo = sel_registerName("userInfo")
-	sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
+		// Register ABI-Safe Helpers (All mapped to objc_msgSend but with Go-defined signatures)
+		purego.RegisterLibFunc(&msgSend_id_void, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSend_id_id, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSend_id_id_id, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSend_id_id_id_id, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSend_void_id, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSend_void_uint_id, libobjc, "objc_msgSend")
+
+		// Cache common selectors
+		sel_new = sel_registerName("new")
+		sel_setTitle = sel_registerName("setTitle:")
+		sel_setSubtitle = sel_registerName("setSubtitle:")
+		sel_setBody = sel_registerName("setBody:")
+		sel_setThreadIdentifier = sel_registerName("setThreadIdentifier:")
+		sel_setUserInfo = sel_registerName("setUserInfo:")
+		sel_setInterruptionLevel = sel_registerName("setInterruptionLevel:")
+		sel_setDelegate = sel_registerName("setDelegate:")
+		sel_currentNotificationCenter = sel_registerName("currentNotificationCenter")
+		sel_requestWithIdentifierContentTrigger = sel_registerName("requestWithIdentifier:content:trigger:")
+		sel_addNotificationRequest = sel_registerName("addNotificationRequest:withCompletionHandler:")
+		sel_requestAuthorization = sel_registerName("requestAuthorizationWithOptions:completionHandler:")
+		sel_dictionaryWithObjectForKey = sel_registerName("dictionaryWithObject:forKey:")
+		sel_objectForKey = sel_registerName("objectForKey:")
+		sel_notification = sel_registerName("notification")
+		sel_request = sel_registerName("request")
+		sel_content = sel_registerName("content")
+		sel_userInfo = sel_registerName("userInfo")
+		sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
+	})
+	return err
+}
+
+func init() {
+	_ = LoadFrameworks()
 }
 
 // BridgeProbe represents the result of a single bridge diagnostic check.
@@ -117,7 +133,18 @@ type BridgeProbe struct {
 
 // ProbeBridge deep-probes the Objective-C runtime to ensure compatibility.
 func ProbeBridge() []BridgeProbe {
+	_ = LoadFrameworks()
+	
 	var probes []BridgeProbe
+
+	probes = append(probes, BridgeProbe{
+		Name:   "Framework: libobjc",
+		Passed: libobjc != 0,
+	})
+	probes = append(probes, BridgeProbe{
+		Name:   "Framework: UserNotifications",
+		Passed: libUN != 0,
+	})
 
 	classes := []string{
 		"NSString", "NSBundle", "NSObject", "NSDictionary",
@@ -137,6 +164,8 @@ func ProbeBridge() []BridgeProbe {
 
 // nsString converts a Go string to an Objective-C NSString safely.
 func nsString(s string) uintptr {
+	if LoadFrameworks() != nil { return 0 }
+	
 	cls := objc_getClass("NSString")
 	if cls == 0 || sel_stringWithUTF8String == 0 {
 		return 0
