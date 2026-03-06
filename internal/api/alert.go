@@ -73,7 +73,7 @@ func (a *AlertService) SyncStart() {
 	a.isInitializing = (err == nil && len(notifs) == 0)
 
 	if a.isInitializing {
-		a.logger.Info("alert service: silent initialization baseline active")
+		a.logger.InfoContext(context.Background(), "alert service: silent initialization baseline active")
 	}
 }
 
@@ -109,6 +109,11 @@ func (a *AlertService) Notify(n GHNotification) error {
 	subtitle := n.Repository.FullName
 	body := fmt.Sprintf("Reason: %s", n.Reason)
 	importance := a.calculateImportance(n)
+
+	a.logger.DebugContext(context.Background(), "sending system alert",
+		"title", title,
+		"importance", importance,
+	)
 
 	return a.getNotifier().Notify(title, subtitle, body, "", importance)
 }
@@ -169,6 +174,8 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 		return
 	}
 
+	ctx := context.Background()
+
 	// Ensure bridge is warmed up (probed) before checking status
 	a.Warmup()
 
@@ -184,7 +191,7 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 	cached, err := a.db.GetBridgeHealth()
 	if err == nil && cached != nil {
 		if cached.OSVersion == osVersion && cached.BinaryPath == execPath && cached.BinaryVersion == version {
-			a.logger.Debug("alert service: using cached bridge status", "status", cached.Status)
+			a.logger.DebugContext(ctx, "alert service: using cached bridge status", "status", cached.Status)
 			return
 		}
 	}
@@ -213,5 +220,5 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 		UpdatedAt:     time.Now(),
 	})
 
-	a.logger.Info("alert service: bridge probe complete", "status", status)
+	a.logger.InfoContext(ctx, "alert service: bridge probe complete", "status", status)
 }

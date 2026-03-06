@@ -109,7 +109,7 @@ func (m *macosNotifier) setStatus(s BridgeStatus) {
 	m.status = s
 }
 
-func (m *macosNotifier) checkBundle() error {
+func (m *macosNotifier) checkBundle(ctx context.Context) error {
 	if _, err := getFrameworks(); err != nil {
 		return err
 	}
@@ -138,28 +138,28 @@ func (m *macosNotifier) worker(ctx context.Context) {
 		}
 		
 		// 1. Mandatory Bundle Check (Prevents NSInternalInconsistencyException)
-		if err := m.checkBundle(); err != nil {
-			m.logger.Warn("native bridge unsupported: running as standalone binary. using fallbacks.", "error", err)
+		if err := m.checkBundle(ctx); err != nil {
+			m.logger.WarnContext(ctx, "native bridge unsupported: running as standalone binary. using fallbacks.", "error", err)
 			m.setStatus(StatusUnsupported)
 			return
 		}
 
 		// 2. Framework Loading (Registration happens inside OnceValues)
 		if _, err := getFrameworks(); err != nil {
-			m.logger.Warn("failed to load system frameworks", "error", err)
+			m.logger.WarnContext(ctx, "failed to load system frameworks", "error", err)
 			m.setStatus(StatusBroken)
 			return
 		}
 		
 		m.swizzleBundleID()
-		m.setupDelegate()
+		m.setupDelegate(ctx)
 		m.requestAuth()
 		m.setStatus(StatusHealthy)
 	})
 
 	// 3. Fail-Fast: If initialization failed, stop the worker goroutine immediately.
 	if m.Status() != StatusHealthy {
-		m.logger.Debug("macos native notifier worker exiting (unsupported environment)")
+		m.logger.DebugContext(ctx, "macos native notifier worker exiting (unsupported environment)")
 		return
 	}
 
@@ -174,7 +174,7 @@ func (m *macosNotifier) worker(ctx context.Context) {
 
 			err := m.deliver(ctx, req)
 			if err != nil {
-				m.logger.Warn("native delivery failed, attempting osascript fallback", "error", err)
+				m.logger.WarnContext(ctx, "native delivery failed, attempting osascript fallback", "error", err)
 				m.deliverWithAppleScript(ctx, req)
 			}
 		}
@@ -183,7 +183,7 @@ func (m *macosNotifier) worker(ctx context.Context) {
 
 func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 	tracer := config.GetTracer()
-	_, span := tracer.Start(ctx, "macos.notify_deliver")
+	ctx, span := tracer.Start(ctx, "macos.notify_deliver")
 	defer span.End()
 
 	// 1. Create content safely
@@ -196,7 +196,7 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 	b, bErr := nsString(req.body)
 
 	if tErr != nil || sErr != nil || bErr != nil {
-		m.logger.Warn("failed to convert notification strings to NSString", "title_err", tErr, "body_err", bErr)
+		m.logger.WarnContext(ctx, "failed to convert notification strings to NSString", "title_err", tErr, "body_err", bErr)
 	}
 	
 	_ = safeMsgSendVoid1(content, sel_setTitle, t)
@@ -249,7 +249,7 @@ func escapeAppleScript(s string) string {
 }
 
 func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertRequest) {
-	m.logger.Debug("delivering notification via osascript fallback")
+	m.logger.DebugContext(ctx, "delivering notification via osascript fallback")
 	
 	script := fmt.Sprintf(
 		"display notification \"%s\" with title \"%s\" subtitle \"%s\"",
@@ -268,7 +268,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		
 		if err := cmd.Run(); err != nil {
-			m.logger.Warn("osascript fallback failed", "error", err)
+			m.logger.WarnContext(ctx, "osascript fallback failed", "error", err)
 		}
 	}()
 }
@@ -286,7 +286,7 @@ func (m *macosNotifier) swizzleBundleID() {
 	class_replaceMethod(bundleCls, sel_registerName("bundleIdentifier"), bundleIDCallback, "@@:")
 }
 
-func (m *macosNotifier) setupDelegate() {
+func (m *macosNotifier) setupDelegate(ctx context.Context) {
 	super := objc_getClass("NSObject")
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
 	
@@ -303,6 +303,8 @@ func (m *macosNotifier) setupDelegate() {
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
 	msgSend_void_id(center, sel_setDelegate, delegateInstance)
+	
+	m.logger.DebugContext(ctx, "native notification delegate initialized")
 }
 
 func (m *macosNotifier) requestAuth() {

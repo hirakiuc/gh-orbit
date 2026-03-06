@@ -70,7 +70,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	defer span.End()
 
 	syncID := time.Now().UnixNano()
-	s.logger.Info("starting notification sync", 
+	s.logger.InfoContext(ctx, "starting notification sync", 
 		"user_id", userID, 
 		"force", force, 
 		"sync_id", syncID)
@@ -95,7 +95,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	// 1. Self-Healing: Detect and clear corrupted ETags (e.g., W/"")
 	if meta.ETag == `W/""` {
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			s.logger.Debug("sync: self-healing corrupted ETag", "sync_id", syncID, "etag", meta.ETag)
+			s.logger.DebugContext(ctx, "sync: self-healing corrupted ETag", "sync_id", syncID, "etag", meta.ETag)
 		}
 		meta.ETag = ""
 	}
@@ -103,7 +103,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			s.logger.Debug("sync: skipping poll, interval not reached", 
+			s.logger.DebugContext(ctx, "sync: skipping poll, interval not reached", 
 				"sync_id", syncID, 
 				"interval", meta.PollInterval,
 				"last_sync", meta.LastSyncAt)
@@ -112,7 +112,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	}
 
 	if s.logger.Enabled(ctx, slog.LevelDebug) {
-		s.logger.Debug("sync: executing API fetch", 
+		s.logger.DebugContext(ctx, "sync: executing API fetch", 
 			"sync_id", syncID, 
 			"etag", meta.ETag, 
 			"last_modified", meta.LastModified)
@@ -120,7 +120,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 
 	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(ctx, meta, force)
 	if err != nil {
-		s.logger.Error("failed to fetch notifications", "sync_id", syncID, "error", err)
+		s.logger.ErrorContext(ctx, "failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
 		_ = s.db.UpdateSyncMeta(*meta)
@@ -132,10 +132,10 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	// If 304 Not Modified, notifications will be empty but newMeta might have updated PollInterval
 	if len(notifications) == 0 {
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			s.logger.Debug("sync: no new notifications (304 or empty)", "sync_id", syncID)
+			s.logger.DebugContext(ctx, "sync: no new notifications (304 or empty)", "sync_id", syncID)
 		}
 	} else {
-		s.logger.Info("sync: processing new notifications", 
+		s.logger.InfoContext(ctx, "sync: processing new notifications", 
 			"sync_id", syncID, 
 			"count", len(notifications))
 
@@ -175,16 +175,16 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 		// Batch mark as notified to preserve baseline state
 		if len(newlyDiscoveredIDs) > 0 {
 			if s.logger.Enabled(ctx, slog.LevelDebug) {
-				s.logger.Debug("sync: marking notifications as notified", "count", len(newlyDiscoveredIDs))
+				s.logger.DebugContext(ctx, "sync: marking notifications as notified", "count", len(newlyDiscoveredIDs))
 			}
 			if err := s.db.MarkNotifiedBatch(newlyDiscoveredIDs); err != nil {
-				s.logger.Error("failed to mark notifications as notified", "error", err)
+				s.logger.ErrorContext(ctx, "failed to mark notifications as notified", "error", err)
 			}
 		}
 	}
 
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
-	s.logger.Info("notification sync complete", "user_id", userID, "sync_id", syncID)
+	s.logger.InfoContext(ctx, "notification sync complete", "user_id", userID, "sync_id", syncID)
 	return remaining, s.db.UpdateSyncMeta(*newMeta)
 }

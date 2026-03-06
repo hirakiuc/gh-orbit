@@ -62,7 +62,7 @@ func (m *Model) ViewItem(i item) tea.Cmd {
 
 // OpenBrowser opens the given URL in the default browser.
 func (m *Model) OpenBrowser(url string) tea.Cmd {
-	m.logger.Info("opening browser", "url", url)
+	m.logger.InfoContext(m.ctx, "opening browser", "url", url)
 	if !isValidGitHubURL(url) {
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("refusing to open untrusted URL: %s", url)}
@@ -72,7 +72,7 @@ func (m *Model) OpenBrowser(url string) tea.Cmd {
 	return func() tea.Msg {
 		b := browser.New("", nil, nil)
 		if err := b.Browse(url); err != nil {
-			m.logger.Error("failed to open browser", "error", err)
+			m.logger.ErrorContext(m.ctx, "failed to open browser", "error", err)
 			return errMsg{err: err}
 		}
 		return actionCompleteMsg{}
@@ -81,7 +81,7 @@ func (m *Model) OpenBrowser(url string) tea.Cmd {
 
 // CheckoutPR executes 'gh pr checkout' for the given repo and PR number.
 func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
-	m.logger.Info("checking out PR", "repo", repo, "number", number)
+	m.logger.InfoContext(m.ctx, "checking out PR", "repo", repo, "number", number)
 	if !reRepoName.MatchString(repo) {
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("invalid repository name: %s", repo)}
@@ -103,10 +103,10 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 	c := exec.Command("gh", "pr", "checkout", number, "-R", repo)
 	checkoutCmd := tea.ExecProcess(c, func(err error) tea.Msg {
 		if err != nil {
-			m.logger.Error("checkout failed", "error", err)
+			m.logger.ErrorContext(m.ctx, "checkout failed", "error", err)
 			return errMsg{err: err}
 		}
-		m.logger.Info("checkout successful", "repo", repo, "number", number)
+		m.logger.InfoContext(m.ctx, "checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
 	})
 
@@ -142,7 +142,7 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 		IsReadLocally:  true,
 	})
 	if err != nil {
-		m.logger.Error("failed to update local read state", "error", err)
+		m.logger.ErrorContext(m.ctx, "failed to update local read state", "error", err)
 	}
 
 	m.applyFilters()
@@ -151,7 +151,7 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.MarkThreadAsRead(i.notification.GitHubID)
 		if err != nil {
-			m.logger.Error("failed to mark thread as read on GitHub", "error", err)
+			m.logger.ErrorContext(m.ctx, "failed to mark thread as read on GitHub", "error", err)
 			// We don't return an error message here to avoid interrupting the UI,
 			// as the local state is already updated.
 		}
@@ -224,7 +224,7 @@ func (m *Model) ViewReleaseWeb(repo, tag string) tea.Cmd {
 
 // ghViewCmd executes a 'gh <cmd> view --web' command.
 func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
-	m.logger.Info("executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
+	m.logger.InfoContext(m.ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
 
 	// Validation
 	if !reRepoName.MatchString(repo) {
@@ -242,7 +242,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 		// #nosec G204: all parameters are strictly regex-validated above
 		c := exec.Command("gh", ghCmd, "view", arg, "-R", repo, "--web")
 		if err := c.Run(); err != nil {
-			m.logger.Error("gh view command failed", "command", ghCmd, "error", err)
+			m.logger.ErrorContext(m.ctx, "gh view command failed", "command", ghCmd, "error", err)
 			return errMsg{err: err}
 		}
 		return actionCompleteMsg{}
@@ -259,7 +259,7 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 		}
 
 		// Update database with granular enrich method
-		err = m.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+		err = m.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
 			return errMsg{err: err}
 		}

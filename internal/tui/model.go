@@ -56,6 +56,7 @@ type Model struct {
 	ui               UIController
 	config           *config.Config
 	logger           *slog.Logger
+	ctx              context.Context
 	userID           string
 	styles           Styles
 	keys             KeyMap
@@ -107,6 +108,7 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 		ui:       NewUIController(styles),
 		config:   cfg,
 		logger:   logger,
+		ctx:      ctx,
 		userID:   userID,
 		styles:   styles,
 		keys:     keys,

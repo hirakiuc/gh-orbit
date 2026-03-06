@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -48,7 +49,7 @@ func (db *DB) UpsertMetadata(n Notification) error {
 
 // EnrichNotification updates a notification with detailed content (body, author).
 // It also propagates the state to all notifications sharing the same subject_node_id for consistency.
-func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string) error {
+func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState string) error {
 	// 1. Get the subject_node_id for this notification
 	var nodeID string
 	err := db.QueryRow("SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
@@ -85,7 +86,7 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 			WHERE subject_node_id = ? AND github_id != ?
 		`, resourceState, body, author, now, nodeID, id)
 		if err != nil {
-			db.logger.Warn("failed to propagate enrichment to peers", "node_id", nodeID, "error", err)
+			db.logger.WarnContext(ctx, "failed to propagate enrichment to peers", "node_id", nodeID, "error", err)
 		}
 	}
 
@@ -93,8 +94,8 @@ func (db *DB) EnrichNotification(id, body, author, htmlURL, resourceState string
 }
 
 // UpdateResourceStateByNodeID updates the live status of all resources sharing a GraphQL ID.
-func (db *DB) UpdateResourceStateByNodeID(nodeID, state string) error {
-	db.logger.Debug("db: updating resource state by node_id", "node_id", nodeID, "state", state)
+func (db *DB) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state string) error {
+	db.logger.DebugContext(ctx, "db: updating resource state by node_id", "node_id", nodeID, "state", state)
 	_, err := db.Exec(`
 		UPDATE notifications
 		SET resource_state = ?,

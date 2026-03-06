@@ -70,7 +70,7 @@ func (c *APITrafficController) worker(ctx context.Context) {
 		// Nested select for genuine preemption AND context awareness
 		select {
 		case <-ctx.Done():
-			c.logger.Debug("traffic controller: worker stopping (context canceled)")
+			c.logger.DebugContext(ctx, "traffic controller: worker stopping (context canceled)")
 			return
 		case task = <-c.high:
 		default:
@@ -91,7 +91,7 @@ func (c *APITrafficController) worker(ctx context.Context) {
 		}
 
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
-			c.logger.Debug("traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
+			c.logger.DebugContext(ctx, "traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
 		}
 		c.executeTask(task)
 	}
@@ -114,12 +114,12 @@ func (c *APITrafficController) executeTask(t *apiTask) {
 	c.mu.Unlock()
 
 	if t.priority == PriorityEnrich && remaining < threshold {
-		c.logger.Warn("traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
+		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
 		t.resp <- nil
 		return
 	}
 
-	c.logger.Debug("traffic controller: executing task", "task_id", t.id, "priority", t.priority)
+	c.logger.DebugContext(ctx, "traffic controller: executing task", "task_id", t.id, "priority", t.priority)
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -133,8 +133,8 @@ func (c *APITrafficController) UpdateRateLimit(remaining int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.remainingRateLimit = remaining
-	if c.logger.Enabled(context.Background(), slog.LevelDebug) {
-		c.logger.Debug("traffic controller: updated rate limit", "remaining", remaining)
+	if c.logger.Enabled(c.ctx, slog.LevelDebug) {
+		c.logger.DebugContext(c.ctx, "traffic controller: updated rate limit", "remaining", remaining)
 	}
 }
 
@@ -167,7 +167,7 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 		}
 
 		if c.logger.Enabled(task.ctx, slog.LevelDebug) {
-			c.logger.Debug("traffic controller: task submitted", "task_id", id, "priority", priority)
+			c.logger.DebugContext(task.ctx, "traffic controller: task submitted", "task_id", id, "priority", priority)
 		}
 
 		switch priority {

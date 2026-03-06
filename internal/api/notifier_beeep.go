@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -22,7 +23,7 @@ func (b *beeepNotifier) Notify(title, subtitle, body, url string, priority int) 
 		fullTitle = fmt.Sprintf("[%s] %s", subtitle, title)
 	}
 
-	b.logger.Debug("delivering notification via beeep fallback", "title", fullTitle)
+	b.logger.DebugContext(context.Background(), "delivering notification via beeep fallback", "title", fullTitle)
 	return beeep.Notify(fullTitle, body, "")
 }
 

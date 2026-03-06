@@ -78,14 +78,14 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		// Tiered Validation
 		if age <= StatusTTL && res.ResourceState != "" {
 			if e.logger.Enabled(ctx, slog.LevelDebug) {
-				e.logger.Debug("enrichment: cache hit (valid)", "url", u, "age", age)
+				e.logger.DebugContext(ctx, "enrichment: cache hit (valid)", "url", u, "age", age)
 			}
 			span.SetAttributes(attribute.Bool("cache_hit", true))
 			return res, nil
 		}
 
 		if age > StatusTTL {
-			e.logger.Debug("enrichment: status expired, forcing refresh", 
+			e.logger.DebugContext(ctx, "enrichment: status expired, forcing refresh", 
 				"url", u, 
 				"age", fmt.Sprintf("%.0fs", age.Seconds()),
 				"threshold", fmt.Sprintf("%.0fs", StatusTTL.Seconds()))
@@ -99,7 +99,7 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 	})
 
 	if shared {
-		e.logger.Debug("enrichment: request merged via singleflight", "url", u)
+		e.logger.DebugContext(ctx, "enrichment: request merged via singleflight", "url", u)
 		span.SetAttributes(attribute.Bool("singleflight_merged", true))
 	}
 
@@ -115,7 +115,7 @@ func (e *EnrichmentEngine) fetchDetailRaw(ctx context.Context, u string, subject
 	defer span.End()
 
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.Debug("enrichment: cache miss or invalid, fetching from API", "url", u, "type", subjectType)
+		e.logger.DebugContext(ctx, "enrichment: cache miss or invalid, fetching from API", "url", u, "type", subjectType)
 	}
 
 	// Strip base URL if present to use with REST client
@@ -196,7 +196,7 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 	defer span.End()
 
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.Debug("enrichment: starting hybrid batch fetch", "count", len(notifications))
+		e.logger.DebugContext(ctx, "enrichment: starting hybrid batch fetch", "count", len(notifications))
 	}
 
 	results := make(map[string]EnrichmentResult)
@@ -228,7 +228,7 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 					res, err := e.FetchDetail(ctx, u, n.SubjectType)
 					if err == nil {
 						results[n.GitHubID] = res
-						_ = e.db.EnrichNotification(n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+						_ = e.db.EnrichNotification(ctx, n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 					}
 					break
 				}
@@ -270,12 +270,12 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 
 	err := e.client.GQL().Do(queryString, variables, &data)
 	if err != nil {
-		e.logger.Error("enrichment: graphql batch fetch failed", "error", err)
+		e.logger.ErrorContext(ctx, "enrichment: graphql batch fetch failed", "error", err)
 		return
 	}
 
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.Debug("enrichment: graphql batch fetch complete", 
+		e.logger.DebugContext(ctx, "enrichment: graphql batch fetch complete", 
 			"cost", data.RateLimit.Cost, 
 			"remaining", data.RateLimit.Remaining,
 			"node_count", len(data.Nodes))
@@ -299,7 +299,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		}
 
 		if state != "" {
-			_ = e.db.UpdateResourceStateByNodeID(node.ID, state)
+			_ = e.db.UpdateResourceStateByNodeID(ctx, node.ID, state)
 			
 			// Populate results for immediate TUI refresh
 			results[node.ID] = EnrichmentResult{
@@ -317,7 +317,7 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			e.logger.Debug("enrichment: pruning worker stopping")
+			e.logger.DebugContext(ctx, "enrichment: pruning worker stopping")
 			return
 		case <-ticker.C:
 			e.pruneExpired()
@@ -338,7 +338,7 @@ func (e *EnrichmentEngine) pruneExpired() {
 	}
 
 	if count > 0 && e.logger.Enabled(context.Background(), slog.LevelDebug) {
-		e.logger.Debug("enrichment: pruned expired cache entries", "count", count)
+		e.logger.DebugContext(context.Background(), "enrichment: pruned expired cache entries", "count", count)
 	}
 }
 
@@ -351,7 +351,7 @@ func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMs
 			return errorMsg(err)
 		}
 
-		err = e.db.EnrichNotification(id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
+		err = e.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
 			return errorMsg(err)
 		}

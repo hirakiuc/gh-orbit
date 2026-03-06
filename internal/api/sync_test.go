@@ -39,7 +39,8 @@ func (m *mockFetcher) FetchNotifications(ctx context.Context, meta *db.SyncMeta,
 
 func TestSyncEngine_Sync(t *testing.T) {
 	logger := slog.Default()
-	database, err := db.OpenInMemory(logger)
+	ctx := context.Background()
+	database, err := db.OpenInMemory(ctx, logger)
 	if err != nil {
 		t.Fatalf("Failed to open test db: %v", err)
 	}
@@ -146,7 +147,8 @@ func TestETagSanitization(t *testing.T) {
 
 	// 2. Verify SyncEngine self-heals
 	logger := slog.Default()
-	database, _ := db.OpenInMemory(logger)
+	ctx := context.Background()
+	database, _ := db.OpenInMemory(ctx, logger)
 	defer func() { _ = database.Close() }()
 
 	userID := "user-1"
