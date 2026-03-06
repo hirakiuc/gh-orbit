@@ -90,6 +90,17 @@ func (m *macosNotifier) Status() BridgeStatus {
 	return m.status
 }
 
+func (m *macosNotifier) Warmup() {
+	m.mu.Lock()
+	status := m.status
+	m.mu.Unlock()
+
+	if status == StatusUnknown {
+		// Send warmup sentinel to trigger lazy initialization in worker
+		m.queue <- alertRequest{priority: -1}
+	}
+}
+
 func (m *macosNotifier) setStatus(s BridgeStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -155,6 +166,10 @@ func (m *macosNotifier) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case req := <-m.queue:
+			if req.priority == -1 {
+				continue // Warmup sentinel
+			}
+
 			err := m.deliver(ctx, req)
 			if err != nil {
 				m.logger.Warn("native delivery failed, attempting osascript fallback", "error", err)

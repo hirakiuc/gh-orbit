@@ -28,6 +28,8 @@ func (b *beeepNotifier) Notify(title, subtitle, body, url string, priority int) 
 
 func (b *beeepNotifier) Shutdown() {}
 
+func (b *beeepNotifier) Warmup() {}
+
 func (b *beeepNotifier) Status() BridgeStatus {
 	return StatusHealthy
 }

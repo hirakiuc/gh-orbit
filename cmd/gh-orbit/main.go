@@ -93,6 +93,14 @@ func runDoctor() error {
 
 	// 2. Probe Bridge
 	if runtime.GOOS == "darwin" {
+		// Create a temporary notifier to trigger warmup logic
+		logger, cleanup, _ := config.SetupLogger(logLevel)
+		defer func() { _ = cleanup() }()
+		n := api.NewPlatformNotifier(ctx, logger)
+		n.Warmup()
+		// Wait a small amount for the async warmup to complete
+		time.Sleep(100 * time.Millisecond)
+
 		probes := api.ProbeBridge()
 		allPassed := true
 		for _, p := range probes {
