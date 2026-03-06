@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego"
-	"github.com/hirakiuc/gh-orbit/internal/config"
 )
 
 var (
@@ -97,6 +96,25 @@ func (m *macosNotifier) setStatus(s BridgeStatus) {
 	m.status = s
 }
 
+func (m *macosNotifier) checkBundle() error {
+	if _, err := getFrameworks(); err != nil {
+		return err
+	}
+
+	bundleCls := objc_getClass("NSBundle")
+	bundle, bErr := safeMsgSend0(bundleCls, sel_mainBundle)
+	if bErr != nil || bundle == 0 {
+		return fmt.Errorf("could not get main bundle")
+	}
+
+	bid, idErr := safeMsgSend0(bundle, sel_bundleIdentifier)
+	if idErr != nil || bid == 0 {
+		return fmt.Errorf("process has no CFBundleIdentifier (standalone binary)")
+	}
+
+	return nil
+}
+
 func (m *macosNotifier) worker(ctx context.Context) {
 	defer m.wg.Done()
 
@@ -106,46 +124,40 @@ func (m *macosNotifier) worker(ctx context.Context) {
 			return
 		}
 		
-		_, err := purego.Dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", purego.RTLD_GLOBAL)
-		if err != nil {
-			m.logger.Warn("failed to load UserNotifications framework, using osascript fallback", "error", err)
+		// 1. Mandatory Bundle Check (Prevents NSInternalInconsistencyException)
+		if err := m.checkBundle(); err != nil {
+			m.logger.Warn("native bridge unsupported: running as standalone binary. using fallbacks.", "error", err)
+			m.setStatus(StatusUnsupported)
+			return
+		}
+
+		// 2. Framework Loading (Registration happens inside OnceValues)
+		if _, err := getFrameworks(); err != nil {
+			m.logger.Warn("failed to load system frameworks", "error", err)
 			m.setStatus(StatusBroken)
 			return
 		}
 		
-		// Probe bridge
-		probes := ProbeBridge()
-		allPassed := true
-		for _, p := range probes {
-			if !p.Passed {
-				allPassed = false
-				break
-			}
-		}
-
-		if !allPassed {
-			m.setStatus(StatusBroken)
-			return
-		}
-
 		m.swizzleBundleID()
 		m.setupDelegate()
 		m.requestAuth()
 		m.setStatus(StatusHealthy)
 	})
 
+	// 3. Fail-Fast: If initialization failed, stop the worker goroutine immediately.
+	if m.Status() != StatusHealthy {
+		m.logger.Debug("macos native notifier worker exiting (unsupported environment)")
+		return
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case req := <-m.queue:
-			if m.Status() == StatusHealthy {
-				err := m.deliver(ctx, req)
-				if err != nil {
-					m.logger.Warn("native delivery failed, attempting osascript fallback", "error", err)
-					m.deliverWithAppleScript(ctx, req)
-				}
-			} else {
+			err := m.deliver(ctx, req)
+			if err != nil {
+				m.logger.Warn("native delivery failed, attempting osascript fallback", "error", err)
 				m.deliverWithAppleScript(ctx, req)
 			}
 		}
@@ -153,25 +165,25 @@ func (m *macosNotifier) worker(ctx context.Context) {
 }
 
 func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
-	tracer := config.GetTracer()
-	_, span := tracer.Start(ctx, "macos.notify_deliver")
-	defer span.End()
-
 	// 1. Create content safely
 	contentCls := objc_getClass("UNMutableNotificationContent")
 	content, err := safeMsgSend0(contentCls, sel_new)
 	if err != nil { return err }
 	
-	_ = safeMsgSendVoid1(content, sel_setTitle, nsString(req.title))
-	_ = safeMsgSendVoid1(content, sel_setSubtitle, nsString(req.subtitle))
-	_ = safeMsgSendVoid1(content, sel_setBody, nsString(req.body))
-	_ = safeMsgSendVoid1(content, sel_setThreadIdentifier, nsString(req.subtitle))
+	t, _ := nsString(req.title)
+	s, _ := nsString(req.subtitle)
+	b, _ := nsString(req.body)
+	
+	_ = safeMsgSendVoid1(content, sel_setTitle, t)
+	_ = safeMsgSendVoid1(content, sel_setSubtitle, s)
+	_ = safeMsgSendVoid1(content, sel_setBody, b)
+	_ = safeMsgSendVoid1(content, sel_setThreadIdentifier, s)
 
 	// Store URL in userInfo for the delegate
 	if req.url != "" {
 		dictCls := objc_getClass("NSDictionary")
-		key := nsString("url")
-		val := nsString(req.url)
+		key, _ := nsString("url")
+		val, _ := nsString(req.url)
 		userInfo, err := safeMsgSend2(dictCls, sel_dictionaryWithObjectForKey, val, key)
 		if err == nil {
 			_ = safeMsgSendVoid1(content, sel_setUserInfo, userInfo)
@@ -185,7 +197,8 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 
 	// 3. Create request
 	reqCls := objc_getClass("UNNotificationRequest")
-	notificationReq, err := safeMsgSend2(reqCls, sel_requestWithIdentifierContentTrigger, nsString(""), content)
+	emptyStr, _ := nsString("")
+	notificationReq, err := safeMsgSend2(reqCls, sel_requestWithIdentifierContentTrigger, emptyStr, content)
 	if err != nil { return err }
 
 	// 4. Add to center
@@ -238,7 +251,9 @@ func (m *macosNotifier) swizzleBundleID() {
 	if bundleCls == 0 { return }
 
 	bundleIDCallback := purego.NewCallback(func(self, sel uintptr) uintptr {
-		return nsString("com.apple.Terminal")
+		// Compatibility Shim: Masquerade as Terminal to bypass notification restrictions
+		s, _ := nsString("com.apple.Terminal")
+		return s
 	})
 
 	class_replaceMethod(bundleCls, sel_registerName("bundleIdentifier"), bundleIDCallback, "@@:")
