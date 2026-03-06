@@ -43,6 +43,14 @@ func (s *SyncEngine) Shutdown() {
 	}
 }
 
+// BridgeStatus returns the functional state of the alert bridge.
+func (s *SyncEngine) BridgeStatus() BridgeStatus {
+	if s.alerts == nil {
+		return StatusUnknown
+	}
+	return s.alerts.BridgeStatus()
+}
+
 // Sync performs a full synchronization cycle for notifications.
 // If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.
