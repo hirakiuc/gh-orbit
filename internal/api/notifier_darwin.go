@@ -62,14 +62,13 @@ func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) 
 	case m.queue <- req:
 		// Queued successfully
 	default:
-		// Queue full, drop oldest by pulling one out and then pushing new
+		// Queue full, "Drop Oldest" pattern:
+		// 1. Try to pull one out (the oldest)
 		select {
 		case <-m.queue:
-			// Dropped oldest
 		default:
 		}
-		
-		// Attempt to push again
+		// 2. Try to push the new one again
 		select {
 		case m.queue <- req:
 		default:
