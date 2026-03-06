@@ -37,6 +37,36 @@ func (u GHUser) LogValue() slog.Value {
 	)
 }
 
+// BridgeStatus represents the functional state of the native system bridge.
+type BridgeStatus string
+
+const (
+	StatusHealthy           BridgeStatus = "healthy"
+	StatusPermissionsDenied BridgeStatus = "permissions_denied"
+	StatusUnsupported       BridgeStatus = "unsupported"
+	StatusBroken            BridgeStatus = "broken"
+	StatusUnknown           BridgeStatus = "unknown"
+)
+
+// BridgeCheck represents an individual diagnostic check.
+type BridgeCheck struct {
+	Name    string `json:"name"`
+	Passed  bool   `json:"passed"`
+	Message string `json:"message,omitempty"`
+}
+
+// DoctorReport represents the full environment diagnostic report.
+type DoctorReport struct {
+	SchemaVersion int           `json:"schema_version"`
+	Timestamp     time.Time     `json:"timestamp"`
+	OS            string        `json:"os"`
+	Arch          string        `json:"arch"`
+	KernelVersion string        `json:"kernel_version"`
+	BinaryPath    string        `json:"binary_path"`
+	BridgeStatus  BridgeStatus  `json:"bridge_status"`
+	Checks        []BridgeCheck `json:"checks"`
+}
+
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
 	FetchNotifications(meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error)
