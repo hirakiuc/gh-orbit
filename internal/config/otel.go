@@ -66,6 +66,9 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 
 	cleanup := func() {
 		shutdownCtx := context.Background()
+		if err := tp.ForceFlush(shutdownCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error flushing tracer provider: %v\n", err)
+		}
 		if err := tp.Shutdown(shutdownCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error shutting down tracer provider: %v\n", err)
 		}
