@@ -14,21 +14,23 @@ import (
 type frameworks struct {
 	libobjc uintptr
 	libUN   uintptr
-	err     error
 }
 
 var (
-	// getFrameworks returns the cached framework handles and initialization status.
-	// We use sync.OnceValue to ensure error propagation to all callers.
-	getFrameworks = sync.OnceValue(func() frameworks {
-		objc, err := purego.Dlopen(pathLibObjC, purego.RTLD_GLOBAL)
+	// getFrameworks returns the cached framework handles via Go 1.26 idiomatic sync.OnceValues.
+	// This ensures errors are correctly propagated to all subsequent callers.
+	getFrameworks = sync.OnceValues(func() (frameworks, error) {
+		const flags = purego.RTLD_GLOBAL | purego.RTLD_NOW
+
+		objc, err := purego.Dlopen(pathLibObjC, flags)
 		if err != nil {
-			return frameworks{err: fmt.Errorf("failed to load %s: %w", pathLibObjC, err)}
+			return frameworks{}, fmt.Errorf("failed to load %s: %w", pathLibObjC, err)
 		}
 
-		un, err := purego.Dlopen(pathLibUN, purego.RTLD_GLOBAL)
+		un, err := purego.Dlopen(pathLibUN, flags)
 		if err != nil {
-			return frameworks{libobjc: objc, err: fmt.Errorf("failed to load %s: %w", pathLibUN, err)}
+			// libUN is not fatal for the whole app, but we return the error for diagnostics
+			return frameworks{libobjc: objc}, fmt.Errorf("failed to load %s: %w", pathLibUN, err)
 		}
 
 		// Register FFI functions ONLY after successful library load
@@ -70,7 +72,7 @@ var (
 		sel_userInfo = sel_registerName("userInfo")
 		sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
 
-		return frameworks{libobjc: objc, libUN: un, err: nil}
+		return frameworks{libobjc: objc, libUN: un}, nil
 	})
 
 	objc_getClass     func(name string) uintptr
@@ -132,19 +134,19 @@ type BridgeProbe struct {
 
 // ProbeBridge deep-probes the Objective-C runtime to ensure compatibility.
 func ProbeBridge() []BridgeProbe {
-	f := getFrameworks()
+	f, err := getFrameworks()
 	
 	var probes []BridgeProbe
 
 	probes = append(probes, BridgeProbe{
 		Name:    "Framework: libobjc",
 		Passed:  f.libobjc != 0,
-		Message: func() string { if f.err != nil && f.libobjc == 0 { return f.err.Error() }; return "" }(),
+		Message: func() string { if err != nil && f.libobjc == 0 { return err.Error() }; return "" }(),
 	})
 	probes = append(probes, BridgeProbe{
 		Name:    "Framework: UserNotifications",
 		Passed:  f.libUN != 0,
-		Message: func() string { if f.err != nil && f.libUN == 0 { return f.err.Error() }; return "" }(),
+		Message: func() string { if err != nil && f.libUN == 0 { return err.Error() }; return "" }(),
 	})
 
 	if f.libobjc == 0 {
@@ -169,7 +171,8 @@ func ProbeBridge() []BridgeProbe {
 
 // nsString converts a Go string to an Objective-C NSString safely.
 func nsString(s string) uintptr {
-	if f := getFrameworks(); f.err != nil && f.libobjc == 0 {
+	f, err := getFrameworks()
+	if err != nil && f.libobjc == 0 {
 		return 0
 	}
 	
