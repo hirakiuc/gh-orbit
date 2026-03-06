@@ -134,7 +134,7 @@ func baseNotificationSelect() string {
 			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
 			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.subject_node_id, ''),
 			n.is_enriched, n.enriched_at, n.updated_at,
-			s.priority, s.status, s.is_read_locally
+			s.priority, s.status, s.is_read_locally, s.is_notified
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
 	`
@@ -148,7 +148,7 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 	err := row.Scan(
 		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
-		&ns.Priority, &ns.Status, &ns.IsReadLocally,
+		&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -174,7 +174,7 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 		err := rows.Scan(
 			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
-			&ns.Priority, &ns.Status, &ns.IsReadLocally,
+			&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
 		)
 		if err != nil {
 			return nil, err
@@ -188,10 +188,38 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 func (db *DB) UpdateOrbitState(state OrbitState) error {
 	_, err := db.Exec(`
 		UPDATE orbit_state
-		SET priority = ?, status = ?, is_read_locally = ?
+		SET priority = ?, status = ?, is_read_locally = ?, is_notified = ?
 		WHERE notification_id = ?
-	`, state.Priority, state.Status, state.IsReadLocally, state.NotificationID)
+	`, state.Priority, state.Status, state.IsReadLocally, state.IsNotified, state.NotificationID)
 	return err
+}
+
+// MarkNotifiedBatch marks multiple notifications as notified in a single transaction.
+func (db *DB) MarkNotifiedBatch(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare("UPDATE orbit_state SET is_notified = TRUE WHERE notification_id = ?")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, id := range ids {
+		_, err := stmt.Exec(id)
+		if err != nil {
+			return fmt.Errorf("failed to mark notification %s as notified: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // GetSyncMeta retrieves the sync metadata for a user and endpoint.

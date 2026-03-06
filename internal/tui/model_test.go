@@ -37,6 +37,7 @@ func newTestModel(t *testing.T) *Model {
 			delegate: delegate,
 		},
 		db:      database,
+		sync:    api.NewSyncEngine(ctx, nil, database, nil, slog.Default()),
 		enrich:  api.NewEnrichmentEngine(ctx, nil, database, slog.Default()),
 		traffic: api.NewAPITrafficController(ctx, slog.Default()),
 		keys:    keys,

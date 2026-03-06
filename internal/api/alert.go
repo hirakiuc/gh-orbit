@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -19,48 +21,95 @@ type AlertService struct {
 	db       *db.DB
 	logger   *slog.Logger
 	notifier Notifier
+
+	// Per-sync state for throttling
+	mu             sync.Mutex
+	isInitializing bool
+	syncAlertCount int
+	syncRepoCounts map[string]int
 }
 
-func NewAlertService(cfg *config.Config, database *db.DB, logger *slog.Logger) *AlertService {
+func NewAlertService(ctx context.Context, cfg *config.Config, database *db.DB, logger *slog.Logger) *AlertService {
 	return &AlertService{
-		config:   cfg,
-		db:       database,
-		logger:   logger,
-		notifier: NewPlatformNotifier(logger),
+		config:         cfg,
+		db:             database,
+		logger:         logger,
+		notifier:       NewPlatformNotifier(ctx, logger),
+		syncRepoCounts: make(map[string]int),
 	}
 }
 
-// Notify sends a system alert for a GitHub notification if it matches filters.
+// SyncStart prepares the service for a new synchronization cycle.
+// It detects if this is the "Silent Initial Baseline" (empty database).
+func (a *AlertService) SyncStart() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Reset counters
+	a.syncAlertCount = 0
+	a.syncRepoCounts = make(map[string]int)
+
+	// Check if DB is empty to trigger Silent Baseline
+	notifs, err := a.db.ListNotifications()
+	a.isInitializing = (err == nil && len(notifs) == 0)
+
+	if a.isInitializing {
+		a.logger.Info("alert service: silent initialization baseline active (quiet mode)")
+	}
+}
+
+// Notify sends a system alert for a GitHub notification if it matches filters and throttling rules.
 func (a *AlertService) Notify(n GHNotification) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if !a.config.Notifications.Enabled || a.config.Notifications.Mute {
-		a.logger.Debug("skipping alert, notifications disabled or muted")
 		return nil
 	}
 
-	// Filter by reason
+	// 1. Silent Initial Baseline: Never alert during first-ever sync
+	if a.isInitializing {
+		return nil
+	}
+
+	// 2. Filter by reason
 	if !a.shouldNotifyReason(n.Reason) {
-		a.logger.Debug("skipping alert, reason not in whitelist", "reason", n.Reason)
 		return nil
 	}
 
-	// Filter by ignored repositories
+	// 3. Filter by ignored repositories
 	for _, repo := range a.config.Notifications.IgnoreRepos {
 		if repo == n.Repository.FullName {
 			return nil
 		}
 	}
 
+	// 4. Intelligent Throttling
+	a.syncAlertCount++
+	repoName := n.Repository.FullName
+	a.syncRepoCounts[repoName]++
+
+	// Limit to 5 individual alerts per sync cycle to prevent distraction/crashes
+	if a.syncAlertCount > 5 {
+		if a.syncAlertCount == 6 {
+			// Show a single summary alert once we cross the threshold
+			summary := "Multiple new notifications received. Check the TUI for details."
+			return a.notifier.Notify("New Notifications", "gh-orbit", summary, "", 1)
+		}
+		// Silently suppress subsequent items in this cycle
+		return nil
+	}
+
 	title := n.Subject.Title
-	subtitle := n.Repository.FullName
+	subtitle := repoName
 	body := fmt.Sprintf("Reason: %s", n.Reason)
 	
 	// Determine priority using heuristics
 	importance := a.calculateImportance(n)
 
-	a.logger.Info("sending system alert", 
+	a.logger.Debug("sending system alert", 
 		"title", title, 
 		"importance", importance,
-		"reason", n.Reason,
 	)
 
 	return a.notifier.Notify(title, subtitle, body, "", importance)
@@ -78,8 +127,6 @@ func (a *AlertService) calculateImportance(n GHNotification) int {
 	if err == nil && state != nil && state.Priority >= 2 {
 		return 2
 	}
-
-	// 3. User Config (Future: could add critical_repos to YAML)
 
 	// Default to Level 1 (Active)
 	return 1

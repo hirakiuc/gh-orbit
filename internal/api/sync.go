@@ -22,7 +22,7 @@ type SyncEngine struct {
 	logger  *slog.Logger
 }
 
-func NewSyncEngine(fetcher Fetcher, database *db.DB, alerts *AlertService, logger *slog.Logger) *SyncEngine {
+func NewSyncEngine(ctx context.Context, fetcher Fetcher, database *db.DB, alerts *AlertService, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
 		fetcher: fetcher,
 		db:      database,
@@ -40,6 +40,11 @@ func (s *SyncEngine) Fetcher() Fetcher {
 // If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.
 func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, error) {
+	// Prepare alert service for a new cycle (detects Silent Initial Baseline)
+	if s.alerts != nil {
+		s.alerts.SyncStart()
+	}
+
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "sync.notifications",
 		trace.WithAttributes(
@@ -119,6 +124,8 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 			"sync_id", syncID, 
 			"count", len(notifications))
 
+		var newlyDiscoveredIDs []string
+
 		for _, n := range notifications {
 			err := s.db.UpsertNotification(db.Notification{
 				GitHubID:           n.ID,
@@ -135,9 +142,26 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 				return remaining, fmt.Errorf("failed to save notification %s: %w", n.ID, err)
 			}
 
-			// Trigger system alert for new notifications
-			if s.alerts != nil && n.UpdatedAt.After(meta.LastSyncAt) {
-				_ = s.alerts.Notify(n)
+			// We only trigger alerts for notifications arriving AFTER the established baseline
+			// AND that we haven't notified for yet.
+			state, err := s.db.GetNotification(n.ID)
+			if err == nil && state != nil && !state.IsNotified {
+				// Alerts are sent only for truly new items (arrival > baseline sync)
+				if n.UpdatedAt.After(meta.LastSyncAt) {
+					if s.alerts != nil {
+						_ = s.alerts.Notify(n)
+					}
+				}
+				// Even if we didn't fire a system alert (e.g. initial baseline),
+				// we mark it as "processed" for alerting purposes.
+				newlyDiscoveredIDs = append(newlyDiscoveredIDs, n.ID)
+			}
+		}
+
+		// Batch mark as notified to preserve baseline state
+		if len(newlyDiscoveredIDs) > 0 {
+			if err := s.db.MarkNotifiedBatch(newlyDiscoveredIDs); err != nil {
+				s.logger.Error("failed to mark notifications as notified", "error", err)
 			}
 		}
 	}

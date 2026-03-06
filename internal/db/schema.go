@@ -47,4 +47,6 @@ var migrations = []string{
 	 CREATE INDEX IF NOT EXISTS idx_notifications_subject_node_id ON notifications(subject_node_id);`,
 	// Version 7: Add enriched_at for cache expiration logic
 	`ALTER TABLE notifications ADD COLUMN enriched_at DATETIME;`,
+	// Version 8: Add is_notified to track native alerts and support throttling
+	`ALTER TABLE orbit_state ADD COLUMN is_notified BOOLEAN DEFAULT FALSE;`,
 }

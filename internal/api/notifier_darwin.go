@@ -3,11 +3,14 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"runtime"
 	"sync"
 
 	"github.com/ebitengine/purego"
+	"github.com/hirakiuc/gh-orbit/internal/config"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -15,16 +18,58 @@ var (
 	delegateInstance uintptr
 )
 
-type macosNotifier struct {
-	logger *slog.Logger
+type alertRequest struct {
+	title    string
+	subtitle string
+	body     string
+	url      string
+	priority int
 }
 
-// NewPlatformNotifier returns the macOS native notifier.
-func NewPlatformNotifier(logger *slog.Logger) Notifier {
-	return &macosNotifier{logger: logger}
+type macosNotifier struct {
+	logger  *slog.Logger
+	queue   chan alertRequest
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+}
+
+// NewPlatformNotifier returns the macOS native notifier with a background worker.
+func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
+	n := &macosNotifier{
+		logger: logger,
+		queue:  make(chan alertRequest, 100), // Buffer for up to 100 alerts
+	}
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	n.cancel = cancel
+
+	n.wg.Add(1)
+	go n.worker(workerCtx)
+
+	return n
 }
 
 func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) error {
+	select {
+	case m.queue <- alertRequest{
+		title:    title,
+		subtitle: subtitle,
+		body:     body,
+		url:      url,
+		priority: priority,
+	}:
+		// Queued successfully
+	default:
+		// Queue full, drop oldest or ignore
+		m.logger.Warn("notification queue full, dropping alert", "title", title)
+	}
+	return nil
+}
+
+func (m *macosNotifier) worker(ctx context.Context) {
+	defer m.wg.Done()
+
+	// Lazy initialization of the frameworks and swizzling
 	once.Do(func() {
 		if runtime.GOOS != "darwin" {
 			return
@@ -32,57 +77,67 @@ func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) 
 		// Load UserNotifications framework
 		_, _ = purego.Dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", purego.RTLD_GLOBAL)
 		
-		// Swizzle Bundle ID for reliability
 		m.swizzleBundleID()
-		
-		// Setup Delegate for click-through URLs
 		m.setupDelegate()
-		
-		// Request authorization
 		m.requestAuth()
 	})
 
-	m.logger.Debug("sending native macos notification", 
-		"title", title, 
-		"subtitle", subtitle,
-		"priority", priority,
+	for {
+		select {
+		case <-ctx.Done():
+			m.logger.Debug("macos notification worker stopping")
+			return
+		case req := <-m.queue:
+			m.deliver(ctx, req)
+		}
+	}
+}
+
+func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
+	tracer := config.GetTracer()
+	_, span := tracer.Start(ctx, "macos.notify_deliver")
+	defer span.End()
+
+	m.logger.Debug("delivering native macos notification", 
+		"title", req.title, 
+		"subtitle", req.subtitle,
 	)
 
 	// 1. Create content
 	contentCls := objc_getClass("UNMutableNotificationContent")
 	content := msgSend0(contentCls, "new")
 	
-	msgSend1(content, "setTitle:", nsString(title))
-	msgSend1(content, "setSubtitle:", nsString(subtitle))
-	msgSend1(content, "setBody:", nsString(body))
-	msgSend1(content, "setThreadIdentifier:", nsString(subtitle))
+	msgSendVoid1(content, "setTitle:", nsString(req.title))
+	msgSendVoid1(content, "setSubtitle:", nsString(req.subtitle))
+	msgSendVoid1(content, "setBody:", nsString(req.body))
+	msgSendVoid1(content, "setThreadIdentifier:", nsString(req.subtitle))
 
 	// Store URL in userInfo for the delegate
-	if url != "" {
+	if req.url != "" {
 		dictCls := objc_getClass("NSDictionary")
 		key := nsString("url")
-		val := nsString(url)
+		val := nsString(req.url)
 		userInfo := msgSend2(dictCls, "dictionaryWithObject:forKey:", val, key)
-		msgSend1(content, "setUserInfo:", userInfo)
+		msgSendVoid1(content, "setUserInfo:", userInfo)
 	}
 
 	// 2. Set interruption level
 	level := uintptr(1)
-	if priority >= 2 {
+	if req.priority >= 2 {
 		level = 2
 	}
-	msgSend1(content, "setInterruptionLevel:", level)
+	msgSend_void_id(content, sel_registerName("setInterruptionLevel:"), level)
 
 	// 3. Create request
 	reqCls := objc_getClass("UNNotificationRequest")
-	req := msgSend3(reqCls, "requestWithIdentifier:content:trigger:", nsString(""), content, 0)
+	notificationReq := msgSend3(reqCls, "requestWithIdentifier:content:trigger:", nsString(""), content, 0)
 
 	// 4. Add to center
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend0(centerCls, "currentNotificationCenter")
-	msgSend2(center, "addNotificationRequest:withCompletionHandler:", req, 0)
+	msgSend2(center, "addNotificationRequest:withCompletionHandler:", notificationReq, 0)
 
-	return nil
+	span.SetAttributes(attribute.String("title", req.title))
 }
 
 func (m *macosNotifier) swizzleBundleID() {
@@ -106,18 +161,15 @@ func (m *macosNotifier) setupDelegate() {
 	super := objc_getClass("NSObject")
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
 	
-	// Implementation for didReceiveNotificationResponse:withCompletionHandler:
-	// types: v@:@@@ (void return, self, sel, center, response, completionHandler)
 	callback := purego.NewCallback(func(self, sel, center, response, completion uintptr) {
 		notification := msgSend0(response, "notification")
-		content := msgSend0(notification, "request")
-		content = msgSend0(content, "content")
+		req := msgSend0(notification, "request")
+		content := msgSend0(req, "content")
 		userInfo := msgSend0(content, "userInfo")
 		
 		urlPtr := msgSend1(userInfo, "objectForKey:", nsString("url"))
-		_ = urlPtr // Placeholder for future implementation
+		_ = urlPtr 
 		
-		// Call the completion handler
 		if completion != 0 {
 			purego.SyscallN(completion)
 		}
@@ -130,7 +182,7 @@ func (m *macosNotifier) setupDelegate() {
 	
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend0(centerCls, "currentNotificationCenter")
-	msgSend1(center, "setDelegate:", delegateInstance)
+	msgSendVoid1(center, "setDelegate:", delegateInstance)
 	
 	m.logger.Debug("native notification delegate initialized")
 }
@@ -138,5 +190,6 @@ func (m *macosNotifier) setupDelegate() {
 func (m *macosNotifier) requestAuth() {
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend0(centerCls, "currentNotificationCenter")
-	msgSend2(center, "requestAuthorizationWithOptions:completionHandler:", 7, 0)
+	// Use explicit signature for auth request
+	msgSend_void_uint_id(center, sel_registerName("requestAuthorizationWithOptions:completionHandler:"), 7, 0)
 }
