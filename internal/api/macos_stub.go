@@ -23,6 +23,12 @@ func (s *stubNotifier) Shutdown() {}
 
 func (s *stubNotifier) Warmup() {}
 
+func (s *stubNotifier) Ready() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 func (s *stubNotifier) Status() BridgeStatus {
 	return StatusUnsupported
 }

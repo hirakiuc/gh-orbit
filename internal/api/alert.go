@@ -21,6 +21,7 @@ type Notifier interface {
 	Shutdown()
 	Status() BridgeStatus
 	Warmup() // Proactive health check
+	Ready() <-chan struct{}
 }
 
 // AlertService coordinates the logic for when and how to send system alerts.
@@ -61,6 +62,17 @@ func (a *AlertService) Warmup() {
 	if a.fallback != nil {
 		a.fallback.Warmup()
 	}
+}
+
+// Ready returns a channel that closes when the primary notification tier is ready.
+func (a *AlertService) Ready() <-chan struct{} {
+	if a.native != nil {
+		return a.native.Ready()
+	}
+	// If no native bridge, fallback is usually instant
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }
 
 // SyncStart prepares the service for a new synchronization cycle.
