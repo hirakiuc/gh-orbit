@@ -139,9 +139,6 @@ func (m *macosNotifier) worker(ctx context.Context) {
 	defer m.wg.Done()
 
 	once.Do(func() {
-		// Use a local closure to ensure ready channel is closed even on early returns
-		defer m.readyOnce.Do(func() { close(m.ready) })
-
 		if runtime.GOOS != "darwin" {
 			m.setStatus(StatusUnsupported)
 			return
@@ -166,6 +163,9 @@ func (m *macosNotifier) worker(ctx context.Context) {
 		m.requestAuth()
 		m.setStatus(StatusHealthy)
 	})
+
+	// Signal readiness for this specific instance (even if once.Do already ran)
+	m.readyOnce.Do(func() { close(m.ready) })
 
 	// 3. Fail-Fast: If initialization failed, stop the worker goroutine immediately.
 	if m.Status() != StatusHealthy {
