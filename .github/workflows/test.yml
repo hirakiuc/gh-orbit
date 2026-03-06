@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -23,8 +27,12 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Build
+      run: make build
+
     - name: Run tests
       run: go test -v ./...
 
     - name: Run govulncheck
+      if: matrix.os == 'ubuntu-latest'
       run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

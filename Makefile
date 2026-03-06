@@ -16,9 +16,9 @@ build:
 
 release-build:
 	GOOS=darwin GOARCH=amd64 go build -o bin/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
-	codesign -f -s - bin/$(BINARY_NAME)-darwin-amd64
+	@if [ "$$(uname)" = "Darwin" ]; then codesign -f -s - bin/$(BINARY_NAME)-darwin-amd64; fi
 	GOOS=darwin GOARCH=arm64 go build -o bin/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
-	codesign -f -s - bin/$(BINARY_NAME)-darwin-arm64
+	@if [ "$$(uname)" = "Darwin" ]; then codesign -f -s - bin/$(BINARY_NAME)-darwin-arm64; fi
 	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY_NAME)-linux-amd64 $(CMD_PATH)
 	GOOS=linux GOARCH=arm64 go build -o bin/$(BINARY_NAME)-linux-arm64 $(CMD_PATH)
 	GOOS=windows GOARCH=amd64 go build -o bin/$(BINARY_NAME)-windows-amd64.exe $(CMD_PATH)
