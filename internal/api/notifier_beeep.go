@@ -31,6 +31,12 @@ func (b *beeepNotifier) Shutdown() {}
 
 func (b *beeepNotifier) Warmup() {}
 
+func (b *beeepNotifier) Ready() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 func (b *beeepNotifier) Status() BridgeStatus {
 	return StatusHealthy
 }

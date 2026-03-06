@@ -100,8 +100,14 @@ func runDoctor() error {
 		defer func() { _ = cleanup() }()
 		n := api.NewPlatformNotifier(ctx, logger)
 		n.Warmup()
-		// Wait a small amount for the async warmup to complete
-		time.Sleep(100 * time.Millisecond)
+		
+		// Deterministic wait instead of time.Sleep
+		select {
+		case <-n.Ready():
+			// Bridge is initialized
+		case <-time.After(2 * time.Second):
+			// Timeout guard
+		}
 
 		probes := api.ProbeBridge()
 		allPassed := true
@@ -129,6 +135,13 @@ func runDoctor() error {
 		defer func() { _ = cleanup() }()
 		
 		notifier := api.NewPlatformNotifier(ctx, logger)
+		
+		// Ensure bridge is ready before attempting test notification
+		select {
+		case <-notifier.Ready():
+		case <-time.After(2 * time.Second):
+		}
+
 		err := notifier.Notify("Diagnostic Test", "gh-orbit doctor", "This is a test notification.", "", 1)
 		
 		testPassed := (err == nil)
@@ -142,8 +155,7 @@ func runDoctor() error {
 			Message: msg,
 		})
 		
-		// Wait for async delivery
-		time.Sleep(1 * time.Second)
+		// No need for Sleep(1s) here, Shutdown() handles flush
 		notifier.Shutdown()
 	}
 

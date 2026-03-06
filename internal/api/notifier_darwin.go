@@ -32,12 +32,14 @@ type alertRequest struct {
 }
 
 type macosNotifier struct {
-	logger  *slog.Logger
-	queue   chan alertRequest
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	status  BridgeStatus
-	mu      sync.RWMutex
+	logger    *slog.Logger
+	queue     chan alertRequest
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	status    BridgeStatus
+	mu        sync.RWMutex
+	ready     chan struct{}
+	readyOnce sync.Once
 }
 
 // NewPlatformNotifier returns the macOS native notifier with a background worker.
@@ -46,6 +48,7 @@ func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 		logger: logger,
 		queue:  make(chan alertRequest, 100),
 		status: StatusUnknown,
+		ready:  make(chan struct{}),
 	}
 
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -103,6 +106,10 @@ func (m *macosNotifier) Warmup() {
 	}
 }
 
+func (m *macosNotifier) Ready() <-chan struct{} {
+	return m.ready
+}
+
 func (m *macosNotifier) setStatus(s BridgeStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -132,6 +139,9 @@ func (m *macosNotifier) worker(ctx context.Context) {
 	defer m.wg.Done()
 
 	once.Do(func() {
+		// Use a local closure to ensure ready channel is closed even on early returns
+		defer m.readyOnce.Do(func() { close(m.ready) })
+
 		if runtime.GOOS != "darwin" {
 			m.setStatus(StatusUnsupported)
 			return
@@ -268,7 +278,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		
 		if err := cmd.Run(); err != nil {
-			m.logger.WarnContext(ctx, "osascript fallback failed", "error", err)
+			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
 		}
 	}()
 }

@@ -24,6 +24,12 @@ func (m *mockNotifier) Shutdown() {}
 
 func (m *mockNotifier) Warmup() {}
 
+func (m *mockNotifier) Ready() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 func (m *mockNotifier) Status() BridgeStatus {
 	return StatusHealthy
 }
