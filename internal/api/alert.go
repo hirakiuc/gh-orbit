@@ -25,6 +25,7 @@ type Notifier interface {
 
 // AlertService coordinates the logic for when and how to send system alerts.
 type AlertService struct {
+	ctx      context.Context
 	config   *config.Config
 	db       *db.DB
 	logger   *slog.Logger
@@ -42,6 +43,7 @@ type AlertService struct {
 
 func NewAlertService(ctx context.Context, cfg *config.Config, database *db.DB, logger *slog.Logger) *AlertService {
 	return &AlertService{
+		ctx:            ctx,
 		config:         cfg,
 		db:             database,
 		logger:         logger,
@@ -73,7 +75,7 @@ func (a *AlertService) SyncStart() {
 	a.isInitializing = (err == nil && len(notifs) == 0)
 
 	if a.isInitializing {
-		a.logger.InfoContext(context.Background(), "alert service: silent initialization baseline active")
+		a.logger.InfoContext(a.ctx, "alert service: silent initialization baseline active")
 	}
 }
 
@@ -110,7 +112,7 @@ func (a *AlertService) Notify(n GHNotification) error {
 	body := fmt.Sprintf("Reason: %s", n.Reason)
 	importance := a.calculateImportance(n)
 
-	a.logger.DebugContext(context.Background(), "sending system alert",
+	a.logger.DebugContext(a.ctx, "sending system alert",
 		"title", title,
 		"importance", importance,
 	)
@@ -174,8 +176,6 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 		return
 	}
 
-	ctx := context.Background()
-
 	// Ensure bridge is warmed up (probed) before checking status
 	a.Warmup()
 
@@ -191,7 +191,7 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 	cached, err := a.db.GetBridgeHealth()
 	if err == nil && cached != nil {
 		if cached.OSVersion == osVersion && cached.BinaryPath == execPath && cached.BinaryVersion == version {
-			a.logger.DebugContext(ctx, "alert service: using cached bridge status", "status", cached.Status)
+			a.logger.DebugContext(a.ctx, "alert service: using cached bridge status", "status", cached.Status)
 			return
 		}
 	}
@@ -220,5 +220,5 @@ func (a *AlertService) ProbeAndCacheBridge(version string) {
 		UpdatedAt:     time.Now(),
 	})
 
-	a.logger.InfoContext(ctx, "alert service: bridge probe complete", "status", status)
+	a.logger.InfoContext(a.ctx, "alert service: bridge probe complete", "status", status)
 }
