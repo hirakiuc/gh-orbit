@@ -3,6 +3,8 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -35,32 +37,24 @@ var (
 	sel_addNotificationRequest             uintptr
 	sel_requestAuthorization               uintptr
 	sel_dictionaryWithObjectForKey         uintptr
+	//nolint:unused
 	sel_objectForKey                       uintptr
+	//nolint:unused
 	sel_notification                       uintptr
+	//nolint:unused
 	sel_request                            uintptr
+	//nolint:unused
 	sel_content                            uintptr
+	//nolint:unused
 	sel_userInfo                           uintptr
 	sel_stringWithUTF8String               uintptr
 
 	// ABI-Safe Explicit Signatures for common Objective-C calls
-	// We register these with explicit types to ensure ARM64 register stability.
-	
-	// id objc_msgSend(id self, SEL op)
 	msgSend_id_void func(obj uintptr, sel uintptr) uintptr
-	
-	// id objc_msgSend(id self, SEL op, id arg1)
 	msgSend_id_id func(obj uintptr, sel uintptr, arg1 uintptr) uintptr
-	
-	// id objc_msgSend(id self, SEL op, id arg1, id arg2)
 	msgSend_id_id_id func(obj uintptr, sel uintptr, arg1, arg2 uintptr) uintptr
-
-	// id objc_msgSend(id self, SEL op, id arg1, id arg2, id arg3)
 	msgSend_id_id_id_id func(obj uintptr, sel uintptr, arg1, arg2, arg3 uintptr) uintptr
-
-	// void objc_msgSend(id self, SEL op, id arg1)
 	msgSend_void_id func(obj uintptr, sel uintptr, arg1 uintptr)
-
-	// void objc_msgSend(id self, SEL op, NSUInteger options, void(^handler)(BOOL, NSError *))
 	msgSend_void_uint_id func(obj uintptr, sel uintptr, options uintptr, handler uintptr)
 )
 
@@ -114,10 +108,73 @@ func init() {
 	sel_stringWithUTF8String = sel_registerName("stringWithUTF8String:")
 }
 
-// nsString converts a Go string to an Objective-C NSString
+// BridgeProbe represents the result of a single bridge diagnostic check.
+type BridgeProbe struct {
+	Name    string
+	Passed  bool
+	Message string
+}
+
+// ProbeBridge deep-probes the Objective-C runtime to ensure compatibility.
+func ProbeBridge() []BridgeProbe {
+	var probes []BridgeProbe
+
+	classes := []string{
+		"NSString", "NSBundle", "NSObject", "NSDictionary",
+		"UNMutableNotificationContent", "UNNotificationRequest", "UNUserNotificationCenter",
+	}
+
+	for _, name := range classes {
+		cls := objc_getClass(name)
+		probes = append(probes, BridgeProbe{
+			Name:   fmt.Sprintf("Class: %s", name),
+			Passed: cls != 0,
+		})
+	}
+
+	return probes
+}
+
+// nsString converts a Go string to an Objective-C NSString safely.
 func nsString(s string) uintptr {
 	cls := objc_getClass("NSString")
+	if cls == 0 || sel_stringWithUTF8String == 0 {
+		return 0
+	}
 	// #nosec G103 -- Required for purego Objective-C interop
-	str := msgSend_id_id(cls, sel_stringWithUTF8String, uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0]))))
-	return str
+	return msgSend_id_id(cls, sel_stringWithUTF8String, uintptr(unsafe.Pointer(&([]byte(s + "\x00")[0]))))
+}
+
+// safeMsgSend0 verifies pointers before calling [obj sel]
+func safeMsgSend0(obj uintptr, sel uintptr) (uintptr, error) {
+	if obj == 0 || sel == 0 {
+		return 0, errors.New("nil receiver or selector")
+	}
+	return msgSend_id_void(obj, sel), nil
+}
+
+//nolint:unused
+// safeMsgSend1 verifies pointers before calling [obj sel:arg1]
+func safeMsgSend1(obj uintptr, sel uintptr, arg1 uintptr) (uintptr, error) {
+	if obj == 0 || sel == 0 {
+		return 0, errors.New("nil receiver or selector")
+	}
+	return msgSend_id_id(obj, sel, arg1), nil
+}
+
+// safeMsgSend2 verifies pointers before calling [obj sel:arg1 :arg2]
+func safeMsgSend2(obj uintptr, sel uintptr, arg1, arg2 uintptr) (uintptr, error) {
+	if obj == 0 || sel == 0 {
+		return 0, errors.New("nil receiver or selector")
+	}
+	return msgSend_id_id_id(obj, sel, arg1, arg2), nil
+}
+
+// safeMsgSendVoid1 verifies pointers before calling [obj sel:arg1] returning void
+func safeMsgSendVoid1(obj uintptr, sel uintptr, arg1 uintptr) error {
+	if obj == 0 || sel == 0 {
+		return errors.New("nil receiver or selector")
+	}
+	msgSend_void_id(obj, sel, arg1)
+	return nil
 }

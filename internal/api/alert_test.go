@@ -21,6 +21,10 @@ func (m *mockNotifier) Notify(title, subtitle, body, url string, priority int) e
 
 func (m *mockNotifier) Shutdown() {}
 
+func (m *mockNotifier) Status() BridgeStatus {
+	return StatusHealthy
+}
+
 func TestAlertService_Throttling(t *testing.T) {
 	logger := slog.Default()
 	database, _ := db.OpenInMemory(logger)
