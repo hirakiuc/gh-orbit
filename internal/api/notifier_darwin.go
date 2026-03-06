@@ -200,6 +200,8 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 var appleScriptReplacer = strings.NewReplacer(
 	"\\", "\\\\",
 	"\"", "\\\"",
+	"`", "\\`",
+	"$", "\\$",
 )
 
 func escapeAppleScript(s string) string {
