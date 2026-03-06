@@ -213,4 +213,5 @@ func (m *Model) tickClock() tea.Cmd {
 
 func (m *Model) Shutdown() {
 	m.traffic.Shutdown()
+	m.sync.Shutdown()
 }

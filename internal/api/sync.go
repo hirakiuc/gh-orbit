@@ -36,6 +36,13 @@ func (s *SyncEngine) Fetcher() Fetcher {
 	return s.fetcher
 }
 
+// Shutdown ensures all background services are stopped.
+func (s *SyncEngine) Shutdown() {
+	if s.alerts != nil {
+		s.alerts.Shutdown()
+	}
+}
+
 // Sync performs a full synchronization cycle for notifications.
 // If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.

@@ -50,20 +50,38 @@ func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 }
 
 func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) error {
-	select {
-	case m.queue <- alertRequest{
+	req := alertRequest{
 		title:    title,
 		subtitle: subtitle,
 		body:     body,
 		url:      url,
 		priority: priority,
-	}:
+	}
+
+	select {
+	case m.queue <- req:
 		// Queued successfully
 	default:
-		// Queue full, drop oldest or ignore
-		m.logger.Warn("notification queue full, dropping alert", "title", title)
+		// Queue full, drop oldest by pulling one out and then pushing new
+		select {
+		case <-m.queue:
+			// Dropped oldest
+		default:
+		}
+		
+		// Attempt to push again
+		select {
+		case m.queue <- req:
+		default:
+			m.logger.Warn("notification queue full, dropping alert", "title", title)
+		}
 	}
 	return nil
+}
+
+func (m *macosNotifier) Shutdown() {
+	m.cancel()
+	m.wg.Wait()
 }
 
 func (m *macosNotifier) worker(ctx context.Context) {
@@ -105,20 +123,20 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
 
 	// 1. Create content
 	contentCls := objc_getClass("UNMutableNotificationContent")
-	content := msgSend0(contentCls, "new")
+	content := msgSend_id_void(contentCls, sel_new)
 	
-	msgSendVoid1(content, "setTitle:", nsString(req.title))
-	msgSendVoid1(content, "setSubtitle:", nsString(req.subtitle))
-	msgSendVoid1(content, "setBody:", nsString(req.body))
-	msgSendVoid1(content, "setThreadIdentifier:", nsString(req.subtitle))
+	msgSend_void_id(content, sel_setTitle, nsString(req.title))
+	msgSend_void_id(content, sel_setSubtitle, nsString(req.subtitle))
+	msgSend_void_id(content, sel_setBody, nsString(req.body))
+	msgSend_void_id(content, sel_setThreadIdentifier, nsString(req.subtitle))
 
 	// Store URL in userInfo for the delegate
 	if req.url != "" {
 		dictCls := objc_getClass("NSDictionary")
 		key := nsString("url")
 		val := nsString(req.url)
-		userInfo := msgSend2(dictCls, "dictionaryWithObject:forKey:", val, key)
-		msgSendVoid1(content, "setUserInfo:", userInfo)
+		userInfo := msgSend_id_id_id(dictCls, sel_dictionaryWithObjectForKey, val, key)
+		msgSend_void_id(content, sel_setUserInfo, userInfo)
 	}
 
 	// 2. Set interruption level
@@ -126,16 +144,16 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
 	if req.priority >= 2 {
 		level = 2
 	}
-	msgSend_void_id(content, sel_registerName("setInterruptionLevel:"), level)
+	msgSend_void_id(content, sel_setInterruptionLevel, level)
 
 	// 3. Create request
 	reqCls := objc_getClass("UNNotificationRequest")
-	notificationReq := msgSend3(reqCls, "requestWithIdentifier:content:trigger:", nsString(""), content, 0)
+	notificationReq := msgSend_id_id_id_id(reqCls, sel_requestWithIdentifierContentTrigger, nsString(""), content, 0)
 
 	// 4. Add to center
 	centerCls := objc_getClass("UNUserNotificationCenter")
-	center := msgSend0(centerCls, "currentNotificationCenter")
-	msgSend2(center, "addNotificationRequest:withCompletionHandler:", notificationReq, 0)
+	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
+	msgSend_id_id_id(center, sel_addNotificationRequest, notificationReq, 0)
 
 	span.SetAttributes(attribute.String("title", req.title))
 }
@@ -162,12 +180,12 @@ func (m *macosNotifier) setupDelegate() {
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
 	
 	callback := purego.NewCallback(func(self, sel, center, response, completion uintptr) {
-		notification := msgSend0(response, "notification")
-		req := msgSend0(notification, "request")
-		content := msgSend0(req, "content")
-		userInfo := msgSend0(content, "userInfo")
+		notification := msgSend_id_void(response, sel_notification)
+		req := msgSend_id_void(notification, sel_request)
+		content := msgSend_id_void(req, sel_content)
+		userInfo := msgSend_id_void(content, sel_userInfo)
 		
-		urlPtr := msgSend1(userInfo, "objectForKey:", nsString("url"))
+		urlPtr := msgSend_id_id(userInfo, sel_objectForKey, nsString("url"))
 		_ = urlPtr 
 		
 		if completion != 0 {
@@ -178,18 +196,18 @@ func (m *macosNotifier) setupDelegate() {
 	class_addMethod(cls, sel_registerName("userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:"), callback, "v@:@@@")
 	objc_registerClassPair(cls)
 	
-	delegateInstance = msgSend0(cls, "new")
+	delegateInstance = msgSend_id_void(cls, sel_new)
 	
 	centerCls := objc_getClass("UNUserNotificationCenter")
-	center := msgSend0(centerCls, "currentNotificationCenter")
-	msgSendVoid1(center, "setDelegate:", delegateInstance)
+	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
+	msgSend_void_id(center, sel_setDelegate, delegateInstance)
 	
 	m.logger.Debug("native notification delegate initialized")
 }
 
 func (m *macosNotifier) requestAuth() {
 	centerCls := objc_getClass("UNUserNotificationCenter")
-	center := msgSend0(centerCls, "currentNotificationCenter")
+	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
 	// Use explicit signature for auth request
-	msgSend_void_uint_id(center, sel_registerName("requestAuthorizationWithOptions:completionHandler:"), 7, 0)
+	msgSend_void_uint_id(center, sel_requestAuthorization, 7, 0)
 }

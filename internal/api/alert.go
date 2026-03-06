@@ -13,6 +13,7 @@ import (
 // Notifier defines the interface for delivering system notifications.
 type Notifier interface {
 	Notify(title, subtitle, body, url string, priority int) error
+	Shutdown()
 }
 
 // AlertService coordinates the logic for when and how to send system alerts.
@@ -143,4 +144,11 @@ func (a *AlertService) shouldNotifyReason(reason string) bool {
 		}
 	}
 	return false
+}
+
+// Shutdown ensures the platform notifier finishes its work.
+func (a *AlertService) Shutdown() {
+	if a.notifier != nil {
+		a.notifier.Shutdown()
+	}
 }

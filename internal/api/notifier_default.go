@@ -27,3 +27,5 @@ func (d *defaultNotifier) Notify(title, subtitle, body, url string, priority int
 
 	return beeep.Notify(fullTitle, body, "")
 }
+
+func (d *defaultNotifier) Shutdown() {}
