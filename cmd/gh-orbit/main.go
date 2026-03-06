@@ -221,7 +221,7 @@ func run(ctx context.Context) error {
 	userID := strconv.FormatInt(user.ID, 10)
 
 	// 4. Start TUI
-	m := tui.NewModel(ctx, database, client, userID, cfg, logger)
+	m := tui.NewModel(ctx, database, client, userID, cfg, logger, version)
 	p := tea.NewProgram(&m)
 
 	// Background goroutine to handle context cancellation (Ctrl+C / SIGTERM)

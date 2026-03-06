@@ -4,7 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -150,4 +155,54 @@ func (a *AlertService) BridgeStatus() BridgeStatus {
 		return StatusUnsupported
 	}
 	return a.native.Status()
+}
+
+// ProbeAndCacheBridge performs a deep probe of the native bridge and caches the result.
+func (a *AlertService) ProbeAndCacheBridge(version string) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+
+	// 1. Get current environment fingerprints
+	osVersion := "unknown"
+	out, err := exec.Command("sysctl", "-n", "kern.osversion").Output()
+	if err == nil {
+		osVersion = strings.TrimSpace(string(out))
+	}
+	execPath, _ := os.Executable()
+
+	// 2. Check cache
+	cached, err := a.db.GetBridgeHealth()
+	if err == nil && cached != nil {
+		if cached.OSVersion == osVersion && cached.BinaryPath == execPath && cached.BinaryVersion == version {
+			a.logger.Debug("alert service: using cached bridge status", "status", cached.Status)
+			return
+		}
+	}
+
+	// 3. Perform Deep Probe
+	probes := ProbeBridge()
+	allPassed := true
+	for _, p := range probes {
+		if !p.Passed {
+			allPassed = false
+			break
+		}
+	}
+
+	status := StatusHealthy
+	if !allPassed {
+		status = StatusBroken
+	}
+
+	// 4. Update Cache
+	_ = a.db.UpdateBridgeHealth(db.BridgeHealth{
+		Status:        string(status),
+		OSVersion:     osVersion,
+		BinaryPath:    execPath,
+		BinaryVersion: version,
+		UpdatedAt:     time.Now(),
+	})
+
+	a.logger.Info("alert service: bridge probe complete", "status", status)
 }

@@ -75,7 +75,7 @@ type Model struct {
 	syncCounter  int
 }
 
-func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger) Model {
+func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger, appVersion string) Model {
 	styles := DefaultStyles(true) // Default to dark theme
 	keys := DefaultKeyMap()
 	delegate := newItemDelegate(styles, keys)
@@ -87,6 +87,8 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 	vp := viewport.New()
 
 	alerts := api.NewAlertService(ctx, cfg, database, logger)
+	alerts.ProbeAndCacheBridge(appVersion)
+
 	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
