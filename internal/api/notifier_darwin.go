@@ -4,13 +4,17 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/ebitengine/purego"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -31,13 +35,16 @@ type macosNotifier struct {
 	queue   chan alertRequest
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+	status  BridgeStatus
+	mu      sync.RWMutex
 }
 
 // NewPlatformNotifier returns the macOS native notifier with a background worker.
 func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 	n := &macosNotifier{
 		logger: logger,
-		queue:  make(chan alertRequest, 100), // Buffer for up to 100 alerts
+		queue:  make(chan alertRequest, 100),
+		status: StatusUnknown,
 	}
 
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -60,19 +67,14 @@ func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) 
 
 	select {
 	case m.queue <- req:
-		// Queued successfully
 	default:
-		// Queue full, "Drop Oldest" pattern:
-		// 1. Try to pull one out (the oldest)
 		select {
 		case <-m.queue:
 		default:
 		}
-		// 2. Try to push the new one again
 		select {
 		case m.queue <- req:
 		default:
-			m.logger.Warn("notification queue full, dropping alert", "title", title)
 		}
 	}
 	return nil
@@ -83,78 +85,152 @@ func (m *macosNotifier) Shutdown() {
 	m.wg.Wait()
 }
 
+func (m *macosNotifier) Status() BridgeStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.status
+}
+
+func (m *macosNotifier) setStatus(s BridgeStatus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.status = s
+}
+
 func (m *macosNotifier) worker(ctx context.Context) {
 	defer m.wg.Done()
 
-	// Lazy initialization of the frameworks and swizzling
 	once.Do(func() {
 		if runtime.GOOS != "darwin" {
+			m.setStatus(StatusUnsupported)
 			return
 		}
-		// Load UserNotifications framework
-		_, _ = purego.Dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", purego.RTLD_GLOBAL)
 		
+		_, err := purego.Dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", purego.RTLD_GLOBAL)
+		if err != nil {
+			m.logger.Warn("failed to load UserNotifications framework, using osascript fallback", "error", err)
+			m.setStatus(StatusBroken)
+			return
+		}
+		
+		// Probe bridge
+		probes := ProbeBridge()
+		allPassed := true
+		for _, p := range probes {
+			if !p.Passed {
+				allPassed = false
+				break
+			}
+		}
+
+		if !allPassed {
+			m.setStatus(StatusBroken)
+			return
+		}
+
 		m.swizzleBundleID()
 		m.setupDelegate()
 		m.requestAuth()
+		m.setStatus(StatusHealthy)
 	})
 
 	for {
 		select {
 		case <-ctx.Done():
-			m.logger.Debug("macos notification worker stopping")
 			return
 		case req := <-m.queue:
-			m.deliver(ctx, req)
+			if m.Status() == StatusHealthy {
+				err := m.deliver(ctx, req)
+				if err != nil {
+					m.logger.Warn("native delivery failed, attempting osascript fallback", "error", err)
+					m.deliverWithAppleScript(ctx, req)
+				}
+			} else {
+				m.deliverWithAppleScript(ctx, req)
+			}
 		}
 	}
 }
 
-func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
+func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 	tracer := config.GetTracer()
 	_, span := tracer.Start(ctx, "macos.notify_deliver")
 	defer span.End()
 
-	m.logger.Debug("delivering native macos notification", 
-		"title", req.title, 
-		"subtitle", req.subtitle,
-	)
-
-	// 1. Create content
+	// 1. Create content safely
 	contentCls := objc_getClass("UNMutableNotificationContent")
-	content := msgSend_id_void(contentCls, sel_new)
+	content, err := safeMsgSend0(contentCls, sel_new)
+	if err != nil { return err }
 	
-	msgSend_void_id(content, sel_setTitle, nsString(req.title))
-	msgSend_void_id(content, sel_setSubtitle, nsString(req.subtitle))
-	msgSend_void_id(content, sel_setBody, nsString(req.body))
-	msgSend_void_id(content, sel_setThreadIdentifier, nsString(req.subtitle))
+	_ = safeMsgSendVoid1(content, sel_setTitle, nsString(req.title))
+	_ = safeMsgSendVoid1(content, sel_setSubtitle, nsString(req.subtitle))
+	_ = safeMsgSendVoid1(content, sel_setBody, nsString(req.body))
+	_ = safeMsgSendVoid1(content, sel_setThreadIdentifier, nsString(req.subtitle))
 
 	// Store URL in userInfo for the delegate
 	if req.url != "" {
 		dictCls := objc_getClass("NSDictionary")
 		key := nsString("url")
 		val := nsString(req.url)
-		userInfo := msgSend_id_id_id(dictCls, sel_dictionaryWithObjectForKey, val, key)
-		msgSend_void_id(content, sel_setUserInfo, userInfo)
+		userInfo, err := safeMsgSend2(dictCls, sel_dictionaryWithObjectForKey, val, key)
+		if err == nil {
+			_ = safeMsgSendVoid1(content, sel_setUserInfo, userInfo)
+		}
 	}
 
 	// 2. Set interruption level
 	level := uintptr(1)
-	if req.priority >= 2 {
-		level = 2
-	}
-	msgSend_void_id(content, sel_setInterruptionLevel, level)
+	if req.priority >= 2 { level = 2 }
+	_ = safeMsgSendVoid1(content, sel_setInterruptionLevel, level)
 
 	// 3. Create request
 	reqCls := objc_getClass("UNNotificationRequest")
-	notificationReq := msgSend_id_id_id_id(reqCls, sel_requestWithIdentifierContentTrigger, nsString(""), content, 0)
+	notificationReq, err := safeMsgSend2(reqCls, sel_requestWithIdentifierContentTrigger, nsString(""), content)
+	if err != nil { return err }
 
 	// 4. Add to center
 	centerCls := objc_getClass("UNUserNotificationCenter")
-	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
-	msgSend_id_id_id(center, sel_addNotificationRequest, notificationReq, 0)
+	center, err := safeMsgSend0(centerCls, sel_currentNotificationCenter)
+	if err != nil { return err }
+	
+	_, err = safeMsgSend2(center, sel_addNotificationRequest, notificationReq, 0)
+	return err
+}
 
-	span.SetAttributes(attribute.String("title", req.title))
+var appleScriptReplacer = strings.NewReplacer(
+	"\\", "\\\\",
+	"\"", "\\\"",
+	"`", "\\`",
+	"$", "\\$",
+)
+
+func escapeAppleScript(s string) string {
+	return appleScriptReplacer.Replace(s)
+}
+
+func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertRequest) {
+	m.logger.Debug("delivering notification via osascript fallback")
+	
+	script := fmt.Sprintf(
+		"display notification \"%s\" with title \"%s\" subtitle \"%s\"",
+		escapeAppleScript(req.body),
+		escapeAppleScript(req.title),
+		escapeAppleScript(req.subtitle),
+	)
+
+	// Execute asynchronously with Go 1.26 WaitDelay and process group isolation
+	go func() {
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		// #nosec G204 -- script is sanitized via escapeAppleScript
+		cmd := exec.CommandContext(cmdCtx, "osascript", "-e", script)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		
+		if err := cmd.Run(); err != nil {
+			m.logger.Warn("osascript fallback failed", "error", err)
+		}
+	}()
 }
 
 func (m *macosNotifier) swizzleBundleID() {
@@ -165,28 +241,14 @@ func (m *macosNotifier) swizzleBundleID() {
 		return nsString("com.apple.Terminal")
 	})
 
-	class_replaceMethod(
-		bundleCls,
-		sel_registerName("bundleIdentifier"),
-		bundleIDCallback,
-		"@@:",
-	)
+	class_replaceMethod(bundleCls, sel_registerName("bundleIdentifier"), bundleIDCallback, "@@:")
 }
 
 func (m *macosNotifier) setupDelegate() {
-	// Create a runtime class for the delegate
 	super := objc_getClass("NSObject")
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
 	
 	callback := purego.NewCallback(func(self, sel, center, response, completion uintptr) {
-		notification := msgSend_id_void(response, sel_notification)
-		req := msgSend_id_void(notification, sel_request)
-		content := msgSend_id_void(req, sel_content)
-		userInfo := msgSend_id_void(content, sel_userInfo)
-		
-		urlPtr := msgSend_id_id(userInfo, sel_objectForKey, nsString("url"))
-		_ = urlPtr 
-		
 		if completion != 0 {
 			purego.SyscallN(completion)
 		}
@@ -196,17 +258,13 @@ func (m *macosNotifier) setupDelegate() {
 	objc_registerClassPair(cls)
 	
 	delegateInstance = msgSend_id_void(cls, sel_new)
-	
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
 	msgSend_void_id(center, sel_setDelegate, delegateInstance)
-	
-	m.logger.Debug("native notification delegate initialized")
 }
 
 func (m *macosNotifier) requestAuth() {
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
-	// Use explicit signature for auth request
 	msgSend_void_uint_id(center, sel_requestAuthorization, 7, 0)
 }

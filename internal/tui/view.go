@@ -5,8 +5,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/dustin/go-humanize"
 	"github.com/charmbracelet/glamour"
+	"github.com/dustin/go-humanize"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 )
 
 func (m *Model) View() tea.View {
@@ -115,7 +116,30 @@ func (m *Model) renderFooter() string {
 		quotaStr = m.styles.Help.Render(fmt.Sprintf(" [%d]", m.traffic.Remaining()))
 	}
 
-	footer := lipgloss.JoinHorizontal(lipgloss.Bottom, syncStatus, lastSyncStr, quotaStr)
+	// 4. Bridge Health Info
+	bridgeStr := ""
+	if m.sync != nil {
+		status := m.sync.BridgeStatus()
+		label := ""
+		style := m.styles.Help
+		
+		switch status {
+		case api.StatusHealthy:
+			label = " [NATIVE]"
+		case api.StatusUnsupported, api.StatusBroken:
+			label = " [FALLBACK]"
+			style = m.styles.PriorityMed
+		case api.StatusPermissionsDenied:
+			label = " [NO PERMS]"
+			style = m.styles.PriorityHigh
+		}
+		
+		if label != "" {
+			bridgeStr = style.Render(label)
+		}
+	}
+
+	footer := lipgloss.JoinHorizontal(lipgloss.Bottom, syncStatus, lastSyncStr, quotaStr, bridgeStr)
 
 	// Priority: Error only (status is now toasts)
 	if m.err != nil {

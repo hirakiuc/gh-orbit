@@ -60,3 +60,12 @@ func (s SyncMeta) LogValue() slog.Value {
 func DBLogger(path string) slog.Attr {
 	return slog.String("db_path", path)
 }
+
+// BridgeHealth represents the cached health status of the native bridge.
+type BridgeHealth struct {
+	Status        string    `json:"status"`
+	OSVersion     string    `json:"os_version"`
+	BinaryPath    string    `json:"binary_path"`
+	BinaryVersion string    `json:"binary_version"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}

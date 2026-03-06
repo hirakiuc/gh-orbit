@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -23,6 +25,12 @@ var (
 	verbose  bool
 	logLevel = &slog.LevelVar{} // Default is LevelInfo
 	version  = "dev"
+)
+
+// doctor flags
+var (
+	doctorJSON bool
+	doctorTest bool
 )
 
 var rootCmd = &cobra.Command{
@@ -43,8 +51,114 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+var doctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Check the health of the application environment",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDoctor()
+	},
+}
+
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")
+	
+	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "output report in JSON format")
+	doctorCmd.Flags().BoolVar(&doctorTest, "test", false, "trigger a test notification")
+	rootCmd.AddCommand(doctorCmd)
+}
+
+func runDoctor() error {
+	ctx := context.Background()
+	
+	// 1. Collect OS info
+	osVersion := "unknown"
+	if runtime.GOOS == "darwin" {
+		out, err := exec.Command("sysctl", "-n", "kern.osversion").Output()
+		if err == nil {
+			osVersion = string(out)
+		}
+	}
+
+	execPath, _ := os.Executable()
+
+	report := api.DoctorReport{
+		SchemaVersion: 1,
+		Timestamp:     time.Now(),
+		OS:            runtime.GOOS,
+		Arch:          runtime.GOARCH,
+		KernelVersion: osVersion,
+		BinaryPath:    execPath,
+		BridgeStatus:  api.StatusUnknown,
+	}
+
+	// 2. Probe Bridge
+	if runtime.GOOS == "darwin" {
+		probes := api.ProbeBridge()
+		allPassed := true
+		for _, p := range probes {
+			report.Checks = append(report.Checks, api.BridgeCheck{
+				Name:   p.Name,
+				Passed: p.Passed,
+			})
+			if !p.Passed {
+				allPassed = false
+			}
+		}
+		if allPassed {
+			report.BridgeStatus = api.StatusHealthy
+		} else {
+			report.BridgeStatus = api.StatusBroken
+		}
+	} else {
+		report.BridgeStatus = api.StatusUnsupported
+	}
+
+	// 3. Optional Test Notification
+	if doctorTest {
+		logger, cleanup, _ := config.SetupLogger(logLevel)
+		defer func() { _ = cleanup() }()
+		
+		notifier := api.NewPlatformNotifier(ctx, logger)
+		err := notifier.Notify("Diagnostic Test", "gh-orbit doctor", "This is a test notification.", "", 1)
+		
+		testPassed := (err == nil)
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		}
+		report.Checks = append(report.Checks, api.BridgeCheck{
+			Name:    "End-to-End Notification Test",
+			Passed:  testPassed,
+			Message: msg,
+		})
+		
+		// Wait for async delivery
+		time.Sleep(1 * time.Second)
+		notifier.Shutdown()
+	}
+
+	// 4. Output
+	if doctorJSON {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(report)
+	}
+
+	fmt.Println("🤖 gh-orbit doctor report")
+	fmt.Println("==========================")
+	fmt.Printf("OS:     %s (%s)\n", report.OS, report.Arch)
+	fmt.Printf("Kernel: %s", report.KernelVersion)
+	fmt.Printf("Status: %s\n", report.BridgeStatus)
+	fmt.Println("\nChecks:")
+	for _, c := range report.Checks {
+		status := "[PASS]"
+		if !c.Passed {
+			status = "[FAIL]"
+		}
+		fmt.Printf("%s %s %s\n", status, c.Name, c.Message)
+	}
+
+	return nil
 }
 
 func run(ctx context.Context) error {
@@ -107,7 +221,7 @@ func run(ctx context.Context) error {
 	userID := strconv.FormatInt(user.ID, 10)
 
 	// 4. Start TUI
-	m := tui.NewModel(ctx, database, client, userID, cfg, logger)
+	m := tui.NewModel(ctx, database, client, userID, cfg, logger, version)
 	p := tea.NewProgram(&m)
 
 	// Background goroutine to handle context cancellation (Ctrl+C / SIGTERM)

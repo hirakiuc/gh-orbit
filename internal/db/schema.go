@@ -49,4 +49,13 @@ var migrations = []string{
 	`ALTER TABLE notifications ADD COLUMN enriched_at DATETIME;`,
 	// Version 8: Add is_notified to track native alerts and support throttling
 	`ALTER TABLE orbit_state ADD COLUMN is_notified BOOLEAN DEFAULT FALSE;`,
+	// Version 9: Add bridge_health table for diagnostic caching
+	`CREATE TABLE IF NOT EXISTS bridge_health (
+		id INTEGER PRIMARY KEY CHECK (id = 1), -- Singleton record
+		status TEXT NOT NULL,
+		os_version TEXT NOT NULL,
+		binary_path TEXT NOT NULL,
+		binary_version TEXT NOT NULL,
+		updated_at DATETIME NOT NULL
+	);`,
 }
