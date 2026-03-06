@@ -30,6 +30,7 @@ type OrbitState struct {
 	Priority       int    `json:"priority"` // 0 to 3
 	Status         string `json:"status"`   // 'entry', 'triaged', 'dismissed'
 	IsReadLocally  bool   `json:"is_read_locally"`
+	IsNotified     bool   `json:"is_notified"`
 }
 
 // SyncMeta tracks API polling metadata per user/endpoint.

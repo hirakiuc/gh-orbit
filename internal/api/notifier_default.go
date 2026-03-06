@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -14,7 +15,7 @@ type defaultNotifier struct {
 }
 
 // NewPlatformNotifier returns the default cross-platform notifier (beeep).
-func NewPlatformNotifier(logger *slog.Logger) Notifier {
+func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 	return &defaultNotifier{logger: logger}
 }
 
@@ -26,3 +27,5 @@ func (d *defaultNotifier) Notify(title, subtitle, body, url string, priority int
 
 	return beeep.Notify(fullTitle, body, "")
 }
+
+func (d *defaultNotifier) Shutdown() {}

@@ -86,7 +86,7 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 
 	vp := viewport.New()
 
-	alerts := api.NewAlertService(cfg, database, logger)
+	alerts := api.NewAlertService(ctx, cfg, database, logger)
 	fetcher := api.NewNotificationFetcher(client, logger)
 
 	return Model{
@@ -99,7 +99,7 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 		},
 		db:       database,
 		client:   client,
-		sync:     api.NewSyncEngine(fetcher, database, alerts, logger),
+		sync:     api.NewSyncEngine(ctx, fetcher, database, alerts, logger),
 		enrich:   api.NewEnrichmentEngine(ctx, client, database, logger),
 		traffic:  api.NewAPITrafficController(ctx, logger),
 		ui:       NewUIController(styles),
@@ -213,4 +213,5 @@ func (m *Model) tickClock() tea.Cmd {
 
 func (m *Model) Shutdown() {
 	m.traffic.Shutdown()
+	m.sync.Shutdown()
 }

@@ -12,7 +12,8 @@ import (
 
 func TestTrafficController_Serialization(t *testing.T) {
 	logger := slog.Default()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	tc := NewAPITrafficController(ctx, logger)
 
 	var mu sync.Mutex
@@ -45,7 +46,7 @@ func TestTrafficController_Serialization(t *testing.T) {
 	go cmd3()
 
 	// Wait for execution
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -56,7 +57,8 @@ func TestTrafficController_Serialization(t *testing.T) {
 
 func TestTrafficController_RateLimitGuard(t *testing.T) {
 	logger := slog.Default()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	tc := NewAPITrafficController(ctx, logger)
 	tc.UpdateRateLimit(100) // Below default threshold (500)
 

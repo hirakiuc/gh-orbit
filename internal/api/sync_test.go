@@ -66,7 +66,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		},
 	}
 
-	engine := NewSyncEngine(fetcher, database, nil, logger)
+	engine := NewSyncEngine(context.Background(), fetcher, database, nil, logger)
 
 	// 1. Initial Sync (Force=true)
 	if _, err := engine.Sync(context.Background(), userID, true); err != nil {
@@ -156,7 +156,7 @@ func TestETagSanitization(t *testing.T) {
 		ETag:   `W/""`, // Seed with corrupted data
 	})
 
-	engine := NewSyncEngine(fetcher, database, nil, logger)
+	engine := NewSyncEngine(context.Background(), fetcher, database, nil, logger)
 	_, _ = engine.Sync(context.Background(), userID, true)
 
 	finalMeta, _ := database.GetSyncMeta(userID, "notifications")

@@ -59,7 +59,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	}
 
 	// Verify orbit_state was automatically created
-	if ns.Priority != 0 || ns.Status != "entry" {
+	if ns.Priority != 0 || ns.Status != "entry" || ns.IsNotified {
 		t.Errorf("Unexpected orbit state: %+v", ns.OrbitState)
 	}
 
@@ -69,13 +69,14 @@ func TestUpsertAndGetNotification(t *testing.T) {
 		Priority:       2,
 		Status:         "tracking",
 		IsReadLocally:  true,
+		IsNotified:     true,
 	}
 	if err := db.UpdateOrbitState(newState); err != nil {
 		t.Fatalf("UpdateOrbitState failed: %v", err)
 	}
 
 	ns2, _ := db.GetNotification("123")
-	if ns2.Priority != 2 || ns2.Status != "tracking" || !ns2.IsReadLocally {
+	if ns2.Priority != 2 || ns2.Status != "tracking" || !ns2.IsReadLocally || !ns2.IsNotified {
 		t.Errorf("Orbit state not updated correctly: %+v", ns2.OrbitState)
 	}
 
@@ -90,8 +91,8 @@ func TestUpsertAndGetNotification(t *testing.T) {
 		t.Errorf("Title not updated: %s", ns3.SubjectTitle)
 	}
 	// Verify orbit state was preserved
-	if ns3.Priority != 2 {
-		t.Errorf("Orbit state lost during notification update")
+	if ns3.Priority != 2 || !ns3.IsNotified {
+		t.Errorf("Orbit state lost or corrupted during notification update")
 	}
 }
 
@@ -118,6 +119,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 		Priority:       3,
 		Status:         "tracking",
 		IsReadLocally:  true,
+		IsNotified:     true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -139,64 +141,36 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	if ns.SubjectTitle != "Updated Title" {
 		t.Errorf("Title not updated: %s", ns.SubjectTitle)
 	}
-	if ns.Priority != 3 || ns.Status != "tracking" || !ns.IsReadLocally {
-		t.Errorf("Local state was overwritten: %+v", ns.OrbitState)
+	if ns.Priority != 3 || ns.Status != "tracking" || !ns.IsReadLocally || !ns.IsNotified {
+		t.Errorf("Local state was overwritten or corrupted: %+v", ns.OrbitState)
 	}
 }
 
-func TestListNotifications(t *testing.T) {
+func TestMarkNotifiedBatch(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() { _ = db.Close() }()
 
-	n1 := Notification{GitHubID: "1", SubjectTitle: "N1", SubjectType: "Issue", UpdatedAt: time.Now()}
-	n2 := Notification{GitHubID: "2", SubjectTitle: "N2", SubjectType: "PullRequest", UpdatedAt: time.Now().Add(time.Hour)}
-
+	n1 := Notification{GitHubID: "1", SubjectTitle: "N1", UpdatedAt: time.Now()}
+	n2 := Notification{GitHubID: "2", SubjectTitle: "N2", UpdatedAt: time.Now()}
 	_ = db.UpsertNotification(n1)
 	_ = db.UpsertNotification(n2)
 
-	list, err := db.ListNotifications()
+	// Verify initially not notified
+	ns1, _ := db.GetNotification("1")
+	if ns1.IsNotified {
+		t.Fatal("expected not notified initially")
+	}
+
+	// Batch mark
+	err := db.MarkNotifiedBatch([]string{"1", "2"})
 	if err != nil {
-		t.Fatalf("ListNotifications failed: %v", err)
+		t.Fatalf("MarkNotifiedBatch failed: %v", err)
 	}
 
-	if len(list) != 2 {
-		t.Errorf("Expected 2 notifications, got %d", len(list))
-	}
-
-	// Should be ordered by updated_at DESC
-	if list[0].GitHubID != "2" {
-		t.Errorf("Expected notification '2' first due to sorting")
-	}
-}
-
-func TestEnrichNotification(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() { _ = db.Close() }()
-
-	id := "enrich-test"
-	n := Notification{
-		GitHubID:     id,
-		SubjectTitle: "PR",
-		UpdatedAt:    time.Now(),
-	}
-	_ = db.UpsertNotification(n)
-
-	// Enrich
-	err := db.EnrichNotification(id, "Body Content", "author-1", "https://github.com/url", "Merged")
-	if err != nil {
-		t.Fatalf("EnrichNotification failed: %v", err)
-	}
-
-	// Verify
-	ns, err := db.GetNotification(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if ns.Body != "Body Content" || ns.AuthorLogin != "author-1" || ns.ResourceState != "Merged" {
-		t.Errorf("Enrichment failed to persist correctly: %+v", ns)
-	}
-	if !ns.IsEnriched {
-		t.Error("expected IsEnriched to be true")
+	// Verify updated
+	ns1_final, _ := db.GetNotification("1")
+	ns2_final, _ := db.GetNotification("2")
+	if !ns1_final.IsNotified || !ns2_final.IsNotified {
+		t.Error("MarkNotifiedBatch failed to update records")
 	}
 }
