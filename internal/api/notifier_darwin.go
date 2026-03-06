@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego"
+	"github.com/hirakiuc/gh-orbit/internal/config"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -180,14 +182,22 @@ func (m *macosNotifier) worker(ctx context.Context) {
 }
 
 func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
+	tracer := config.GetTracer()
+	_, span := tracer.Start(ctx, "macos.notify_deliver")
+	defer span.End()
+
 	// 1. Create content safely
 	contentCls := objc_getClass("UNMutableNotificationContent")
 	content, err := safeMsgSend0(contentCls, sel_new)
 	if err != nil { return err }
 	
-	t, _ := nsString(req.title)
-	s, _ := nsString(req.subtitle)
-	b, _ := nsString(req.body)
+	t, tErr := nsString(req.title)
+	s, sErr := nsString(req.subtitle)
+	b, bErr := nsString(req.body)
+
+	if tErr != nil || sErr != nil || bErr != nil {
+		m.logger.Warn("failed to convert notification strings to NSString", "title_err", tErr, "body_err", bErr)
+	}
 	
 	_ = safeMsgSendVoid1(content, sel_setTitle, t)
 	_ = safeMsgSendVoid1(content, sel_setSubtitle, s)
@@ -221,6 +231,8 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 	center, err := safeMsgSend0(centerCls, sel_currentNotificationCenter)
 	if err != nil { return err }
 	
+	span.SetAttributes(attribute.String("title", req.title))
+
 	_, err = safeMsgSend2(center, sel_addNotificationRequest, notificationReq, 0)
 	return err
 }
