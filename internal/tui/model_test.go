@@ -15,7 +15,8 @@ import (
 )
 
 func setupTestDB(t *testing.T) *db.DB {
-	database, err := db.OpenInMemory(slog.Default())
+	ctx := context.Background()
+	database, err := db.OpenInMemory(ctx, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
@@ -44,6 +45,7 @@ func newTestModel(t *testing.T) *Model {
 		styles:  styles,
 		ui:      NewUIController(styles),
 		logger:  slog.Default(),
+		ctx:     ctx,
 		state:   StateList,
 	}
 	m.ui.SetSize(80, 24)

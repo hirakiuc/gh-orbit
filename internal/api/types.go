@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -69,5 +70,5 @@ type DoctorReport struct {
 
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
-	FetchNotifications(meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error)
+	FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error)
 }

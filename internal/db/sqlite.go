@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -17,13 +18,13 @@ type DB struct {
 }
 
 // Open opens a connection to the SQLite database.
-func Open(logger *slog.Logger) (*DB, error) {
+func Open(ctx context.Context, logger *slog.Logger) (*DB, error) {
 	dbPath, err := resolveDBPath()
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("opening database", "path", dbPath)
+	logger.InfoContext(ctx, "opening database", "path", dbPath)
 
 	// Create parent directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
@@ -47,7 +48,7 @@ func Open(logger *slog.Logger) (*DB, error) {
 }
 
 // OpenInMemory opens an in-memory SQLite database for testing.
-func OpenInMemory(logger *slog.Logger) (*DB, error) {
+func OpenInMemory(ctx context.Context, logger *slog.Logger) (*DB, error) {
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open in-memory database: %w", err)

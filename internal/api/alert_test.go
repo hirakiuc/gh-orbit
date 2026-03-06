@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"context"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	_ "modernc.org/sqlite"
@@ -29,7 +30,8 @@ func (m *mockNotifier) Status() BridgeStatus {
 
 func TestAlertService_Throttling(t *testing.T) {
 	logger := slog.Default()
-	database, _ := db.OpenInMemory(logger)
+	ctx := context.Background()
+	database, _ := db.OpenInMemory(ctx, logger)
 	defer func() { _ = database.Close() }()
 
 	cfg := &config.Config{}

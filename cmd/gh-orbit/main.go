@@ -19,6 +19,8 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -179,11 +181,23 @@ func run(ctx context.Context) error {
 	// 0. Optional OpenTelemetry (Opt-in via --verbose)
 	var otelCleanup func()
 	if verbose {
-		_, otelCleanup, err = config.SetupOTel(ctx, version)
-		if err != nil {
-			logger.Warn("failed to initialize OpenTelemetry", "error", err)
+		var otelErr error
+		_, otelCleanup, otelErr = config.SetupOTel(ctx, version)
+		if otelErr != nil {
+			logger.WarnContext(ctx, "failed to initialize OpenTelemetry", "error", otelErr)
 		}
 	}
+
+	// Root Session Span
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "session",
+		trace.WithAttributes(
+			attribute.String("version", version),
+			attribute.String("os", runtime.GOOS),
+			attribute.String("arch", runtime.GOARCH),
+		),
+	)
+	defer span.End()
 
 	// Define Cascading Cleanup Sequence
 	cleanup := func() {
@@ -209,7 +223,7 @@ func run(ctx context.Context) error {
 	}
 
 	// 1. Initialize Database
-	database, err := db.Open(logger)
+	database, err := db.Open(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("error opening database: %w", err)
 	}
@@ -227,6 +241,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("error fetching current user: %w", err)
 	}
 	userID := strconv.FormatInt(user.ID, 10)
+	span.SetAttributes(attribute.String("user_id", userID))
 
 	// 4. Start TUI
 	m := tui.NewModel(ctx, database, client, userID, cfg, logger, version)
@@ -256,7 +271,7 @@ func run(ctx context.Context) error {
 	case <-done:
 		// Success
 	case <-shutdownCtx.Done():
-		logger.Warn("shutdown timeout reached, forcing exit")
+		logger.WarnContext(ctx, "shutdown timeout reached, forcing exit")
 	}
 
 	return nil

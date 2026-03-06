@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -9,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NotificationFetcher implements the Fetcher interface for the GitHub REST API.
@@ -25,7 +29,16 @@ func NewNotificationFetcher(client *Client, logger *slog.Logger) *NotificationFe
 	}
 }
 
-func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
+func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "api.fetch_notifications",
+		trace.WithAttributes(
+			attribute.Bool("force", force),
+			attribute.String("etag", meta.ETag),
+		),
+	)
+	defer span.End()
+
 	var allNotifications []GHNotification
 	newMeta := *meta
 	remainingRateLimit := 5000 // Default assume healthy
@@ -50,7 +63,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) 
 			}
 		}
 
-		req, err := http.NewRequest(http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
 			return nil, nil, remainingRateLimit, err
 		}
@@ -71,9 +84,9 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) 
 		}
 		defer func() { _ = resp.Body.Close() }()
 
-		f.logger.Debug("received API response", 
-			"status", resp.StatusCode, 
-			"url", url, 
+		f.logger.DebugContext(ctx, "received API response",
+			"status", resp.StatusCode,
+			"url", url,
 			"force", force)
 
 		// Update rate limit info if available
@@ -84,7 +97,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) 
 		}
 
 		if resp.StatusCode == http.StatusNotModified {
-			f.logger.Debug("sync: 304 Not Modified received", "url", url)
+			f.logger.DebugContext(ctx, "sync: 304 Not Modified received", "url", url)
 			return nil, &newMeta, remainingRateLimit, nil
 		}
 
@@ -159,6 +172,7 @@ func (f *NotificationFetcher) FetchNotifications(meta *db.SyncMeta, force bool) 
 		}
 	}
 
+	span.SetAttributes(attribute.Int("notification_count", len(allNotifications)))
 	return allNotifications, &newMeta, remainingRateLimit, nil
 }
 
