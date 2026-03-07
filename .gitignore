@@ -25,6 +25,9 @@
 
 # End of .agent rules
 
+# Ignore serena files
+.serena/
+
 # Created by https://www.toptal.com/developers/gitignore/api/vim,go
 # Edit at https://www.toptal.com/developers/gitignore?templates=vim,go
 
