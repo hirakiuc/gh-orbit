@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -97,7 +98,7 @@ func runDoctor() error {
 	}
 
 	// 2. Initialize Service Stack for High-Fidelity Probe
-	// We use an in-memory DB for the probe to satisfy AlertService requirements
+	// We use a unique name for the in-memory DB to avoid shared cache interference with live instances
 	database, err := db.OpenInMemory(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open diagnostic db: %w", err)
@@ -167,7 +168,13 @@ func runDoctor() error {
 	fmt.Println("==========================")
 	fmt.Printf("OS:     %s (%s)\n", report.OS, report.Arch)
 	fmt.Printf("Kernel: %s", report.KernelVersion)
-	fmt.Printf("Focus:  %s\n", report.FocusMode)
+	
+	focusOut := report.FocusMode
+	if strings.Contains(report.FocusMode, "Active") {
+		focusOut = "[!] " + report.FocusMode
+	}
+	fmt.Printf("Focus:  %s\n", focusOut)
+	
 	fmt.Printf("Status: %s\n", report.BridgeStatus)
 	fmt.Printf("Tier:   %s\n", report.ActiveTier)
 	fmt.Println("\nChecks:")
