@@ -63,7 +63,7 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 			badge = styles.StateDraft.Render("  DRAFT ")
 		default:
 			// Generic badge for other states
-			badge = styles.StateSkeleton.Copy().UnsetBlink().Render(fmt.Sprintf(" %s ", s))
+			badge = styles.StateSkeleton.UnsetBlink().Render(fmt.Sprintf(" %s ", s))
 		}
 	}
 
