@@ -132,10 +132,10 @@ func TestConfig_AuditPermissions(t *testing.T) {
 	
 	// Create dir with loose permissions
 	subDir := filepath.Join(tmpDir, "loose")
-	require.NoError(t, os.MkdirAll(subDir, 0o777))
+	require.NoError(t, os.MkdirAll(subDir, 0o777)) // #nosec G301: Intentional loose perms for audit test
 	
 	fPath := filepath.Join(subDir, "file.txt")
-	require.NoError(t, os.WriteFile(fPath, []byte("data"), 0o666))
+	require.NoError(t, os.WriteFile(fPath, []byte("data"), 0o666)) // #nosec G306: Intentional loose perms for audit test
 
 	// Audit
 	require.NoError(t, AuditPermissions(ctx, slog.Default(), tmpDir))
