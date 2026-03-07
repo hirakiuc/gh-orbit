@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -118,6 +119,10 @@ func (m *macosNotifier) setStatus(s BridgeStatus) {
 }
 
 func (m *macosNotifier) checkBundle(ctx context.Context) error {
+	if os.Getenv("GH_ORBIT_NOTIFIER_FORCE_APPLE_SCRIPT") == "1" {
+		return nil
+	}
+
 	if _, err := getFrameworks(); err != nil {
 		return err
 	}

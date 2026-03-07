@@ -124,12 +124,12 @@ func (c *Client) MarkThreadAsRead(ctx context.Context, threadID string) error {
 }
 
 // REST returns the underlying REST client configured by go-gh.
-func (c *Client) REST() *gh.RESTClient {
+func (c *Client) REST() RESTClient {
 	return c.rest
 }
 
 // GQL returns the underlying GQL client configured by go-gh.
-func (c *Client) GQL() *gh.GraphQLClient {
+func (c *Client) GQL() GraphQLClient {
 	return c.gql
 }
 

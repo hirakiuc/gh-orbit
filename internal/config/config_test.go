@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,12 +56,13 @@ func TestConfig_Load_Strictness(t *testing.T) {
 	// Setup environment override
 	err := os.Setenv("XDG_CONFIG_HOME", tmpDir)
 	require.NoError(t, err)
-	defer func() {
+	t.Cleanup(func() {
 		_ = os.Unsetenv("XDG_CONFIG_HOME")
-	}()
+	})
 
 	// The expected path resolved by our logic
-	expectedPath, _ := ResolveConfigPath()
+	expectedPath, err := ResolveConfigPath()
+	require.NoError(t, err)
 
 	t.Run("Catch Unknown Fields (Typo)", func(t *testing.T) {
 		content := `
@@ -92,8 +95,63 @@ notifications:
 
 		cfg, err := Load()
 		require.NoError(t, err)
+		require.NotNil(t, cfg)
 		assert.False(t, cfg.Notifications.Enabled)
 		// Verify default was preserved for missing field
 		assert.Equal(t, 60, cfg.Notifications.SyncInterval)
 	})
+}
+
+func TestConfig_Persistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_STATE_HOME", tmpDir)
+
+	cfg := DefaultConfig()
+	
+	// Test Save (Must ensure parent exists first)
+	path, err := ResolveConfigPath()
+	require.NoError(t, err)
+	require.NoError(t, EnsurePrivateDir(filepath.Dir(path)))
+	require.NoError(t, cfg.Save())
+	
+	assert.FileExists(t, path)
+
+	// Test Resolve helpers
+	d, err := ResolveDataDir()
+	require.NoError(t, err)
+	assert.Contains(t, d, tmpDir)
+	
+	s, err := ResolveStateDir()
+	require.NoError(t, err)
+	assert.Contains(t, s, tmpDir)
+	
+	tp, err := ResolveTracePath()
+	require.NoError(t, err)
+	assert.Contains(t, tp, tmpDir)
+}
+
+func TestConfig_AuditPermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+	
+	// Create dir with loose permissions
+	subDir := filepath.Join(tmpDir, "loose")
+	require.NoError(t, os.MkdirAll(subDir, 0o777)) // #nosec G301: Intentional loose perms for audit test
+	
+	fPath := filepath.Join(subDir, "file.txt")
+	require.NoError(t, os.WriteFile(fPath, []byte("data"), 0o666)) // #nosec G306: Intentional loose perms for audit test
+
+	// Audit
+	require.NoError(t, AuditPermissions(ctx, slog.Default(), tmpDir))
+
+	// Verify hardening
+	info, err := os.Stat(subDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+	fInfo, err := os.Stat(fPath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fInfo.Mode().Perm())
 }

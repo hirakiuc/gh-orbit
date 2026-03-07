@@ -35,6 +35,8 @@ type Syncer = types.Syncer
 type Enricher = types.Enricher
 type Alerter = types.Alerter
 type TrafficController = types.TrafficController
+type RESTClient = types.RESTClient
+type GraphQLClient = types.GraphQLClient
 
 // Repository defines the full database capabilities required by the TUI and Services.
 type Repository = types.Repository

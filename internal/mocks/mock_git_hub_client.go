@@ -4,9 +4,6 @@ package mocks
 
 import (
 	context "context"
-
-	api "github.com/cli/go-gh/v2/pkg/api"
-
 	http "net/http"
 
 	mock "github.com/stretchr/testify/mock"
@@ -131,19 +128,19 @@ func (_c *MockGitHubClient_CurrentUser_Call) RunAndReturn(run func(context.Conte
 }
 
 // GQL provides a mock function with no fields
-func (_m *MockGitHubClient) GQL() *api.GraphQLClient {
+func (_m *MockGitHubClient) GQL() types.GraphQLClient {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GQL")
 	}
 
-	var r0 *api.GraphQLClient
-	if rf, ok := ret.Get(0).(func() *api.GraphQLClient); ok {
+	var r0 types.GraphQLClient
+	if rf, ok := ret.Get(0).(func() types.GraphQLClient); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.GraphQLClient)
+			r0 = ret.Get(0).(types.GraphQLClient)
 		}
 	}
 
@@ -167,12 +164,12 @@ func (_c *MockGitHubClient_GQL_Call) Run(run func()) *MockGitHubClient_GQL_Call 
 	return _c
 }
 
-func (_c *MockGitHubClient_GQL_Call) Return(_a0 *api.GraphQLClient) *MockGitHubClient_GQL_Call {
+func (_c *MockGitHubClient_GQL_Call) Return(_a0 types.GraphQLClient) *MockGitHubClient_GQL_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockGitHubClient_GQL_Call) RunAndReturn(run func() *api.GraphQLClient) *MockGitHubClient_GQL_Call {
+func (_c *MockGitHubClient_GQL_Call) RunAndReturn(run func() types.GraphQLClient) *MockGitHubClient_GQL_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -272,19 +269,19 @@ func (_c *MockGitHubClient_MarkThreadAsRead_Call) RunAndReturn(run func(context.
 }
 
 // REST provides a mock function with no fields
-func (_m *MockGitHubClient) REST() *api.RESTClient {
+func (_m *MockGitHubClient) REST() types.RESTClient {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for REST")
 	}
 
-	var r0 *api.RESTClient
-	if rf, ok := ret.Get(0).(func() *api.RESTClient); ok {
+	var r0 types.RESTClient
+	if rf, ok := ret.Get(0).(func() types.RESTClient); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.RESTClient)
+			r0 = ret.Get(0).(types.RESTClient)
 		}
 	}
 
@@ -308,12 +305,12 @@ func (_c *MockGitHubClient_REST_Call) Run(run func()) *MockGitHubClient_REST_Cal
 	return _c
 }
 
-func (_c *MockGitHubClient_REST_Call) Return(_a0 *api.RESTClient) *MockGitHubClient_REST_Call {
+func (_c *MockGitHubClient_REST_Call) Return(_a0 types.RESTClient) *MockGitHubClient_REST_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockGitHubClient_REST_Call) RunAndReturn(run func() *api.RESTClient) *MockGitHubClient_REST_Call {
+func (_c *MockGitHubClient_REST_Call) RunAndReturn(run func() types.RESTClient) *MockGitHubClient_REST_Call {
 	_c.Call.Return(run)
 	return _c
 }
