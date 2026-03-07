@@ -71,7 +71,9 @@ func init() {
 
 func runDoctor() error {
 	ctx := context.Background()
-	
+	logger, logCleanup, _ := config.SetupLogger(logLevel)
+	defer func() { _ = logCleanup() }()
+
 	// 1. Collect OS info
 	osVersion := "unknown"
 	if runtime.GOOS == "darwin" {
@@ -91,58 +93,53 @@ func runDoctor() error {
 		KernelVersion: osVersion,
 		BinaryPath:    execPath,
 		BridgeStatus:  api.StatusUnknown,
+		FocusMode:     "Unsupported platform",
 	}
 
-	// 2. Probe Bridge
+	// 2. Initialize Service Stack for High-Fidelity Probe
+	// We use an in-memory DB for the probe to satisfy AlertService requirements
+	database, err := db.OpenInMemory(ctx, logger)
+	if err != nil {
+		return fmt.Errorf("failed to open diagnostic db: %w", err)
+	}
+	defer func() { _ = database.Close() }()
+
+	cfg, _ := config.Load()
+	alerts := api.NewAlertService(ctx, cfg, database, logger)
+	defer alerts.Shutdown()
+
 	if runtime.GOOS == "darwin" {
-		// Create a temporary notifier to trigger warmup logic
-		logger, cleanup, _ := config.SetupLogger(logLevel)
-		defer func() { _ = cleanup() }()
-		n := api.NewPlatformNotifier(ctx, logger)
-		n.Warmup()
+		alerts.Warmup()
 		
-		// Deterministic wait instead of time.Sleep
+		// Deterministic wait for readiness
 		select {
-		case <-n.Ready():
-			// Bridge is initialized
+		case <-alerts.Ready():
 		case <-time.After(2 * time.Second):
-			// Timeout guard
 		}
 
 		probes := api.ProbeBridge()
-		allPassed := true
 		for _, p := range probes {
 			report.Checks = append(report.Checks, api.BridgeCheck{
 				Name:   p.Name,
 				Passed: p.Passed,
+				Message: p.Message,
 			})
-			if !p.Passed {
-				allPassed = false
-			}
 		}
-		if allPassed {
-			report.BridgeStatus = api.StatusHealthy
-		} else {
-			report.BridgeStatus = api.StatusBroken
-		}
+		
+		tierName, tierStatus := alerts.ActiveTierInfo()
+		report.ActiveTier = tierName
+		report.BridgeStatus = tierStatus
+		
+		// 2.5 Focus Mode Probe (Darwin only)
+		report.FocusMode = api.CheckFocusMode()
 	} else {
 		report.BridgeStatus = api.StatusUnsupported
+		report.ActiveTier = "Beeep (Cross-Platform)"
 	}
 
-	// 3. Optional Test Notification
+	// 3. Optional End-to-End Notification Test
 	if doctorTest {
-		logger, cleanup, _ := config.SetupLogger(logLevel)
-		defer func() { _ = cleanup() }()
-		
-		notifier := api.NewPlatformNotifier(ctx, logger)
-		
-		// Ensure bridge is ready before attempting test notification
-		select {
-		case <-notifier.Ready():
-		case <-time.After(2 * time.Second):
-		}
-
-		err := notifier.Notify("Diagnostic Test", "gh-orbit doctor", "This is a test notification.", "", 1)
+		err := alerts.TestNotify("Diagnostic Test", "gh-orbit doctor", "This is an end-to-end test notification.")
 		
 		testPassed := (err == nil)
 		msg := ""
@@ -150,13 +147,13 @@ func runDoctor() error {
 			msg = err.Error()
 		}
 		report.Checks = append(report.Checks, api.BridgeCheck{
-			Name:    "End-to-End Notification Test",
+			Name:    "End-to-End Notification Delivery",
 			Passed:  testPassed,
 			Message: msg,
 		})
 		
-		// No need for Sleep(1s) here, Shutdown() handles flush
-		notifier.Shutdown()
+		// Allow small time for async delivery to hit system
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	// 4. Output
@@ -170,14 +167,16 @@ func runDoctor() error {
 	fmt.Println("==========================")
 	fmt.Printf("OS:     %s (%s)\n", report.OS, report.Arch)
 	fmt.Printf("Kernel: %s", report.KernelVersion)
+	fmt.Printf("Focus:  %s\n", report.FocusMode)
 	fmt.Printf("Status: %s\n", report.BridgeStatus)
+	fmt.Printf("Tier:   %s\n", report.ActiveTier)
 	fmt.Println("\nChecks:")
 	for _, c := range report.Checks {
 		status := "[PASS]"
 		if !c.Passed {
 			status = "[FAIL]"
 		}
-		fmt.Printf("%s %s %s\n", status, c.Name, c.Message)
+		fmt.Printf("%s %-35s %s\n", status, c.Name, c.Message)
 	}
 
 	return nil

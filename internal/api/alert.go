@@ -123,9 +123,47 @@ func (a *AlertService) Notify(n GHNotification) error {
 	return a.getNotifier().Notify(title, subtitle, body, "", importance)
 }
 
+// TestNotify sends a diagnostic alert bypassing the silent startup baseline.
+func (a *AlertService) TestNotify(title, subtitle, body string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Bypass isInitializing and config checks for diagnostics
+	a.logger.InfoContext(a.ctx, "sending diagnostic system alert", "tier", a.getTierName())
+	return a.getNotifier().Notify(title, subtitle, body, "", 1)
+}
+
+// ActiveTierInfo returns the name and status of the current active notification tier.
+func (a *AlertService) ActiveTierInfo() (string, BridgeStatus) {
+	n := a.getNotifier()
+	name := a.getTierName()
+	return name, n.Status()
+}
+
+func (a *AlertService) getTierName() string {
+	if a.native != nil && a.native.Status() == StatusHealthy {
+		return "Native Bridge"
+	}
+	// On macOS, if native fails, we use AppleScript fallback via the macosNotifier's internal logic.
+	// But from AlertService's perspective, it routes to native if healthy, else fallback (beeep).
+	// We need to refine this to correctly identify if we are using the osascript path.
+	if runtime.GOOS == "darwin" && a.native != nil {
+		if a.native.Status() == StatusUnsupported || a.native.Status() == StatusBroken {
+			return "AppleScript Fallback"
+		}
+	}
+	return "Beeep (Cross-Platform)"
+}
+
 func (a *AlertService) getNotifier() Notifier {
 	// If native is healthy, use it. Otherwise, use fallback.
 	if a.native != nil && a.native.Status() == StatusHealthy {
+		return a.native
+	}
+	// macosNotifier also has its own internal AppleScript fallback if it's not healthy.
+	// However, for clean routing, AlertService prefers its Tier 2 (fallback) if Tier 1 is Broken.
+	// But on macOS, macosNotifier IS the gateway to osascript.
+	if runtime.GOOS == "darwin" && a.native != nil {
 		return a.native
 	}
 	return a.fallback

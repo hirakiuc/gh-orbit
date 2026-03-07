@@ -33,6 +33,11 @@ func (s *stubNotifier) Status() BridgeStatus {
 	return StatusUnsupported
 }
 
+// CheckFocusMode returns a no-op status for non-macOS platforms.
+func CheckFocusMode() string {
+	return "Unsupported platform"
+}
+
 // BridgeProbe represents the result of a single bridge diagnostic check.
 type BridgeProbe struct {
 	Name    string

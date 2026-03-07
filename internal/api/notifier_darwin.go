@@ -278,7 +278,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		
 		if err := cmd.Run(); err != nil {
-			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
+			m.logger.WarnContext(ctx, "osascript fallback failed", "error", err)
 		}
 	}()
 }
@@ -321,4 +321,20 @@ func (m *macosNotifier) requestAuth() {
 	centerCls := objc_getClass("UNUserNotificationCenter")
 	center := msgSend_id_void(centerCls, sel_currentNotificationCenter)
 	msgSend_void_uint_id(center, sel_requestAuthorization, 7, 0)
+}
+
+// CheckFocusMode performs a soft-failure probe for active macOS Focus modes.
+func CheckFocusMode() string {
+	// NSStatusItem Visible FocusModes is a reliable indicator in modern macOS
+	cmd := exec.Command("defaults", "read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes")
+	out, err := cmd.Output()
+	if err != nil {
+		return "Unknown (Permissions restricted)"
+	}
+	
+	val := strings.TrimSpace(string(out))
+	if val == "1" {
+		return "Active (Notifications may be suppressed)"
+	}
+	return "Inactive"
 }
