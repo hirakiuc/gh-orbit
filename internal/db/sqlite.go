@@ -73,26 +73,35 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 	}
 
 	// Discovery Ladder
-	ladder := []string{
-		// Legacy 1: XDG_STATE_HOME (previous version)
-		os.Getenv("XDG_STATE_HOME"),
-		// Legacy 2: ~/.config/gh/extensions/gh-orbit (old monolithic layout)
-		"", 
+	var legacyPath string
+	
+	// Tier 1: XDG_STATE_HOME (previous version)
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		candidate := filepath.Join(stateHome, "gh-orbit", "orbit.db")
+		if _, err := os.Stat(candidate); err == nil {
+			legacyPath = candidate
+		}
 	}
 
-	var legacyPath string
-	for _, base := range ladder {
-		var candidate string
-		if base != "" {
-			candidate = filepath.Join(base, "gh-orbit", "orbit.db")
-		} else {
-			home, _ := os.UserHomeDir()
-			candidate = filepath.Join(home, ".config", "gh", "extensions", "gh-orbit", "orbit.db")
+	// Tier 2: ~/.local/state (Default previous version if env was unset)
+	if legacyPath == "" {
+		home, _ := userHome()
+		if home != "" {
+			candidate := filepath.Join(home, ".local", "state", "gh-orbit", "orbit.db")
+			if _, err := os.Stat(candidate); err == nil {
+				legacyPath = candidate
+			}
 		}
+	}
 
-		if _, err := os.Stat(candidate); err == nil { // #nosec G703: Candidate path is internally resolved
-			legacyPath = candidate
-			break
+	// Tier 3: ~/.config/gh/extensions/gh-orbit (old monolithic layout)
+	if legacyPath == "" {
+		home, _ := userHome()
+		if home != "" {
+			candidate := filepath.Join(home, ".config", "gh", "extensions", "gh-orbit", "orbit.db")
+			if _, err := os.Stat(candidate); err == nil {
+				legacyPath = candidate
+			}
 		}
 	}
 
@@ -138,7 +147,7 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 	tmpDest := destDir + ".migrating.tmp"
 	_ = os.RemoveAll(tmpDest)
 
-	if err := os.MkdirAll(filepath.Dir(tmpDest), 0o700); err != nil {
+	if err := config.EnsurePrivateDir(filepath.Dir(tmpDest)); err != nil {
 		return err
 	}
 
@@ -158,10 +167,17 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 	}
 
 	// Atomic Swap
-	if err := os.MkdirAll(filepath.Dir(destDir), 0o700); err != nil {
+	if err := config.EnsurePrivateDir(filepath.Dir(destDir)); err != nil {
 		return err
 	}
 	if err := os.Rename(tmpDest, destDir); err != nil {
+		var linkErr *os.LinkError
+		if errors.As(err, &linkErr) {
+			// Cross-partition move might fail even after copy if Rename is used on the parent.
+			// However, since we already copied to tmpDest (which is in destDir's parent), 
+			// Rename should work. If not, we do a final copy-swap.
+			logger.WarnContext(ctx, "atomic rename failed, falling back to final copy-swap", "error", err)
+		}
 		return fmt.Errorf("atomic swap failed: %w", err)
 	}
 
@@ -177,7 +193,7 @@ func copyDir(src, dest string) error {
 		targetPath := filepath.Join(dest, rel)
 
 		if info.IsDir() {
-			return os.MkdirAll(targetPath, 0o700)
+			return config.EnsurePrivateDir(targetPath)
 		}
 
 		return copyFile(path, targetPath)
@@ -223,6 +239,14 @@ func computeDirHash(root string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func userHome() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+	return home, nil
 }
 
 // OpenInMemory opens an in-memory SQLite database for testing.

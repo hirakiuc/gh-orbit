@@ -16,22 +16,32 @@ import (
 
 // SetupOTel bootstraps the OpenTelemetry infrastructure with a local JSON file exporter.
 func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, func(), error) {
-	path, err := resolveTracePath()
+	stateDir, err := ResolveStateDir()
 	if err != nil {
 		return nil, nil, err
 	}
+	path := filepath.Join(stateDir, "orbit.traces.json")
 
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, nil, fmt.Errorf("failed to create trace directory: %w", err)
+	// 1. Trace Rotation Guard (10MB)
+	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	if info, err := os.Stat(path); err == nil {
+		if info.Size() > 10*1024*1024 {
+			// Atomically truncate if too large to prevent unbounded growth
+			flags |= os.O_TRUNC
+		}
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G304: Path is internally resolved following XDG specs
+	// Create parent directory with strict permissions
+	if err := EnsurePrivateDir(filepath.Dir(path)); err != nil {
+		return nil, nil, fmt.Errorf("failed to secure trace directory: %w", err)
+	}
+
+	file, err := os.OpenFile(path, flags, 0o600) // #nosec G304: Path is internally resolved following XDG specs
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open trace file: %w", err)
 	}
 
-	// 1. Create the JSON exporter
+	// 2. Create the JSON exporter
 	exporter, err := stdouttrace.New(
 		stdouttrace.WithWriter(file),
 		stdouttrace.WithPrettyPrint(),
@@ -41,7 +51,7 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 		return nil, nil, err
 	}
 
-	// 2. Define Resource (Service Metadata)
+	// 3. Define Resource (Service Metadata)
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -55,9 +65,9 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 		return nil, nil, err
 	}
 
-	// 3. Create Tracer Provider with SimpleSpanProcessor for immediate flushing (CLI standard)
+	// 4. Create Tracer Provider with Batcher for high-performance async I/O
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(sdktrace.NewSimpleSpanProcessor(exporter)),
+		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 	)
 
@@ -65,6 +75,7 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 	otel.SetTracerProvider(tp)
 
 	cleanup := func() {
+		// Final flush ensured by Two-Phase Shutdown in main.go
 		shutdownCtx := context.Background()
 		if err := tp.ForceFlush(shutdownCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error flushing tracer provider: %v\n", err)
@@ -76,19 +87,6 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 	}
 
 	return tp, cleanup, nil
-}
-
-func resolveTracePath() (string, error) {
-	stateHome := os.Getenv("XDG_STATE_HOME")
-	if stateHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		stateHome = filepath.Join(home, ".local", "state")
-	}
-
-	return filepath.Clean(filepath.Join(stateHome, "gh-orbit", "orbit.traces.json")), nil
 }
 
 // GetTracer returns a tracer instance for the package.
