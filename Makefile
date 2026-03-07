@@ -28,6 +28,10 @@ test:
 
 lint:
 	golangci-lint run ./...
+	$(MAKE) lint-docs
+
+lint-docs:
+	markdownlint-cli2
 
 vulncheck:
 	govulncheck ./...
