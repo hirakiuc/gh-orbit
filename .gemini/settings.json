@@ -137,5 +137,13 @@
   },
   "hooksConfig": {
     "enabled": true
+  },
+  "mcp": {
+    "allowed": ["serena"]
+  },
+  "mcpServers": {
+    "serena": {
+      "httpUrl": "http://127.0.0.1:9121/mcp"
+    }
   }
 }

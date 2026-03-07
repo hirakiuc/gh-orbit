@@ -3,7 +3,7 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.10.1
 
-.PHONY: all build release-build test lint vulncheck fmt clean help
+.PHONY: all build release-build test lint vulncheck fmt clean help serena
 
 all: build
 
@@ -39,6 +39,8 @@ clean:
 	rm -rf bin/
 	go clean
 
+serena:
+	uvx --from git+https://github.com/oraios/serena serena-mcp-server start-mcp-server --transport streamable-http --host 127.0.0.1 --port 9121 --project . --context ide-assistant
 help:
 	@echo "Available targets:"
 	@echo "  build         - Build the local binary"
@@ -48,3 +50,4 @@ help:
 	@echo "  vulncheck     - Run govulncheck for security"
 	@echo "  fmt           - Format code with gofumpt"
 	@echo "  clean         - Remove build artifacts"
+	@echo "  serena        - Start Serena MCP server for IDE integration"
