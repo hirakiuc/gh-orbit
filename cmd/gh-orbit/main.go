@@ -114,6 +114,18 @@ func runDoctor() error {
 		CacheSize:  humanize.Bytes(uint64(totalSize)), // #nosec G115: conversion checked above
 	}
 
+	// 2.5 Config Health Audit
+	cfg, cfgErr := config.Load()
+	report.Config = api.ConfigReport{
+		Status: "Valid",
+	}
+	if cfgErr != nil {
+		report.Config.Status = "Invalid"
+		report.Config.Error = cfgErr.Error()
+	} else if cfg != nil {
+		report.Config.Version = cfg.Version
+	}
+
 	// 3. Initialize Service Stack for High-Fidelity Probe
 	database, err := db.OpenInMemory(ctx, logger)
 	if err != nil {
@@ -121,8 +133,10 @@ func runDoctor() error {
 	}
 	defer func() { _ = database.Close() }()
 
-	cfg, _ := config.Load()
-	alerts := api.NewAlertService(ctx, cfg, database, logger)
+	alerts := api.NewAlertService(ctx, config.DefaultConfig(), database, logger)
+	if cfg != nil {
+		alerts = api.NewAlertService(ctx, cfg, database, logger)
+	}
 	defer alerts.Shutdown(ctx)
 
 	if runtime.GOOS == "darwin" {
@@ -194,6 +208,13 @@ func runDoctor() error {
 	fmt.Printf("Status: %s\n", report.BridgeStatus)
 	fmt.Printf("Tier:   %s\n", report.ActiveTier)
 	
+	fmt.Println("\nConfiguration:")
+	fmt.Printf("  Version: %d\n", report.Config.Version)
+	fmt.Printf("  Status:  %s\n", report.Config.Status)
+	if report.Config.Error != "" {
+		fmt.Printf("  Error:   \033[31m%s\033[0m\n", report.Config.Error)
+	}
+
 	fmt.Println("\nPersistence:")
 	fmt.Printf("  Config: %s\n", report.Persistence.ConfigPath)
 	fmt.Printf("  Data:   %s\n", report.Persistence.DataPath)
