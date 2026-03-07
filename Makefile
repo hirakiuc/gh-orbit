@@ -31,7 +31,7 @@ lint:
 	$(MAKE) lint-docs
 
 lint-docs:
-	markdownlint-cli2 "**/*.md" "#.serena" "#.gemini" "#.entire" "#.agent"
+	markdownlint-cli2
 
 vulncheck:
 	govulncheck ./...

@@ -20,9 +20,9 @@
 ### 2.2 Proactiveness & Agreements
 
 - **Approvals**: Mandatory use of `ask_user` for:
-    - Destructive operations (e.g., clearing local database).
-    - Strategic changes that deviate from the Implementation Plan.
-    - Adding new external dependencies.
+  - Destructive operations (e.g., clearing local database).
+  - Strategic changes that deviate from the Implementation Plan.
+  - Adding new external dependencies.
 - **Attribution**: All commits must include:
     `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
 
@@ -32,8 +32,8 @@
 - **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
 - **Hardened SQLite**: Use WAL mode and foreign keys for all local storage.
 - **Testing**: Use the `testify` for asserting in test cases.
-    - For assertions of prerequisites in test cases, use `require` so that the test stops if the prerequisite is not met.
-    - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
+  - For assertions of prerequisites in test cases, use `require` so that the test stops if the prerequisite is not met.
+  - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
 - Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
 
 ## 4. Reliability & Precision Rules

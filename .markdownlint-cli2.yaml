@@ -1,22 +1,17 @@
-# Disable specific rules
-config:
-  # MD013/line-length: Line length
-  MD013: false
-  # MD024/no-duplicate-heading: Multiple headings with the same content
-  MD024: false
-  # MD033/no-inline-html: Inline HTML
-  MD033: false
-  # MD034/no-bare-urls: Bare URL used
-  MD034: false
-  # MD041/first-line-heading/first-line-h1: First line in a file should be a top-level heading
-  MD041: false
-  # MD007/ul-indent: Unordered list indentation
-  MD007:
-    indent: 4
+# .markdownlint-cli2.yaml
+# Centralized configuration for markdown documentation linting.
 
-# Ignore specific files
-ignores:
-  - ".git"
-  - ".agent"
-  - "node_modules"
-  - "CHANGELOG.md"
+# Glob expressions to include/exclude
+globs:
+  - "**/*.md"
+  - "!.agent/**"
+  - "!.serena/**"
+  - "!.gemini/**"
+  - "!.entire/**"
+  - "!.git/**"
+  - "!node_modules/**"
+
+# Rule configurations (Inherited from defaults, can be overridden here)
+config:
+  MD013: false # Disable line length check for README tables and code blocks
+  MD033: false # Allow inline HTML (used for emojis/visuals)
