@@ -183,6 +183,39 @@ func (_c *MockEnricher_GetEnrichmentCmd_Call) RunAndReturn(run func(string, stri
 	return _c
 }
 
+// Shutdown provides a mock function with given fields: ctx
+func (_m *MockEnricher) Shutdown(ctx context.Context) {
+	_m.Called(ctx)
+}
+
+// MockEnricher_Shutdown_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Shutdown'
+type MockEnricher_Shutdown_Call struct {
+	*mock.Call
+}
+
+// Shutdown is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockEnricher_Expecter) Shutdown(ctx interface{}) *MockEnricher_Shutdown_Call {
+	return &MockEnricher_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
+}
+
+func (_c *MockEnricher_Shutdown_Call) Run(run func(ctx context.Context)) *MockEnricher_Shutdown_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockEnricher_Shutdown_Call) Return() *MockEnricher_Shutdown_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockEnricher_Shutdown_Call) RunAndReturn(run func(context.Context)) *MockEnricher_Shutdown_Call {
+	_c.Run(run)
+	return _c
+}
+
 // NewMockEnricher creates a new instance of MockEnricher. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockEnricher(t interface {
