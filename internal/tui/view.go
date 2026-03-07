@@ -142,18 +142,6 @@ func (m *Model) renderDetailView() string {
 	)
 }
 
-func (m *Model) renderMarkdown(content string) string {
-	if content == "" {
-		return ""
-	}
-	
-	out, err := m.markdownRenderer.Render(content)
-	if err != nil {
-		return content
-	}
-	return out
-}
-
 func (m *Model) updateMarkdownRenderer() {
 	style := "dark"
 	if !m.isDark {

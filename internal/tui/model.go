@@ -75,7 +75,6 @@ type Model struct {
 	PollInterval int
 	heartbeatID  uint64
 	clockID      uint64
-	syncCounter  int
 }
 
 // Option defines a functional option for Model configuration.
@@ -222,10 +221,6 @@ type syncCompleteMsg struct {
 	remainingRateLimit int
 }
 
-type enrichmentCompleteMsg struct {
-	notifications []types.NotificationWithState
-}
-
 type detailLoadedMsg struct {
 	GitHubID      string
 	Body          string
@@ -241,8 +236,6 @@ type errMsg struct {
 type actionCompleteMsg struct{}
 
 type clearStatusMsg struct{}
-
-type viewportEnrichMsg struct{}
 
 type pollTickMsg struct {
 	ID uint64

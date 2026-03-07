@@ -195,18 +195,6 @@ func (m *Model) toggleResourceFilter(resType, label string) {
 	m.applyFilters()
 }
 
-// UpdateNotification is a helper to refresh a single notification's state from DB
-func (m *Model) refreshNotification(id string) tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		notifs, err := m.db.ListNotifications(ctx)
-		if err != nil {
-			return errMsg{err: err}
-		}
-		return notificationsLoadedMsg{notifications: notifs}
-	}
-}
-
 // SetPriority handles the manual priority assignment
 func (m *Model) SetPriority(id string, priority int) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
