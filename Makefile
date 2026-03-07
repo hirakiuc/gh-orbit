@@ -3,7 +3,7 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.10.1
 
-.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage artifacts
+.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage coverage-summary artifacts
 
 all: build
 
@@ -19,6 +19,9 @@ coverage:
 	grep -vE "mock_|types/|cmd/gh-orbit" coverage.out > coverage.filtered.out
 	go tool cover -html=coverage.filtered.out -o coverage.html
 	@echo "Coverage report generated at coverage.html (filtered)"
+
+coverage-summary: coverage
+	go tool cover -func=coverage.filtered.out
 
 artifacts:
 	@mkdir -p artifacts
