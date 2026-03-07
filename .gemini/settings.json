@@ -141,6 +141,9 @@
   "mcp": {
     "allowed": ["serena"]
   },
+  "model": {
+    "disableLoopDetection": false
+  },
   "mcpServers": {
     "serena": {
       "httpUrl": "http://127.0.0.1:9121/mcp"
