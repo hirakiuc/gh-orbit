@@ -244,3 +244,5 @@ type pollTickMsg struct {
 type clockTickMsg struct {
 	ID uint64
 }
+
+type viewportEnrichMsg struct{}
