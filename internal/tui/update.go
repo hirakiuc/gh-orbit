@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/types"
@@ -22,10 +23,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ui.SetSize(msg.Width, msg.Height)
-		m.listView.list.SetSize(msg.Width, msg.Height-6)
+		
+		m.headerHeight = lipgloss.Height(m.renderHeader())
+		m.footerHeight = lipgloss.Height(m.renderFooter())
+		availableHeight := m.height - m.headerHeight - m.footerHeight
+
+		m.listView.list.SetSize(msg.Width, availableHeight)
 		
 		m.detailView.viewport.SetWidth(msg.Width - 4)
-		m.detailView.viewport.SetHeight(msg.Height - 8)
+		m.detailView.viewport.SetHeight(availableHeight - 2) // Reclaim space in detail view too
 		m.updateMarkdownRenderer()
 
 	case tea.BackgroundColorMsg:

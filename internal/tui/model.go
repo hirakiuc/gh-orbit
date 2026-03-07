@@ -69,6 +69,8 @@ type Model struct {
 	markdownRenderer *glamour.TermRenderer
 	width            int
 	height           int
+	headerHeight     int
+	footerHeight     int
 
 	// Background Sync State
 	LastSyncAt   time.Time

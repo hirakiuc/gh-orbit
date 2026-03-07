@@ -11,7 +11,10 @@ import (
 
 func (m *Model) View() tea.View {
 	if m.err != nil {
-		return tea.NewView(m.styles.StatusError.Render(fmt.Sprintf("Error: %v", m.err)))
+		return tea.View{
+			Content:   m.styles.StatusError.Render(fmt.Sprintf("Error: %v", m.err)),
+			AltScreen: true,
+		}
 	}
 
 	var content string
@@ -29,7 +32,10 @@ func (m *Model) View() tea.View {
 		m.renderFooter(),
 	)
 
-	return tea.NewView(rendered)
+	return tea.View{
+		Content:   rendered,
+		AltScreen: true,
+	}
 }
 
 func (m *Model) renderHeader() string {
@@ -127,6 +133,11 @@ func (m *Model) renderDetailView() string {
 	header := lipgloss.JoinVertical(lipgloss.Left, title, m.styles.SelectedDescription.Render(meta))
 
 	// 2. Viewport (Body)
+	detailMetaHeight := lipgloss.Height(header) + 1 // +1 for the newline
+	
+	availableHeight := m.height - m.headerHeight - m.footerHeight - detailMetaHeight
+	if availableHeight < 5 { availableHeight = 5 }
+
 	body := m.detailView.activeDetail
 	if m.ui.fetchingDetail {
 		body = "\n  ◌ Loading content..."
@@ -138,7 +149,7 @@ func (m *Model) renderDetailView() string {
 		lipgloss.Left,
 		header,
 		"\n",
-		m.styles.Viewport.Width(m.width-4).Height(m.height-8).Render(body),
+		m.styles.Viewport.Width(m.width-4).Height(availableHeight).Render(body),
 	)
 }
 

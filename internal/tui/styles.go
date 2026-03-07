@@ -138,7 +138,8 @@ func DefaultStyles(isDark bool) Styles {
 
 	s.TabContainer = lipgloss.NewStyle().
 		Height(1).
-		MarginBottom(1)
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(lipgloss.Color("#30363D"))
 
 	s.DetailHeader = lipgloss.NewStyle().
 		Bold(true).

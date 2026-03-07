@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
@@ -162,7 +163,7 @@ func TestRenderTargetHeader_Geometry(t *testing.T) {
 	styles := DefaultStyles(true)
 	ctx := RenderContext{
 		Styles: styles,
-		Width:  80,
+		Width:  40, // Small width to force truncation
 	}
 	notif := types.NotificationWithState{
 		Notification: types.Notification{
@@ -173,16 +174,18 @@ func TestRenderTargetHeader_Geometry(t *testing.T) {
 
 	// 1. Un-enriched (No badge)
 	h1 := RenderTargetHeader(ctx, notif, "", false)
-	assert.NotEmpty(t, h1)
+	assert.LessOrEqual(t, lipgloss.Width(h1), ctx.Width, "Header (No Badge) should not exceed width")
 
 	// 2. Fetching (Skeleton badge)
 	ctx.IsFetching = true
 	h2 := RenderTargetHeader(ctx, notif, "", false)
 	assert.Contains(t, stripANSI(h2), "FETCH")
+	assert.LessOrEqual(t, lipgloss.Width(h2), ctx.Width, "Header (Fetching) should not exceed width")
 
 	// 3. Enriched (Status badge)
 	ctx.IsFetching = false
 	notif.ResourceState = "Merged"
 	h3 := RenderTargetHeader(ctx, notif, "", false)
 	assert.Contains(t, stripANSI(h3), "MERGED")
+	assert.LessOrEqual(t, lipgloss.Width(h3), ctx.Width, "Header (Merged) should not exceed width")
 }
