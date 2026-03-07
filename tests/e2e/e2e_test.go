@@ -55,8 +55,6 @@ func TestCLI_Bootstrap(t *testing.T) {
 
 	// 4. Verify Files Created
 	assert.FileExists(t, filepath.Join(tmpHome, ".config", "gh", "extensions", "gh-orbit", "config.yml"))
-	// Data dir should exist, but DB might not be created by doctor if it uses in-memory for probe.
-	// However, config.Load() should have created the data dir via ResolveDataDir and EnsurePrivateDir if we use it.
 	assert.DirExists(t, filepath.Join(tmpHome, ".local", "share", "gh-orbit"))
 }
 

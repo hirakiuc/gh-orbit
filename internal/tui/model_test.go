@@ -60,14 +60,16 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	mockTraffic := m.traffic.(*mocks.MockTrafficController)
 	mockTraffic.EXPECT().UpdateRateLimit(mock.Anything, 4500).Return().Once()
 
-	updatedModel, _ := m.Update(msg)
-	assert.False(t, updatedModel.(*Model).ui.syncing, "expected syncing to be false after syncCompleteMsg")
+	rawModel, _ := m.Update(msg)
+	updatedModel := rawModel.(*Model)
+	assert.False(t, updatedModel.ui.syncing, "expected syncing to be false after syncCompleteMsg")
 
 	// Test error reset
 	m.ui.SetSyncing(true)
 	msgErr := errMsg{err: nil}
-	updatedModel, _ = m.Update(msgErr)
-	assert.False(t, updatedModel.(*Model).ui.syncing, "expected syncing to be false after errMsg")
+	rawModel, _ = m.Update(msgErr)
+	updatedModel = rawModel.(*Model)
+	assert.False(t, updatedModel.ui.syncing, "expected syncing to be false after errMsg")
 }
 
 func TestModel_Update_ThemeChange(t *testing.T) {
@@ -75,8 +77,7 @@ func TestModel_Update_ThemeChange(t *testing.T) {
 
 	// Mock a light background color msg
 	msg := tea.BackgroundColorMsg{Color: color.RGBA{R: 255, G: 255, B: 255, A: 255}}
-	updatedModel, _ := m.Update(msg)
-	_ = updatedModel.(*Model)
+	_, _ = m.Update(msg)
 }
 
 func TestModel_Update_StatusClearing(t *testing.T) {
@@ -171,7 +172,10 @@ func TestModel_MarkRead(t *testing.T) {
 	m.applyFilters()
 
 	// Initial state
-	i := m.listView.list.Items()[0].(item)
+	items := m.listView.list.Items()
+	require.NotEmpty(t, items)
+	
+	i := items[0].(item)
 	cmd := m.MarkRead(i)
 	require.NotNil(t, cmd)
 	
@@ -208,9 +212,7 @@ func TestModel_Navigation(t *testing.T) {
 	model, _ := m.Update(msgQ)
 	assert.Equal(t, StateList, model.(*Model).state, "expected StateList after pressing 'q' in StateDetail")
 
-	// 2. Test Help -> Close transition via 'q' (verified via build check)
-	
-	// 3. Test Quit transition via 'q'
+	// 2. Test Quit transition via 'q'
 	m.listView.list.Help.ShowAll = false
 	_, cmd := m.Update(msgQ)
 	assert.NotNil(t, cmd, "expected quit command, got nil")

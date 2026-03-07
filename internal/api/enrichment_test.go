@@ -88,7 +88,7 @@ func TestEnrichmentEngine_HybridBatch(t *testing.T) {
 	}
 
 	results := engine.FetchHybridBatch(ctx, notifs)
-	assert.NotNil(t, results)
+	require.NotNil(t, results)
 }
 
 func TestEnrichmentEngine_Pruning(t *testing.T) {
@@ -130,6 +130,7 @@ func TestEnrichmentEngine_Cmd(t *testing.T) {
 		func(res EnrichmentResult) tea.Msg { successCalled = true; return nil },
 		func(err error) tea.Msg { return nil })
 	
+	require.NotNil(t, cmd)
 	_ = cmd()
 	assert.True(t, successCalled)
 }

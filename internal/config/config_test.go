@@ -56,12 +56,13 @@ func TestConfig_Load_Strictness(t *testing.T) {
 	// Setup environment override
 	err := os.Setenv("XDG_CONFIG_HOME", tmpDir)
 	require.NoError(t, err)
-	defer func() {
+	t.Cleanup(func() {
 		_ = os.Unsetenv("XDG_CONFIG_HOME")
-	}()
+	})
 
 	// The expected path resolved by our logic
-	expectedPath, _ := ResolveConfigPath()
+	expectedPath, err := ResolveConfigPath()
+	require.NoError(t, err)
 
 	t.Run("Catch Unknown Fields (Typo)", func(t *testing.T) {
 		content := `
@@ -94,6 +95,7 @@ notifications:
 
 		cfg, err := Load()
 		require.NoError(t, err)
+		require.NotNil(t, cfg)
 		assert.False(t, cfg.Notifications.Enabled)
 		// Verify default was preserved for missing field
 		assert.Equal(t, 60, cfg.Notifications.SyncInterval)
@@ -109,20 +111,24 @@ func TestConfig_Persistence(t *testing.T) {
 	cfg := DefaultConfig()
 	
 	// Test Save (Must ensure parent exists first)
-	path, _ := ResolveConfigPath()
+	path, err := ResolveConfigPath()
+	require.NoError(t, err)
 	require.NoError(t, EnsurePrivateDir(filepath.Dir(path)))
 	require.NoError(t, cfg.Save())
 	
 	assert.FileExists(t, path)
 
 	// Test Resolve helpers
-	d, _ := ResolveDataDir()
+	d, err := ResolveDataDir()
+	require.NoError(t, err)
 	assert.Contains(t, d, tmpDir)
 	
-	s, _ := ResolveStateDir()
+	s, err := ResolveStateDir()
+	require.NoError(t, err)
 	assert.Contains(t, s, tmpDir)
 	
-	tp, _ := ResolveTracePath()
+	tp, err := ResolveTracePath()
+	require.NoError(t, err)
 	assert.Contains(t, tp, tmpDir)
 }
 
@@ -141,9 +147,11 @@ func TestConfig_AuditPermissions(t *testing.T) {
 	require.NoError(t, AuditPermissions(ctx, slog.Default(), tmpDir))
 
 	// Verify hardening
-	info, _ := os.Stat(subDir)
+	info, err := os.Stat(subDir)
+	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
 
-	fInfo, _ := os.Stat(fPath)
+	fInfo, err := os.Stat(fPath)
+	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), fInfo.Mode().Perm())
 }

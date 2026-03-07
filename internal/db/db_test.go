@@ -75,6 +75,8 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	// Verify triage state was NOT overwritten
 	ns, err := db.GetNotification(ctx, id)
 	require.NoError(t, err)
+	require.NotNil(t, ns)
+	
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsReadLocally)
@@ -102,6 +104,7 @@ func TestMarkNotifiedBatch(t *testing.T) {
 	for _, id := range ids {
 		ns, err := db.GetNotification(ctx, id)
 		require.NoError(t, err)
+		require.NotNil(t, ns)
 		assert.True(t, ns.IsNotified, "Expected notification %s to be marked as notified", id)
 	}
 }
@@ -121,34 +124,48 @@ func TestRepository_Actions(t *testing.T) {
 
 	// 1. Set Priority
 	require.NoError(t, db.SetPriority(ctx, id, 2))
-	ns, _ := db.GetNotification(ctx, id)
+	ns, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, 2, ns.Priority)
 
 	// 2. Mark Read/Unread
 	require.NoError(t, db.MarkReadLocally(ctx, id, true))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.True(t, ns.IsReadLocally)
 
 	require.NoError(t, db.MarkReadLocally(ctx, id, false))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.False(t, ns.IsReadLocally)
 
 	// 3. Archive/Unarchive
 	require.NoError(t, db.ArchiveThread(ctx, id))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "archived", ns.Status)
 
 	require.NoError(t, db.UnarchiveThread(ctx, id))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "tracking", ns.Status)
 
 	// 4. Mute/Unmute
 	require.NoError(t, db.MuteThread(ctx, id))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "muted", ns.Status)
 
 	require.NoError(t, db.UnmuteThread(ctx, id))
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "tracking", ns.Status)
 }
 
@@ -169,7 +186,10 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	require.NoError(t, db.EnrichNotification(ctx, id, "Some body", "author", "https://github.com/u", "OPEN"))
 
 	// Verify
-	ns, _ := db.GetNotification(ctx, id)
+	ns, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
+	
 	assert.Equal(t, "Some body", ns.Body)
 	assert.Equal(t, "author", ns.AuthorLogin)
 	assert.Equal(t, "https://github.com/u", ns.HTMLURL)
@@ -194,6 +214,7 @@ func TestRepository_SyncAndHealth(t *testing.T) {
 	
 	sm, err := db.GetSyncMeta(ctx, "user-1", "notifications")
 	require.NoError(t, err)
+	require.NotNil(t, sm)
 	assert.Equal(t, "etag-123", sm.ETag)
 
 	// 2. Bridge Health
@@ -204,6 +225,7 @@ func TestRepository_SyncAndHealth(t *testing.T) {
 	
 	h, err := db.GetBridgeHealth(ctx)
 	require.NoError(t, err)
+	require.NotNil(t, h)
 	assert.Equal(t, "active", h.Status)
 }
 
@@ -264,14 +286,16 @@ func TestRepository_UpdateByNodeID(t *testing.T) {
 
 	// 1. Update Resource State by Node ID
 	require.NoError(t, db.UpdateResourceStateByNodeID(ctx, "node-123", "MERGED"))
-	ns, _ := db.GetNotification(ctx, id)
+	ns, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "MERGED", ns.ResourceState)
 
 	// 2. Update Subject Node ID
 	require.NoError(t, db.UpdateSubjectNodeID(ctx, id, "node-456"))
-	// We need to fetch node_id manually as it's not in the base select if not joined? 
-	// Actually baseNotificationSelect includes subject_node_id.
-	ns, _ = db.GetNotification(ctx, id)
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 	assert.Equal(t, "node-456", ns.SubjectNodeID)
 }
 
@@ -305,7 +329,7 @@ func TestMigration_HashAndCopy(t *testing.T) {
 	
 	h1, err := computeDirHash(dir)
 	require.NoError(t, err)
-	assert.NotEmpty(t, h1)
+	require.NotEmpty(t, h1)
 
 	dest := t.TempDir() + "/copy"
 	require.NoError(t, copyDir(dir, dest))
