@@ -78,7 +78,7 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 	// Tier 1: XDG_STATE_HOME (previous version)
 	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
 		candidate := filepath.Join(stateHome, "gh-orbit", "orbit.db")
-		if _, err := os.Stat(candidate); err == nil {
+		if _, err := os.Stat(candidate); err == nil { // #nosec G703: Candidate path is internally resolved
 			legacyPath = candidate
 		}
 	}
@@ -88,7 +88,7 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 		home, _ := userHome()
 		if home != "" {
 			candidate := filepath.Join(home, ".local", "state", "gh-orbit", "orbit.db")
-			if _, err := os.Stat(candidate); err == nil {
+			if _, err := os.Stat(candidate); err == nil { // #nosec G703: Candidate path is internally resolved
 				legacyPath = candidate
 			}
 		}
@@ -99,7 +99,7 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 		home, _ := userHome()
 		if home != "" {
 			candidate := filepath.Join(home, ".config", "gh", "extensions", "gh-orbit", "orbit.db")
-			if _, err := os.Stat(candidate); err == nil {
+			if _, err := os.Stat(candidate); err == nil { // #nosec G703: Candidate path is internally resolved
 				legacyPath = candidate
 			}
 		}
