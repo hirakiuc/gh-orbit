@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	context "context"
+
 	types "github.com/hirakiuc/gh-orbit/internal/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -20,17 +22,17 @@ func (_m *MockNotifier) EXPECT() *MockNotifier_Expecter {
 	return &MockNotifier_Expecter{mock: &_m.Mock}
 }
 
-// Notify provides a mock function with given fields: title, subtitle, body, url, priority
-func (_m *MockNotifier) Notify(title string, subtitle string, body string, url string, priority int) error {
-	ret := _m.Called(title, subtitle, body, url, priority)
+// Notify provides a mock function with given fields: ctx, title, subtitle, body, url, priority
+func (_m *MockNotifier) Notify(ctx context.Context, title string, subtitle string, body string, url string, priority int) error {
+	ret := _m.Called(ctx, title, subtitle, body, url, priority)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Notify")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, string, string, int) error); ok {
-		r0 = rf(title, subtitle, body, url, priority)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, int) error); ok {
+		r0 = rf(ctx, title, subtitle, body, url, priority)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -44,18 +46,19 @@ type MockNotifier_Notify_Call struct {
 }
 
 // Notify is a helper method to define mock.On call
+//   - ctx context.Context
 //   - title string
 //   - subtitle string
 //   - body string
 //   - url string
 //   - priority int
-func (_e *MockNotifier_Expecter) Notify(title interface{}, subtitle interface{}, body interface{}, url interface{}, priority interface{}) *MockNotifier_Notify_Call {
-	return &MockNotifier_Notify_Call{Call: _e.mock.On("Notify", title, subtitle, body, url, priority)}
+func (_e *MockNotifier_Expecter) Notify(ctx interface{}, title interface{}, subtitle interface{}, body interface{}, url interface{}, priority interface{}) *MockNotifier_Notify_Call {
+	return &MockNotifier_Notify_Call{Call: _e.mock.On("Notify", ctx, title, subtitle, body, url, priority)}
 }
 
-func (_c *MockNotifier_Notify_Call) Run(run func(title string, subtitle string, body string, url string, priority int)) *MockNotifier_Notify_Call {
+func (_c *MockNotifier_Notify_Call) Run(run func(ctx context.Context, title string, subtitle string, body string, url string, priority int)) *MockNotifier_Notify_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(string), args[2].(string), args[3].(string), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(int))
 	})
 	return _c
 }
@@ -65,7 +68,7 @@ func (_c *MockNotifier_Notify_Call) Return(_a0 error) *MockNotifier_Notify_Call 
 	return _c
 }
 
-func (_c *MockNotifier_Notify_Call) RunAndReturn(run func(string, string, string, string, int) error) *MockNotifier_Notify_Call {
+func (_c *MockNotifier_Notify_Call) RunAndReturn(run func(context.Context, string, string, string, string, int) error) *MockNotifier_Notify_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -117,9 +120,9 @@ func (_c *MockNotifier_Ready_Call) RunAndReturn(run func() <-chan struct{}) *Moc
 	return _c
 }
 
-// Shutdown provides a mock function with no fields
-func (_m *MockNotifier) Shutdown() {
-	_m.Called()
+// Shutdown provides a mock function with given fields: ctx
+func (_m *MockNotifier) Shutdown(ctx context.Context) {
+	_m.Called(ctx)
 }
 
 // MockNotifier_Shutdown_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Shutdown'
@@ -128,13 +131,14 @@ type MockNotifier_Shutdown_Call struct {
 }
 
 // Shutdown is a helper method to define mock.On call
-func (_e *MockNotifier_Expecter) Shutdown() *MockNotifier_Shutdown_Call {
-	return &MockNotifier_Shutdown_Call{Call: _e.mock.On("Shutdown")}
+//   - ctx context.Context
+func (_e *MockNotifier_Expecter) Shutdown(ctx interface{}) *MockNotifier_Shutdown_Call {
+	return &MockNotifier_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 
-func (_c *MockNotifier_Shutdown_Call) Run(run func()) *MockNotifier_Shutdown_Call {
+func (_c *MockNotifier_Shutdown_Call) Run(run func(ctx context.Context)) *MockNotifier_Shutdown_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -144,7 +148,7 @@ func (_c *MockNotifier_Shutdown_Call) Return() *MockNotifier_Shutdown_Call {
 	return _c
 }
 
-func (_c *MockNotifier_Shutdown_Call) RunAndReturn(run func()) *MockNotifier_Shutdown_Call {
+func (_c *MockNotifier_Shutdown_Call) RunAndReturn(run func(context.Context)) *MockNotifier_Shutdown_Call {
 	_c.Run(run)
 	return _c
 }

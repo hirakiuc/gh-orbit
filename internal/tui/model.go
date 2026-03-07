@@ -11,8 +11,10 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
+
+type AppState int
 
 const (
 	TabInbox = iota
@@ -21,46 +23,46 @@ const (
 	TabAll
 )
 
-type AppState int
-
 const (
 	StateList AppState = iota
 	StateDetail
 )
 
-// ListModel encapsulates the state for the notification list view.
+// ListModel encapsulates list-specific state.
 type ListModel struct {
 	list           list.Model
 	delegate       itemDelegate
 	activeTab      int
-	resourceFilter string
+	resourceFilter string // e.g. "PullRequest", "Issue"
 }
 
-// DetailModel encapsulates the state for the notification detail view.
+// DetailModel encapsulates viewport-specific state.
 type DetailModel struct {
 	viewport     viewport.Model
-	activeDetail string
+	activeDetail string // Rendered markdown
 }
 
+// Model represents the application state.
 type Model struct {
 	// Sub-Models
 	listView   ListModel
 	detailView DetailModel
 
-	// Shared State & Services
-	db               *db.DB
-	client           *api.Client
-	sync             *api.SyncEngine
-	enrich           *api.EnrichmentEngine
-	traffic          *api.APITrafficController
+	// Shared State & Services (Interfaces)
+	db               api.Repository
+	client           api.GitHubClient
+	sync             api.Syncer
+	enrich           api.Enricher
+	traffic          api.TrafficController
+	alerter          api.Alerter
 	ui               UIController
 	config           *config.Config
 	logger           *slog.Logger
-	ctx              context.Context
 	userID           string
+	version          string
 	styles           Styles
 	keys             KeyMap
-	allNotifications []db.NotificationWithState
+	allNotifications []types.NotificationWithState
 	err              error
 	state            AppState
 	isDark           bool
@@ -76,8 +78,37 @@ type Model struct {
 	syncCounter  int
 }
 
-func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID string, cfg *config.Config, logger *slog.Logger, appVersion string) Model {
-	styles := DefaultStyles(true) // Default to dark theme
+// Option defines a functional option for Model configuration.
+type Option func(*Model)
+
+// WithTheme sets the initial theme.
+func WithTheme(isDark bool) Option {
+	return func(m *Model) {
+		m.isDark = isDark
+	}
+}
+
+// WithVersion sets the application version.
+func WithVersion(v string) Option {
+	return func(m *Model) {
+		m.version = v
+	}
+}
+
+// NewModel initializes a new application model with dependency injection.
+func NewModel(
+	userID string,
+	cfg *config.Config,
+	logger *slog.Logger,
+	database api.Repository,
+	client api.GitHubClient,
+	syncer api.Syncer,
+	enricher api.Enricher,
+	traffic api.TrafficController,
+	alerter api.Alerter,
+	opts ...Option,
+) *Model {
+	styles := DefaultStyles(true)
 	keys := DefaultKeyMap()
 	delegate := newItemDelegate(styles, keys)
 
@@ -87,12 +118,7 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 
 	vp := viewport.New()
 
-	alerts := api.NewAlertService(ctx, cfg, database, logger)
-	alerts.ProbeAndCacheBridge(appVersion)
-
-	fetcher := api.NewNotificationFetcher(client, logger)
-
-	return Model{
+	m := &Model{
 		listView: ListModel{
 			list:     l,
 			delegate: delegate,
@@ -100,108 +126,70 @@ func NewModel(ctx context.Context, database *db.DB, client *api.Client, userID s
 		detailView: DetailModel{
 			viewport: vp,
 		},
-		db:       database,
-		client:   client,
-		sync:     api.NewSyncEngine(ctx, fetcher, database, alerts, logger),
-		enrich:   api.NewEnrichmentEngine(ctx, client, database, logger),
-		traffic:  api.NewAPITrafficController(ctx, logger),
-		ui:       NewUIController(styles),
-		config:   cfg,
-		logger:   logger,
-		ctx:      ctx,
-		userID:   userID,
-		styles:   styles,
-		keys:     keys,
-		isDark:   true,
-		state:    StateList,
-		// Background Sync Defaults
-		LastSyncAt:   time.Now(),
+		db:           database,
+		client:       client,
+		sync:         syncer,
+		enrich:       enricher,
+		traffic:      traffic,
+		alerter:      alerter,
+		ui:           NewUIController(styles),
+		config:       cfg,
+		logger:       logger,
+		userID:       userID,
+		styles:       styles,
+		keys:         keys,
+		isDark:       true,
+		state:        StateList,
 		PollInterval: cfg.Notifications.SyncInterval,
+		LastSyncAt:   time.Now(),
 	}
+
+	for _, opt := range opts {
+		opt(m)
+	}
+
+	return m
 }
 
+// Init initializes the application by loading data and starting background tasks.
 func (m *Model) Init() tea.Cmd {
-	return tea.Sequence(
+	return tea.Batch(
 		m.loadNotifications(),
-		tea.Batch(
-			tea.RequestBackgroundColor,
-			m.ui.SetSyncing(true),
-			m.syncNotificationsWithForce(api.PriorityUser, true), // Initial is Cold
-			m.tickClock(), // Start UI clock
-		),
+		m.tickHeartbeat(),
+		m.tickClock(),
+		// Move side-effects out of constructor into Init
+		func() tea.Msg {
+			// Trigger bridge warmup/probe in background
+			m.alerter.Warmup()
+			return nil
+		},
 	)
 }
 
-// Msg types
-type (
-	notificationsLoadedMsg []db.NotificationWithState
-	syncCompleteMsg        []db.NotificationWithState
-	enrichmentCompleteMsg  []db.NotificationWithState
-	actionCompleteMsg      struct{}
-	clearStatusMsg         struct{}
-	viewportEnrichMsg      struct{}
-	pollTickMsg            struct{ ID uint64 }
-	clockTickMsg           struct{ ID uint64 }
-	detailLoadedMsg        struct {
-		GitHubID      string
-		Body          string
-		Author        string
-		HTMLURL       string
-		ResourceState string
-	}
-	errMsg struct{ err error }
-)
-
 func (m *Model) loadNotifications() tea.Cmd {
 	return func() tea.Msg {
-		notifs, err := m.db.ListNotifications()
+		notifications, err := m.db.ListNotifications()
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err}
 		}
-		return notificationsLoadedMsg(notifs)
+		return notificationsLoadedMsg{notifications: notifications}
 	}
 }
 
-func (m *Model) syncNotificationsWithForce(priority int, force bool) tea.Cmd {
-	// Increment heartbeatID on manual refresh to preempt any pending background ticks
-	if priority == api.PriorityUser {
-		m.heartbeatID++
-	}
-
-	return m.traffic.Submit(priority, func(ctx context.Context) tea.Msg {
+func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
+	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
 		remaining, err := m.sync.Sync(ctx, m.userID, force)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err}
 		}
-		
-		// Update traffic controller with latest quota info
-		m.traffic.UpdateRateLimit(remaining)
-
-		// Reload after sync
-		notifs, err := m.db.ListNotifications()
-		if err != nil {
-			return errMsg{err}
-		}
-
-		// Refresh PollInterval from metadata
-		if meta, err := m.db.GetSyncMeta(m.userID, "notifications"); err == nil && meta != nil {
-			m.PollInterval = meta.PollInterval
-		}
-
-		return syncCompleteMsg(notifs)
+		return syncCompleteMsg{remainingRateLimit: remaining}
 	})
 }
 
 func (m *Model) tickHeartbeat() tea.Cmd {
 	m.heartbeatID++
 	id := m.heartbeatID
-	
-	duration := time.Duration(m.PollInterval) * time.Second
-	if duration <= 0 {
-		duration = 60 * time.Second
-	}
-	
-	return tea.Tick(duration, func(_ time.Time) tea.Msg {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return pollTickMsg{ID: id}
 	})
 }
@@ -209,13 +197,56 @@ func (m *Model) tickHeartbeat() tea.Cmd {
 func (m *Model) tickClock() tea.Cmd {
 	m.clockID++
 	id := m.clockID
-	
-	return tea.Tick(30*time.Second, func(_ time.Time) tea.Msg {
+	return tea.Tick(time.Minute, func(t time.Time) tea.Msg {
 		return clockTickMsg{ID: id}
 	})
 }
 
+// Shutdown ensures all background services are stopped gracefully.
 func (m *Model) Shutdown() {
-	m.traffic.Shutdown()
-	m.sync.Shutdown()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	m.sync.Shutdown(ctx)
+	m.traffic.Shutdown(ctx)
+	m.alerter.Shutdown(ctx)
+}
+
+// Internal messages
+type notificationsLoadedMsg struct {
+	notifications []types.NotificationWithState
+}
+
+type syncCompleteMsg struct {
+	remainingRateLimit int
+}
+
+type enrichmentCompleteMsg struct {
+	notifications []types.NotificationWithState
+}
+
+type detailLoadedMsg struct {
+	GitHubID      string
+	Body          string
+	Author        string
+	HTMLURL       string
+	ResourceState string
+}
+
+type errMsg struct {
+	err error
+}
+
+type actionCompleteMsg struct{}
+
+type clearStatusMsg struct{}
+
+type viewportEnrichMsg struct{}
+
+type pollTickMsg struct {
+	ID uint64
+}
+
+type clockTickMsg struct {
+	ID uint64
 }

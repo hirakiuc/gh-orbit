@@ -10,7 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
@@ -23,18 +23,9 @@ const (
 	ContentTTL = 10 * time.Minute
 )
 
-// EnrichmentResult holds the fetched details for a notification.
-type EnrichmentResult struct {
-	Body          string
-	HTMLURL       string
-	Author        string
-	ResourceState string
-	FetchedAt     time.Time
-}
-
 // EnrichmentEngine handles fetching and caching of notification details.
 type EnrichmentEngine struct {
-	client *Client
+	client GitHubClient
 	db     EnrichmentRepository
 	logger *slog.Logger
 	cache  map[string]EnrichmentResult
@@ -42,7 +33,7 @@ type EnrichmentEngine struct {
 	sf     singleflight.Group
 }
 
-func NewEnrichmentEngine(ctx context.Context, client *Client, database EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
 	e := &EnrichmentEngine{
 		client: client,
 		db:     database,
@@ -184,7 +175,7 @@ func (e *EnrichmentEngine) fetchDetailRaw(ctx context.Context, u string, subject
 }
 
 // FetchHybridBatch resolves statuses for multiple items using GraphQL for efficiency.
-func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []db.NotificationWithState) map[string]EnrichmentResult {
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]EnrichmentResult {
 	if len(notifications) == 0 {
 		return nil
 	}
@@ -317,7 +308,8 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			e.logger.DebugContext(ctx, "enrichment: pruning worker stopping")
+			// Use background context for the final log because the pruningWorker's context is canceled
+			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping")
 			return
 		case <-ticker.C:
 			e.pruneExpired()

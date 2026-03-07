@@ -107,7 +107,7 @@ func runDoctor() error {
 
 	cfg, _ := config.Load()
 	alerts := api.NewAlertService(ctx, cfg, database, logger)
-	defer alerts.Shutdown()
+	defer alerts.Shutdown(ctx)
 
 	if runtime.GOOS == "darwin" {
 		alerts.Warmup()
@@ -140,7 +140,7 @@ func runDoctor() error {
 
 	// 3. Optional End-to-End Notification Test
 	if doctorTest {
-		err := alerts.TestNotify("Diagnostic Test", "gh-orbit doctor", "This is an end-to-end test notification.")
+		err := alerts.TestNotify(ctx, "Diagnostic Test", "gh-orbit doctor", "This is an end-to-end test notification.")
 		
 		testPassed := (err == nil)
 		msg := ""
@@ -189,14 +189,21 @@ func runDoctor() error {
 	return nil
 }
 
-func run(ctx context.Context) error {
-	// 0. Initialize Logger with dynamic level handle
+type environment struct {
+	logger     *slog.Logger
+	logCleanup func() error
+	otelCleanup func()
+	span       trace.Span
+}
+
+func initEnvironment(ctx context.Context) (*environment, context.Context, error) {
+	// 1. Initialize Logger
 	logger, logCleanup, err := config.SetupLogger(logLevel)
 	if err != nil {
-		return fmt.Errorf("error setting up logger: %w", err)
+		return nil, nil, fmt.Errorf("error setting up logger: %w", err)
 	}
 
-	// 0. Optional OpenTelemetry (Opt-in via --verbose)
+	// 2. Optional OTel
 	var otelCleanup func()
 	if verbose {
 		var otelErr error
@@ -206,7 +213,7 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	// Root Session Span
+	// 3. Start Root Span
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "session",
 		trace.WithAttributes(
@@ -215,57 +222,112 @@ func run(ctx context.Context) error {
 			attribute.String("arch", runtime.GOARCH),
 		),
 	)
-	defer span.End()
 
-	// Define Cascading Cleanup Sequence
-	cleanup := func() {
-		// 1. Wait for background workers (via TUI model shutdown)
-		// 2. OTel Flush
-		if otelCleanup != nil {
-			otelCleanup()
-		}
-		// 3. Logger Flush
-		_ = logCleanup()
-	}
-	defer cleanup()
+	return &environment{
+		logger:      logger,
+		logCleanup:  logCleanup,
+		otelCleanup: otelCleanup,
+		span:        span,
+	}, ctx, nil
+}
 
-	// 0. Check for gh CLI
+type appResources struct {
+	config   *config.Config
+	database *db.DB
+	client   api.GitHubClient
+	userID   string
+}
+
+func initResources(ctx context.Context, logger *slog.Logger) (*appResources, error) {
+	// 1. gh CLI Check
 	if _, err := exec.LookPath("gh"); err != nil {
-		return fmt.Errorf("github cli 'gh' not found in PATH: %w", err)
+		return nil, fmt.Errorf("github cli 'gh' not found in PATH: %w", err)
 	}
 
-	// 0. Load Configuration
+	// 2. Load Configuration
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("error loading config: %w", err)
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
-	// 1. Initialize Database
+	// 3. Initialize Database
 	database, err := db.Open(ctx, logger)
 	if err != nil {
-		return fmt.Errorf("error opening database: %w", err)
+		return nil, fmt.Errorf("error opening database: %w", err)
 	}
-	defer func() { _ = database.Close() }()
 
-	// 2. Initialize API Client
+	// 4. Initialize API Client
 	client, err := api.NewClient()
 	if err != nil {
-		return fmt.Errorf("error creating API client: %w", err)
+		_ = database.Close()
+		return nil, fmt.Errorf("error creating API client: %w", err)
 	}
 
-	// 3. Get Current User for scoping
+	// 5. Get Current User
 	user, err := client.CurrentUser()
 	if err != nil {
-		return fmt.Errorf("error fetching current user: %w", err)
+		_ = database.Close()
+		return nil, fmt.Errorf("error fetching current user: %w", err)
 	}
 	userID := strconv.FormatInt(user.ID, 10)
-	span.SetAttributes(attribute.String("user_id", userID))
 
-	// 4. Start TUI
-	m := tui.NewModel(ctx, database, client, userID, cfg, logger, version)
-	p := tea.NewProgram(&m)
+	return &appResources{
+		config:   cfg,
+		database: database,
+		client:   client,
+		userID:   userID,
+	}, nil
+}
 
-	// Background goroutine to handle context cancellation (Ctrl+C / SIGTERM)
+func run(ctx context.Context) error {
+	// 1. Init Environment (Logger, OTel)
+	env, ctx, err := initEnvironment(ctx)
+	if err != nil {
+		return err
+	}
+	defer env.span.End()
+	defer func() {
+		if env.otelCleanup != nil { env.otelCleanup() }
+		_ = env.logCleanup()
+	}()
+
+	// 2. Init Resources (Config, DB, Client)
+	res, err := initResources(ctx, env.logger)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.database.Close() }()
+	
+	env.span.SetAttributes(attribute.String("user_id", res.userID))
+
+	// 3. Launch TUI
+	return launchTUI(ctx, env, res)
+}
+
+func launchTUI(ctx context.Context, env *environment, res *appResources) error {
+	// Instantiate services via interfaces (Dependency Injection)
+	alerts := api.NewAlertService(ctx, res.config, res.database, env.logger)
+	fetcher := api.NewNotificationFetcher(res.client, env.logger)
+	syncer := api.NewSyncEngine(fetcher, res.database, alerts, env.logger)
+	enricher := api.NewEnrichmentEngine(ctx, res.client, res.database, env.logger)
+	traffic := api.NewAPITrafficController(ctx, env.logger)
+
+	m := tui.NewModel(
+		res.userID,
+		res.config,
+		env.logger,
+		res.database,
+		res.client,
+		syncer,
+		enricher,
+		traffic,
+		alerts,
+		tui.WithVersion(version),
+	)
+
+	p := tea.NewProgram(m)
+
+	// Context Handling
 	go func() {
 		<-ctx.Done()
 		p.Quit()
@@ -275,9 +337,9 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
 
-	// 5. Shutdown Sequence with Timeout Guard
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
+	// Graceful Shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -287,12 +349,11 @@ func run(ctx context.Context) error {
 
 	select {
 	case <-done:
-		// Success
+		return nil
 	case <-shutdownCtx.Done():
-		logger.WarnContext(ctx, "shutdown timeout reached, forcing exit")
+		env.logger.WarnContext(ctx, "shutdown timeout reached, forcing exit")
+		return nil
 	}
-
-	return nil
 }
 
 func main() {

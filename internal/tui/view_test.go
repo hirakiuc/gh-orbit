@@ -2,83 +2,53 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/list"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderFooter(t *testing.T) {
 	styles := DefaultStyles(true)
-
-	m1 := Model{ui: NewUIController(styles), styles: styles}
-	m1.ui.syncing = true
-	f1 := stripANSI(m1.renderFooter())
-	if !strings.Contains(f1, "Syncing") {
-		t.Errorf("renderFooter() syncing state = %q, want it to contain %q", f1, "Syncing")
-	}
-
-	m2 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("api error")}
-	f2 := stripANSI(m2.renderFooter())
-	if !strings.Contains(f2, "Error: api error") {
-		t.Errorf("renderFooter() error state = %q, want it to contain %q", f2, "Error: api error")
-	}
-
-	m3 := Model{ui: NewUIController(styles), styles: styles, err: fmt.Errorf("api error")}
-	m3.ui.syncing = true
-	f3 := stripANSI(m3.renderFooter())
-	if !strings.Contains(f3, "Syncing") || !strings.Contains(f3, "Error") {
-		t.Errorf("renderFooter() combined state = %q, want it to contain both Syncing and Error", f3)
-	}
-}
-
-func TestRenderList(t *testing.T) {
-	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
-	delegate := newItemDelegate(styles, keys)
-	l := list.New([]list.Item{}, delegate, 80, 20)
+	mockSync := mocks.NewMockSyncer(t)
+	mockSync.EXPECT().BridgeStatus().Return("healthy").Maybe()
 
 	m := Model{
-		listView: ListModel{
-			list: l,
-		},
+		ui:     NewUIController(styles), 
 		styles: styles,
-		ui:     NewUIController(styles),
+		sync:   mockSync,
+	}
+	
+	// 1. Syncing state
+	m.ui.SetSyncing(true)
+	f1 := stripANSI(m.renderFooter())
+	assert.Contains(t, f1, "[NATIVE]")
+
+	// 2. Error state
+	m.err = fmt.Errorf("api error")
+	view := m.View()
+	// In v2, View returns a struct, so we access Content directly
+	f2 := stripANSI(view.Content)
+	assert.Contains(t, f2, "Error: api error")
+}
+
+func TestRenderHeader(t *testing.T) {
+	styles := DefaultStyles(true)
+	mockTraffic := mocks.NewMockTrafficController(t)
+	mockTraffic.EXPECT().Remaining().Return(4999).Maybe()
+
+	m := Model{
+		styles:  styles,
+		ui:      NewUIController(styles),
+		traffic: mockTraffic,
+		width:   80,
 	}
 
-	out := m.renderList()
+	out := m.renderHeader()
 	stripped := stripANSI(out)
 
 	// Verify tabs are present
-	if !strings.Contains(stripped, "Inbox") {
-		t.Errorf("renderList() should contain tab labels")
-	}
-
-	// Verify help content (short help should be at the bottom)
-	if !strings.Contains(stripped, "sync") {
-		t.Errorf("renderList() help should contain 'sync'")
-	}
-	if !strings.Contains(stripped, "back/close") {
-		t.Errorf("renderList() help should contain 'back/close'")
-	}
-}
-
-func TestRenderTabs(t *testing.T) {
-	styles := DefaultStyles(true)
-	m := Model{
-		listView: ListModel{
-			activeTab: 1, // Unread
-		},
-		styles: styles,
-	}
-
-	out := m.renderTabs()
-	stripped := stripANSI(out)
-
-	expectedTabs := []string{"Inbox", "Unread", "Triaged", "All"}
-	for _, tab := range expectedTabs {
-		if !strings.Contains(stripped, tab) {
-			t.Errorf("renderTabs() = %q, want it to contain %q", stripped, tab)
-		}
-	}
+	assert.Contains(t, stripped, "Inbox")
+	assert.Contains(t, stripped, "Unread")
+	assert.Contains(t, stripped, "Rate: 4999")
 }

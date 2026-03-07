@@ -123,12 +123,6 @@ func (db *DB) UpsertNotification(n Notification) error {
 	return db.UpsertMetadata(n)
 }
 
-// GetNotification retrieves a notification and its local state.
-type NotificationWithState struct {
-	Notification
-	OrbitState
-}
-
 func baseNotificationSelect() string {
 	return `
 		SELECT
@@ -192,6 +186,66 @@ func (db *DB) UpdateOrbitState(state OrbitState) error {
 		SET priority = ?, status = ?, is_read_locally = ?, is_notified = ?
 		WHERE notification_id = ?
 	`, state.Priority, state.Status, state.IsReadLocally, state.IsNotified, state.NotificationID)
+	return err
+}
+
+// MarkReadLocally updates the local read state of a notification.
+func (db *DB) MarkReadLocally(id string, isRead bool) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET is_read_locally = ?
+		WHERE notification_id = ?
+	`, isRead, id)
+	return err
+}
+
+// ArchiveThread moves a thread to the archived state.
+func (db *DB) ArchiveThread(id string) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET status = 'archived'
+		WHERE notification_id = ?
+	`, id)
+	return err
+}
+
+// UnarchiveThread restores a thread to the tracking state.
+func (db *DB) UnarchiveThread(id string) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET status = 'tracking'
+		WHERE notification_id = ?
+	`, id)
+	return err
+}
+
+// MuteThread mutes future alerts for this thread.
+func (db *DB) MuteThread(id string) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET status = 'muted'
+		WHERE notification_id = ?
+	`, id)
+	return err
+}
+
+// UnmuteThread unmutes alerts for this thread.
+func (db *DB) UnmuteThread(id string) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET status = 'tracking'
+		WHERE notification_id = ?
+	`, id)
+	return err
+}
+
+// SetPriority updates the local priority of a notification.
+func (db *DB) SetPriority(id string, priority int) error {
+	_, err := db.Exec(`
+		UPDATE orbit_state
+		SET priority = ?
+		WHERE notification_id = ?
+	`, priority, id)
 	return err
 }
 

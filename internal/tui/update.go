@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -11,7 +10,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -46,7 +45,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ui.SetStyles(m.styles)
 
 	case notificationsLoadedMsg:
-		m.allNotifications = msg
+		m.allNotifications = msg.notifications
 		m.applyFilters()
 		// Start initial heartbeat and enrichment
 		cmds = append(cmds, m.enrichViewport())
@@ -54,14 +53,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case syncCompleteMsg:
 		cmds = append(cmds, m.ui.SetSyncing(false))
-		m.allNotifications = msg
+		// Note: We need to reload notifications from DB after sync
+		cmds = append(cmds, m.loadNotifications())
 		m.LastSyncAt = time.Now()
-		m.applyFilters()
 		// Schedule next heartbeat
 		cmds = append(cmds, m.tickHeartbeat())
 
 	case enrichmentCompleteMsg:
-		m.allNotifications = msg
+		m.allNotifications = msg.notifications
 		m.applyFilters()
 		// No new heartbeat here - this breaks the recursive loop
 
@@ -72,7 +71,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncCounter++
 				// Every 5th background poll is a "Cold" refresh to ensure eventual consistency
 				force := (m.syncCounter%5 == 0)
-				cmds = append(cmds, m.syncNotificationsWithForce(api.PrioritySync, force))
+				cmds = append(cmds, m.syncNotificationsWithForce(force))
 			} else {
 				// If already busy, skip this tick but keep the pulse going
 				cmds = append(cmds, m.tickHeartbeat())
@@ -194,7 +193,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(
 				m.ui.SetSyncing(true),
-				m.syncNotificationsWithForce(api.PriorityUser, true), // Manual is always Cold
+				m.syncNotificationsWithForce(true), // Manual is always Cold
 			)
 		case key.Matches(msg, m.keys.ToggleDetail):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
@@ -206,7 +205,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 							i.notification.GitHubID,
 							i.notification.SubjectURL,
 							i.notification.SubjectType,
-							func(res api.EnrichmentResult) tea.Msg {
+							func(res types.EnrichmentResult) tea.Msg {
 								return detailLoadedMsg{
 									GitHubID:      i.notification.GitHubID,
 									Body:          res.Body,
@@ -233,7 +232,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.ui.SetToast("Copied URL to clipboard"),
 					)
 				}
-				m.err = fmt.Errorf("refusing to copy untrusted URL: %s", i.notification.HTMLURL)
+				m.err = fmt.Errorf("refusing to open untrusted URL: %s", i.notification.HTMLURL)
 			}
 		case key.Matches(msg, m.keys.ToggleRead):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
@@ -292,7 +291,7 @@ func (m *Model) enrichViewport() tea.Cmd {
 	}
 	visible := m.listView.list.Items()[start:end]
 
-	var toEnrich []db.NotificationWithState
+	var toEnrich []types.NotificationWithState
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
 			// Pick items that are not enriched OR have expired statuses
@@ -329,7 +328,7 @@ func (m *Model) enrichViewport() tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return enrichmentCompleteMsg(notifs)
+		return enrichmentCompleteMsg{notifications: notifs}
 	})
 }
 
@@ -341,12 +340,7 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 		}
 
 		i.notification.Priority = priority
-		err := m.db.UpdateOrbitState(db.OrbitState{
-			NotificationID: i.notification.GitHubID,
-			Priority:       priority,
-			Status:         i.notification.Status,
-			IsReadLocally:  i.notification.IsReadLocally,
-		})
+		err := m.db.SetPriority(i.notification.GitHubID, priority)
 		if err != nil {
 			m.err = err
 		}
@@ -438,9 +432,4 @@ func (m *Model) applyFilters() {
 			}
 		}
 	}
-}
-
-func isValidGitHubURL(url string) bool {
-	return strings.HasPrefix(url, "https://github.com/") ||
-		strings.HasPrefix(url, "https://api.github.com/")
 }

@@ -17,17 +17,17 @@ func NewBeeepNotifier(logger *slog.Logger) Notifier {
 	return &beeepNotifier{logger: logger}
 }
 
-func (b *beeepNotifier) Notify(title, subtitle, body, url string, priority int) error {
+func (b *beeepNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
 	fullTitle := title
 	if subtitle != "" {
 		fullTitle = fmt.Sprintf("[%s] %s", subtitle, title)
 	}
 
-	b.logger.DebugContext(context.Background(), "delivering notification via beeep fallback", "title", fullTitle)
+	b.logger.DebugContext(ctx, "delivering notification via beeep fallback", "title", fullTitle)
 	return beeep.Notify(fullTitle, body, "")
 }
 
-func (b *beeepNotifier) Shutdown() {}
+func (b *beeepNotifier) Shutdown(ctx context.Context) {}
 
 func (b *beeepNotifier) Warmup() {}
 

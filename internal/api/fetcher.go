@@ -10,19 +10,104 @@ import (
 	"strings"
 	"time"
 
+	gh "github.com/cli/go-gh/v2/pkg/api"
+	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Client wraps the GitHub REST and GQL API clients.
+type Client struct {
+	rest    *gh.RESTClient
+	gql     *gh.GraphQLClient
+	http    *http.Client
+	host    string
+	baseURL string
+}
+
+// NewClient initializes a new GitHub API client using go-gh.
+func NewClient() (*Client, error) {
+	host, _ := auth.DefaultHost()
+
+	opts := gh.ClientOptions{
+		Host:        host,
+		EnableCache: true, // Enable ETag support for quota preservation
+	}
+
+	rest, err := gh.NewRESTClient(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create REST client: %w", err)
+	}
+
+	gql, err := gh.NewGraphQLClient(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GQL client: %w", err)
+	}
+
+	httpClient, err := gh.NewHTTPClient(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	baseURL := "https://api.github.com/"
+	if host != "github.com" {
+		baseURL = fmt.Sprintf("https://%s/api/v3/", host)
+	}
+
+	return &Client{
+		rest:    rest,
+		gql:     gql,
+		http:    httpClient,
+		host:    host,
+		baseURL: baseURL,
+	}, nil
+}
+
+// CurrentUser retrieves the authenticated user's information.
+func (c *Client) CurrentUser() (*GHUser, error) {
+	var user GHUser
+	err := c.rest.Get("user", &user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch current user: %w", err)
+	}
+	return &user, nil
+}
+
+// MarkThreadAsRead marks a single notification thread as read.
+func (c *Client) MarkThreadAsRead(threadID string) error {
+	path := fmt.Sprintf("notifications/threads/%s", threadID)
+	return c.rest.Patch(path, nil, nil)
+}
+
+// REST returns the underlying REST client configured by go-gh.
+func (c *Client) REST() *gh.RESTClient {
+	return c.rest
+}
+
+// GQL returns the underlying GQL client configured by go-gh.
+func (c *Client) GQL() *gh.GraphQLClient {
+	return c.gql
+}
+
+// HTTP returns the underlying http.Client configured by go-gh.
+func (c *Client) HTTP() *http.Client {
+	return c.http
+}
+
+// BaseURL returns the GitHub API base URL.
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 // NotificationFetcher implements the Fetcher interface for the GitHub REST API.
 type NotificationFetcher struct {
-	client *Client
+	client GitHubClient
 	logger *slog.Logger
 }
 
-func NewNotificationFetcher(client *Client, logger *slog.Logger) *NotificationFetcher {
+func NewNotificationFetcher(client GitHubClient, logger *slog.Logger) *NotificationFetcher {
 	return &NotificationFetcher{
 		client: client,
 		logger: logger,

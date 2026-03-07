@@ -18,11 +18,11 @@ const DefaultPollInterval = 60 // seconds
 type SyncEngine struct {
 	fetcher Fetcher
 	db      SyncRepository
-	alerts  *AlertService
+	alerts  Alerter
 	logger  *slog.Logger
 }
 
-func NewSyncEngine(ctx context.Context, fetcher Fetcher, database SyncRepository, alerts *AlertService, logger *slog.Logger) *SyncEngine {
+func NewSyncEngine(fetcher Fetcher, database SyncRepository, alerts Alerter, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
 		fetcher: fetcher,
 		db:      database,
@@ -37,9 +37,9 @@ func (s *SyncEngine) Fetcher() Fetcher {
 }
 
 // Shutdown ensures all background services are stopped.
-func (s *SyncEngine) Shutdown() {
+func (s *SyncEngine) Shutdown(ctx context.Context) {
 	if s.alerts != nil {
-		s.alerts.Shutdown()
+		s.alerts.Shutdown(ctx)
 	}
 }
 
@@ -57,7 +57,7 @@ func (s *SyncEngine) BridgeStatus() BridgeStatus {
 func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, error) {
 	// Prepare alert service for a new cycle (detects Silent Initial Baseline)
 	if s.alerts != nil {
-		s.alerts.SyncStart()
+		s.alerts.SyncStart(ctx)
 	}
 
 	tracer := config.GetTracer()
@@ -164,7 +164,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 				// Alerts are sent only for truly new items (arrival > baseline sync)
 				if n.UpdatedAt.After(meta.LastSyncAt) {
 					if s.alerts != nil {
-						_ = s.alerts.Notify(n)
+						_ = s.alerts.Notify(ctx, n)
 					}
 				}
 				// Mark as "processed" even if alert failed (to prevent infinite retry storm)
