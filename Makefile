@@ -3,7 +3,7 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.10.1
 
-.PHONY: all build release-build test lint vulncheck fmt clean help serena
+.PHONY: all build release-build test lint vulncheck fmt clean help generate serena
 
 all: build
 
@@ -35,19 +35,27 @@ vulncheck:
 fmt:
 	gofumpt -l -w .
 
-clean:
-	rm -rf bin/
-	go clean
+generate:
+	@echo "Generating mocks..."
+	@go run github.com/vektra/mockery/v2 --all --dir internal/api --output internal/api/mocks --case underscore
 
 serena:
-	uvx --from git+https://github.com/oraios/serena serena-mcp-server start-mcp-server --transport streamable-http --host 127.0.0.1 --port 9121 --project . --context ide-assistant
+	@echo "Starting Serena MCP server..."
+	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+
+clean:
+	rm -rf bin/
+	rm -rf internal/api/mocks/
+	go clean
+
 help:
 	@echo "Available targets:"
 	@echo "  build         - Build the local binary"
 	@echo "  release-build - Cross-compile for Darwin, Linux, Windows"
+	@echo "  generate      - Generate mocks using mockery"
+	@echo "  serena        - Start Serena MCP server"
 	@echo "  test          - Run tests"
 	@echo "  lint          - Run golangci-lint"
 	@echo "  vulncheck     - Run govulncheck for security"
 	@echo "  fmt           - Format code with gofumpt"
 	@echo "  clean         - Remove build artifacts"
-	@echo "  serena        - Start Serena MCP server for IDE integration"
