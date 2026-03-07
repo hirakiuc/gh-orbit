@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"log/slog"
 	"testing"
@@ -17,16 +18,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func newTestModel(t *testing.T) *Model {
+func newTestModel(t testing.TB) *Model {
 	cfg := &config.Config{}
 	logger := slog.Default()
 	userID := "test-user"
 
 	// Mock engines via the new centralized interfaces
 	mockSyncer := mocks.NewMockSyncer(t)
+	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockEnricher := mocks.NewMockEnricher(t)
 	mockTraffic := mocks.NewMockTrafficController(t)
+	mockTraffic.EXPECT().Remaining().Return(5000).Maybe()
 	mockAlerter := mocks.NewMockAlerter(t)
+	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockRepo := mocks.NewMockRepository(t)
 	mockClient := mocks.NewMockGitHubClient(t)
 
@@ -83,6 +87,59 @@ func TestModel_Update_StatusClearing(t *testing.T) {
 	updatedModel, _ := m.Update(msgClear)
 	newModel := updatedModel.(*Model)
 	assert.Empty(t, newModel.ui.toastMessage, "expected status to be cleared after clearStatusMsg")
+}
+
+func TestModel_Update_TableDriven(t *testing.T) {
+	tests := map[string]struct {
+		setup func(*Model)
+		msg   tea.Msg
+		verify func(*testing.T, *Model)
+	}{
+		"Tab Change: All (Key 4)": {
+			setup: func(m *Model) { m.listView.activeTab = TabInbox },
+			msg:   tea.KeyPressMsg{Text: "4", Code: '4'},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, TabAll, m.listView.activeTab) },
+		},
+		"Error Message": {
+			msg: errMsg{err: fmt.Errorf("fatal")},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, "fatal", m.err.Error()) },
+		},
+		"Action Complete": {
+			msg: actionCompleteMsg{},
+			verify: func(t *testing.T, m *Model) { /* just verify no crash */ },
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			m := newTestModel(t)
+			if tc.setup != nil {
+				tc.setup(m)
+			}
+			updatedModel, _ := m.Update(tc.msg)
+			tc.verify(t, updatedModel.(*Model))
+		})
+	}
+}
+
+func TestModel_View_States(t *testing.T) {
+	m := newTestModel(t)
+	
+	// 1. List State
+	m.state = StateList
+	v1 := m.View()
+	assert.Contains(t, stripANSI(v1.Content), "Inbox") // Header tab
+
+	// 2. Detail State
+	m.state = StateDetail
+	m.allNotifications = []types.NotificationWithState{{
+		Notification: types.Notification{SubjectTitle: "Detail Title", GitHubID: "1"},
+	}}
+	m.applyFilters()
+	m.listView.list.Select(0)
+	
+	v2 := m.View()
+	assert.Contains(t, stripANSI(v2.Content), "Detail Title")
 }
 
 func TestModel_MarkRead(t *testing.T) {
