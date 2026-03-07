@@ -12,7 +12,8 @@ import (
 func (m *Model) View() tea.View {
 	if m.err != nil {
 		return tea.View{
-			Content: m.styles.StatusError.Render(fmt.Sprintf("Error: %v", m.err)),
+			Content:   m.styles.StatusError.Render(fmt.Sprintf("Error: %v", m.err)),
+			AltScreen: true,
 		}
 	}
 
@@ -32,7 +33,8 @@ func (m *Model) View() tea.View {
 	)
 
 	return tea.View{
-		Content: rendered,
+		Content:   rendered,
+		AltScreen: true,
 	}
 }
 
