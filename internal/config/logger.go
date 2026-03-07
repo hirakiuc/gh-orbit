@@ -17,10 +17,11 @@ var tokenRegex = regexp.MustCompile(`(ghp_|github_pat_|gho_|ghs_|ghr_)[a-zA-Z0-9
 // SetupLogger initializes a structured slog logger with redaction and buffered file output.
 // It uses levelVar to allow dynamic, thread-safe log level updates.
 func SetupLogger(level *slog.LevelVar) (*slog.Logger, func() error, error) {
-	path, err := resolveLogPath()
+	stateDir, err := ResolveStateDir()
 	if err != nil {
 		return nil, nil, err
 	}
+	path := filepath.Join(stateDir, "orbit.log")
 
 	// 1. Log Rotation Guard (10MB)
 	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
@@ -31,9 +32,9 @@ func SetupLogger(level *slog.LevelVar) (*slog.Logger, func() error, error) {
 		}
 	}
 
-	// Create parent directory with 0700 permissions
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, nil, fmt.Errorf("failed to create log directory: %w", err)
+	// Create parent directory with strict permissions
+	if err := EnsurePrivateDir(filepath.Dir(path)); err != nil {
+		return nil, nil, fmt.Errorf("failed to secure log directory: %w", err)
 	}
 
 	file, err := os.OpenFile(path, flags, 0o600) // #nosec G304: Path is internally resolved following XDG specs
@@ -93,18 +94,4 @@ func (h *otelHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	return h.Handler.Handle(ctx, r)
-}
-
-func resolveLogPath() (string, error) {
-	stateHome := os.Getenv("XDG_STATE_HOME")
-	if stateHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		// On macOS/Linux fallback to ~/.local/state
-		stateHome = filepath.Join(home, ".local", "state")
-	}
-
-	return filepath.Join(stateHome, "gh-orbit", "orbit.log"), nil
 }

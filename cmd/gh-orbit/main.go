@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -97,8 +99,22 @@ func runDoctor() error {
 		FocusMode:     "Unsupported platform",
 	}
 
-	// 2. Initialize Service Stack for High-Fidelity Probe
-	// We use a unique name for the in-memory DB to avoid shared cache interference with live instances
+	// 2. Persistence Audit
+	confPath, _ := config.ResolveConfigPath()
+	dataPath, _ := config.ResolveDataDir()
+	statePath, _ := config.ResolveStateDir()
+	
+	totalSize := getDirSize(dataPath) + getDirSize(statePath)
+	if totalSize < 0 { totalSize = 0 }
+	
+	report.Persistence = api.PersistenceReport{
+		ConfigPath: confPath,
+		DataPath:   dataPath,
+		StatePath:  statePath,
+		CacheSize:  humanize.Bytes(uint64(totalSize)), // #nosec G115: conversion checked above
+	}
+
+	// 3. Initialize Service Stack for High-Fidelity Probe
 	database, err := db.OpenInMemory(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open diagnostic db: %w", err)
@@ -131,14 +147,14 @@ func runDoctor() error {
 		report.ActiveTier = tierName
 		report.BridgeStatus = tierStatus
 		
-		// 2.5 Focus Mode Probe (Darwin only)
+		// Focus Mode Probe (Darwin only)
 		report.FocusMode = api.CheckFocusMode()
 	} else {
 		report.BridgeStatus = api.StatusUnsupported
 		report.ActiveTier = "Beeep (Cross-Platform)"
 	}
 
-	// 3. Optional End-to-End Notification Test
+	// 4. Optional End-to-End Notification Test
 	if doctorTest {
 		err := alerts.TestNotify(ctx, "Diagnostic Test", "gh-orbit doctor", "This is an end-to-end test notification.")
 		
@@ -157,7 +173,7 @@ func runDoctor() error {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// 4. Output
+	// 5. Output
 	if doctorJSON {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
@@ -177,6 +193,13 @@ func runDoctor() error {
 	
 	fmt.Printf("Status: %s\n", report.BridgeStatus)
 	fmt.Printf("Tier:   %s\n", report.ActiveTier)
+	
+	fmt.Println("\nPersistence:")
+	fmt.Printf("  Config: %s\n", report.Persistence.ConfigPath)
+	fmt.Printf("  Data:   %s\n", report.Persistence.DataPath)
+	fmt.Printf("  State:  %s\n", report.Persistence.StatePath)
+	fmt.Printf("  Usage:  %s\n", report.Persistence.CacheSize)
+
 	fmt.Println("\nChecks:")
 	for _, c := range report.Checks {
 		status := "[PASS]"
@@ -187,6 +210,18 @@ func runDoctor() error {
 	}
 
 	return nil
+}
+
+func getDirSize(path string) int64 {
+	var size int64
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil { return nil }
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size
 }
 
 type environment struct {

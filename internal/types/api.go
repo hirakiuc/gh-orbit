@@ -123,18 +123,27 @@ type BridgeCheck struct {
 	Message string `json:"message,omitempty"`
 }
 
+// PersistenceReport represents the health of the local storage.
+type PersistenceReport struct {
+	ConfigPath string `json:"config_path"`
+	DataPath   string `json:"data_path"`
+	StatePath  string `json:"state_path"`
+	CacheSize  string `json:"cache_size"`
+}
+
 // DoctorReport represents the full environment diagnostic report.
 type DoctorReport struct {
-	SchemaVersion int           `json:"schema_version"`
-	Timestamp     time.Time     `json:"timestamp"`
-	OS            string        `json:"os"`
-	Arch          string        `json:"arch"`
-	KernelVersion string        `json:"kernel_version"`
-	BinaryPath    string        `json:"binary_path"`
-	ActiveTier    string        `json:"active_tier"`
-	FocusMode     string        `json:"focus_mode"`
-	BridgeStatus  BridgeStatus  `json:"bridge_status"`
-	Checks        []BridgeCheck `json:"checks"`
+	SchemaVersion int               `json:"schema_version"`
+	Timestamp     time.Time         `json:"timestamp"`
+	OS            string            `json:"os"`
+	Arch          string            `json:"arch"`
+	KernelVersion string            `json:"kernel_version"`
+	BinaryPath    string            `json:"binary_path"`
+	ActiveTier    string            `json:"active_tier"`
+	FocusMode     string            `json:"focus_mode"`
+	BridgeStatus  BridgeStatus      `json:"bridge_status"`
+	Persistence   PersistenceReport `json:"persistence"`
+	Checks        []BridgeCheck     `json:"checks"`
 }
 
 // Fetcher defines the interface for retrieving notifications from an external source.
