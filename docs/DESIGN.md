@@ -105,3 +105,11 @@ Build a `gh` extension that consumes the GitHub Notifications API and structures
 *   **Tiered Fallback**: If the native bridge is unavailable or restricted by system policy, `gh-orbit` automatically falls back to:
     1.  **AppleScript (`osascript`)**: A secure, asynchronous method for displaying system banners.
     2.  **Cross-Platform Notifier (`beeep`)**: A stable legacy fallback.
+
+### 9.2 High-Fidelity Diagnostics
+
+To ensure reliability, `gh-orbit` includes a comprehensive diagnostic suite via the `doctor` command:
+
+*   **Full-Stack Verification**: Unlike simple component probes, the `doctor` command instantiates a temporary, isolated service stack. This ensures that test notifications follow the exact same logic paths (priority, filtering, tier-selection) as the production TUI.
+*   **Tier Identification**: The system explicitly reports the active "Notification Tier" being used (e.g., `Native Bridge`, `AppleScript Fallback`). This eliminates ambiguity when native notifications are suppressed by system policy.
+*   **Focus Mode Awareness**: On macOS, the diagnostic suite performs a low-privilege probe of the system's Focus/DND status. If Focus mode is active, the `doctor` report provides a warning, as notifications may be suppressed by the OS despite a successful delivery from the application.

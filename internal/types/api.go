@@ -49,6 +49,8 @@ type DoctorReport struct {
 	Arch          string        `json:"arch"`
 	KernelVersion string        `json:"kernel_version"`
 	BinaryPath    string        `json:"binary_path"`
+	ActiveTier    string        `json:"active_tier"`
+	FocusMode     string        `json:"focus_mode"`
 	BridgeStatus  BridgeStatus  `json:"bridge_status"`
 	Checks        []BridgeCheck `json:"checks"`
 }
