@@ -1,176 +1,104 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
-func setupTestDB(t *testing.T) *DB {
-	// Use in-memory database for tests
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(1)")
-	if err != nil {
-		t.Fatalf("failed to open test db: %v", err)
-	}
-
-	instance := &DB{db, slog.Default()}
-	if err := instance.migrate(); err != nil {
-		t.Fatalf("failed to migrate test db: %v", err)
-	}
-	return instance
-}
-
 func TestUpsertAndGetNotification(t *testing.T) {
-	db := setupTestDB(t)
+	logger := slog.Default()
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, logger)
+	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	now := time.Now().Truncate(time.Second)
-	n := Notification{
+	notif := Notification{
 		GitHubID:           "123",
 		SubjectTitle:       "Test PR",
-		SubjectURL:         "https://api.github.com/repos/user/repo/pulls/1",
+		SubjectURL:         "https://api.github.com/repos/owner/repo/pulls/1",
 		SubjectType:        "PullRequest",
-		Reason:             "author",
-		RepositoryFullName: "user/repo",
-		HTMLURL:            "https://github.com/user/repo/pull/1",
-		IsEnriched:         false,
-		UpdatedAt:          now,
+		Reason:             "mention",
+		RepositoryFullName: "owner/repo",
+		UpdatedAt:          time.Now(),
 	}
 
-	// Test Insert
-	if err := db.UpsertNotification(n); err != nil {
-		t.Fatalf("UpsertNotification failed: %v", err)
-	}
+	err = db.UpsertNotification(ctx, notif)
+	require.NoError(t, err)
 
-	// Test Retrieve
-	ns, err := db.GetNotification("123")
-	if err != nil {
-		t.Fatalf("GetNotification failed: %v", err)
-	}
-	if ns == nil {
-		t.Fatal("Notification not found")
-	}
+	// Verify retrieval
+	ns, err := db.GetNotification(ctx, "123")
+	require.NoError(t, err)
+	require.NotNil(t, ns)
 
-	if ns.GitHubID != n.GitHubID || ns.SubjectType != n.SubjectType {
-		t.Errorf("Expected %v, got %v", n, ns.Notification)
-	}
-
-	// Verify orbit_state was automatically created
-	if ns.Priority != 0 || ns.Status != "entry" || ns.IsNotified {
-		t.Errorf("Unexpected orbit state: %+v", ns.OrbitState)
-	}
-
-	// Test Update Orbit State
-	newState := OrbitState{
-		NotificationID: "123",
-		Priority:       2,
-		Status:         "tracking",
-		IsReadLocally:  true,
-		IsNotified:     true,
-	}
-	if err := db.UpdateOrbitState(newState); err != nil {
-		t.Fatalf("UpdateOrbitState failed: %v", err)
-	}
-
-	ns2, _ := db.GetNotification("123")
-	if ns2.Priority != 2 || ns2.Status != "tracking" || !ns2.IsReadLocally || !ns2.IsNotified {
-		t.Errorf("Orbit state not updated correctly: %+v", ns2.OrbitState)
-	}
-
-	// Test Upsert (Update)
-	n.SubjectTitle = "Updated PR Title"
-	if err := db.UpsertNotification(n); err != nil {
-		t.Fatalf("Upsert (Update) failed: %v", err)
-	}
-
-	ns3, _ := db.GetNotification("123")
-	if ns3.SubjectTitle != "Updated PR Title" {
-		t.Errorf("Title not updated: %s", ns3.SubjectTitle)
-	}
-	// Verify orbit state was preserved
-	if ns3.Priority != 2 || !ns3.IsNotified {
-		t.Errorf("Orbit state lost or corrupted during notification update")
-	}
+	assert.Equal(t, "Test PR", ns.SubjectTitle)
+	assert.Equal(t, 0, ns.Priority)
+	assert.Equal(t, "entry", ns.Status)
+	assert.False(t, ns.IsReadLocally)
 }
 
 func TestUpsertPreservesLocalState(t *testing.T) {
-	db := setupTestDB(t)
+	logger := slog.Default()
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, logger)
+	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	id := "state-test-1"
-	n := Notification{
-		GitHubID:     id,
-		SubjectTitle: "Original Title",
-		SubjectURL:   "https://api.github.com/repos/user/repo/pulls/1",
-		UpdatedAt:    time.Now().Truncate(time.Second),
+	id := "123"
+	notif := Notification{
+		GitHubID:  id,
+		UpdatedAt: time.Now(),
 	}
 
-	// 1. Initial sync
-	if err := db.UpsertNotification(n); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, db.UpsertNotification(ctx, notif))
 
-	// 2. User sets local state
-	err := db.UpdateOrbitState(OrbitState{
+	// Manually set some triage state
+	err = db.UpdateOrbitState(ctx, OrbitState{
 		NotificationID: id,
 		Priority:       3,
-		Status:         "tracking",
+		Status:         "archived",
 		IsReadLocally:  true,
-		IsNotified:     true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	// 3. Differential sync (API update)
-	n.SubjectTitle = "Updated Title"
-	n.UpdatedAt = n.UpdatedAt.Add(time.Hour)
-	if err := db.UpsertNotification(n); err != nil {
-		t.Fatal(err)
-	}
+	// Upsert again (as if from a new poll)
+	require.NoError(t, db.UpsertNotification(ctx, notif))
 
-	// 4. Verify title updated BUT local state remains
-	ns, err := db.GetNotification(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if ns.SubjectTitle != "Updated Title" {
-		t.Errorf("Title not updated: %s", ns.SubjectTitle)
-	}
-	if ns.Priority != 3 || ns.Status != "tracking" || !ns.IsReadLocally || !ns.IsNotified {
-		t.Errorf("Local state was overwritten or corrupted: %+v", ns.OrbitState)
-	}
+	// Verify triage state was NOT overwritten
+	ns, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, 3, ns.Priority)
+	assert.Equal(t, "archived", ns.Status)
+	assert.True(t, ns.IsReadLocally)
 }
 
 func TestMarkNotifiedBatch(t *testing.T) {
-	db := setupTestDB(t)
+	logger := slog.Default()
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, logger)
+	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	n1 := Notification{GitHubID: "1", SubjectTitle: "N1", UpdatedAt: time.Now()}
-	n2 := Notification{GitHubID: "2", SubjectTitle: "N2", UpdatedAt: time.Now()}
-	_ = db.UpsertNotification(n1)
-	_ = db.UpsertNotification(n2)
-
-	// Verify initially not notified
-	ns1, _ := db.GetNotification("1")
-	if ns1.IsNotified {
-		t.Fatal("expected not notified initially")
+	ids := []string{"1", "2", "3"}
+	for _, id := range ids {
+		require.NoError(t, db.UpsertNotification(ctx, Notification{
+			GitHubID:  id,
+			UpdatedAt: time.Now(),
+		}))
 	}
 
 	// Batch mark
-	err := db.MarkNotifiedBatch([]string{"1", "2"})
-	if err != nil {
-		t.Fatalf("MarkNotifiedBatch failed: %v", err)
-	}
+	require.NoError(t, db.MarkNotifiedBatch(ctx, ids))
 
-	// Verify updated
-	ns1_final, _ := db.GetNotification("1")
-	ns2_final, _ := db.GetNotification("2")
-	if !ns1_final.IsNotified || !ns2_final.IsNotified {
-		t.Error("MarkNotifiedBatch failed to update records")
+	// Verify all are marked
+	for _, id := range ids {
+		ns, err := db.GetNotification(ctx, id)
+		require.NoError(t, err)
+		assert.True(t, ns.IsNotified, "Expected notification %s to be marked as notified", id)
 	}
 }

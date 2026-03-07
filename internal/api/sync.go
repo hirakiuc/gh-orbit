@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -36,11 +36,12 @@ func (s *SyncEngine) Fetcher() Fetcher {
 	return s.fetcher
 }
 
-// Shutdown ensures all background services are stopped.
+// Shutdown ensures all background services are stopped gracefully.
 func (s *SyncEngine) Shutdown(ctx context.Context) {
 	if s.alerts != nil {
 		s.alerts.Shutdown(ctx)
 	}
+	s.logger.DebugContext(ctx, "sync engine shutdown complete")
 }
 
 // BridgeStatus returns the functional state of the alert bridge.
@@ -78,14 +79,14 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	metaKey := "notifications"
 	remaining := 5000 // Default
 
-	meta, err := s.db.GetSyncMeta(userID, metaKey)
+	meta, err := s.db.GetSyncMeta(ctx, userID, metaKey)
 	if err != nil {
 		return remaining, err
 	}
 
 	// Initialize meta if not exists
 	if meta == nil {
-		meta = &db.SyncMeta{
+		meta = &types.SyncMeta{
 			UserID:       userID,
 			Key:          metaKey,
 			PollInterval: DefaultPollInterval,
@@ -123,7 +124,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 		s.logger.ErrorContext(ctx, "failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
-		_ = s.db.UpdateSyncMeta(*meta)
+		_ = s.db.UpdateSyncMeta(ctx, *meta)
 		return remaining, err
 	}
 
@@ -142,7 +143,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 		var newlyDiscoveredIDs []string
 
 		for _, n := range notifications {
-			err := s.db.UpsertNotification(db.Notification{
+			err := s.db.UpsertNotification(ctx, types.Notification{
 				GitHubID:           n.ID,
 				SubjectTitle:       n.Subject.Title,
 				SubjectURL:         n.Subject.URL,
@@ -159,7 +160,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 
 			// We only trigger alerts for notifications arriving AFTER the established baseline
 			// AND that we haven't notified for yet.
-			state, err := s.db.GetNotification(n.ID)
+			state, err := s.db.GetNotification(ctx, n.ID)
 			if err == nil && state != nil && !state.IsNotified {
 				// Alerts are sent only for truly new items (arrival > baseline sync)
 				if n.UpdatedAt.After(meta.LastSyncAt) {
@@ -177,7 +178,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 			if s.logger.Enabled(ctx, slog.LevelDebug) {
 				s.logger.DebugContext(ctx, "sync: marking notifications as notified", "count", len(newlyDiscoveredIDs))
 			}
-			if err := s.db.MarkNotifiedBatch(newlyDiscoveredIDs); err != nil {
+			if err := s.db.MarkNotifiedBatch(ctx, newlyDiscoveredIDs); err != nil {
 				s.logger.ErrorContext(ctx, "failed to mark notifications as notified", "error", err)
 			}
 		}
@@ -186,5 +187,5 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	s.logger.InfoContext(ctx, "notification sync complete", "user_id", userID, "sync_id", syncID)
-	return remaining, s.db.UpdateSyncMeta(*newMeta)
+	return remaining, s.db.UpdateSyncMeta(ctx, *newMeta)
 }

@@ -87,6 +87,7 @@ func (m *macosNotifier) Notify(ctx context.Context, title, subtitle, body, url s
 func (m *macosNotifier) Shutdown(ctx context.Context) {
 	m.cancel()
 	m.wg.Wait()
+	m.logger.DebugContext(ctx, "macos native notifier shutdown complete")
 }
 
 func (m *macosNotifier) Status() BridgeStatus {
@@ -176,6 +177,7 @@ func (m *macosNotifier) worker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			m.logger.DebugContext(ctx, "macos native notifier worker stopping (context canceled)")
 			return
 		case req := <-m.queue:
 			if req.priority == -1 {
@@ -268,9 +270,9 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		escapeAppleScript(req.subtitle),
 	)
 
-	// Execute asynchronously with Go 1.26 WaitDelay and process group isolation
+	// Execute asynchronously with worker's context
 	go func() {
-		cmdCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 
 		// #nosec G204 -- script is sanitized via escapeAppleScript
@@ -278,6 +280,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		
 		if err := cmd.Run(); err != nil {
+			// We use a fresh background context for final best-effort logs if parent is canceled
 			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
 		}
 	}()

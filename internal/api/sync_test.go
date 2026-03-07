@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
@@ -35,18 +34,18 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		initialMeta := &db.SyncMeta{UserID: userID, Key: "notifications", PollInterval: 60}
+		initialMeta := &types.SyncMeta{UserID: userID, Key: "notifications", PollInterval: 60}
 		notifs := []types.GHNotification{
 			{ID: "1", UpdatedAt: time.Now()},
 		}
 
 		// Expectations
-		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(nil, nil).Once()
+		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(nil, nil).Once()
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, initialMeta, true).Return(notifs, initialMeta, 5000, nil).Once()
-		mockRepo.EXPECT().UpsertNotification(mock.Anything).Return(nil).Once()
-		mockRepo.EXPECT().GetNotification("1").Return(&db.NotificationWithState{}, nil).Once()
-		mockRepo.EXPECT().MarkNotifiedBatch([]string{"1"}).Return(nil).Once()
-		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().UpsertNotification(mock.Anything, mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&types.NotificationWithState{}, nil).Once()
+		mockRepo.EXPECT().MarkNotifiedBatch(mock.Anything, []string{"1"}).Return(nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		remaining, err := engine.Sync(ctx, userID, true)
@@ -59,14 +58,14 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		recentMeta := &db.SyncMeta{
+		recentMeta := &types.SyncMeta{
 			UserID:       userID,
 			Key:          "notifications",
 			PollInterval: 60,
 			LastSyncAt:   time.Now(),
 		}
 
-		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(recentMeta, nil).Once()
+		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(recentMeta, nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		_, err := engine.Sync(ctx, userID, false)
@@ -78,16 +77,16 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		recentMeta := &db.SyncMeta{
+		recentMeta := &types.SyncMeta{
 			UserID:       userID,
 			Key:          "notifications",
 			PollInterval: 60,
 			LastSyncAt:   time.Now(),
 		}
 
-		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(recentMeta, nil).Once()
+		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(recentMeta, nil).Once()
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, 4999, nil).Once()
-		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		remaining, err := engine.Sync(ctx, userID, true)
@@ -114,7 +113,7 @@ func TestConditionalRequest(t *testing.T) {
 	}
 	
 	fetcher := NewNotificationFetcher(client, slog.Default())
-	meta := &db.SyncMeta{ETag: "etag-123"}
+	meta := &types.SyncMeta{ETag: "etag-123"}
 	
 	_, _, _, err := fetcher.FetchNotifications(context.Background(), meta, false)
 	require.NoError(t, err)
@@ -131,7 +130,7 @@ func TestETagSanitization(t *testing.T) {
 		client := &Client{http: ts.Client(), baseURL: ts.URL + "/"}
 		fetcher := NewNotificationFetcher(client, slog.Default())
 		
-		meta := &db.SyncMeta{ETag: "old-etag"}
+		meta := &types.SyncMeta{ETag: "old-etag"}
 		_, newMeta, _, _ := fetcher.FetchNotifications(context.Background(), meta, false)
 		
 		assert.NotEqual(t, `W/""`, newMeta.ETag)
@@ -143,21 +142,21 @@ func TestETagSanitization(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		corruptedMeta := &db.SyncMeta{
+		corruptedMeta := &types.SyncMeta{
 			UserID: "user-1",
 			Key:    "notifications",
 			ETag:   `W/""`,
 		}
 
 		// Initial expectation: returns corrupted meta
-		mockRepo.EXPECT().GetSyncMeta("user-1", "notifications").Return(corruptedMeta, nil).Once()
+		mockRepo.EXPECT().GetSyncMeta(mock.Anything, "user-1", "notifications").Return(corruptedMeta, nil).Once()
 		
 		// The engine should clear the ETag before passing it to Fetcher
 		healedMeta := *corruptedMeta
 		healedMeta.ETag = ""
 		
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, &healedMeta, true).Return(nil, &healedMeta, 5000, nil).Once()
-		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, slog.Default())
 		_, err := engine.Sync(ctx, "user-1", true)

@@ -72,7 +72,7 @@ func (a *AlertService) SyncStart(ctx context.Context) {
 	a.syncAlertCount = 0
 	a.syncRepoCounts = make(map[string]int)
 
-	notifs, err := a.db.ListNotifications()
+	notifs, err := a.db.ListNotifications(ctx)
 	a.isInitializing = (err == nil && len(notifs) == 0)
 
 	if a.isInitializing {
@@ -111,7 +111,7 @@ func (a *AlertService) Notify(ctx context.Context, n GHNotification) error {
 	title := n.Subject.Title
 	subtitle := n.Repository.FullName
 	body := fmt.Sprintf("Reason: %s", n.Reason)
-	importance := a.calculateImportance(n)
+	importance := a.calculateImportance(ctx, n)
 
 	a.logger.DebugContext(ctx, "sending system alert",
 		"title", title,
@@ -163,12 +163,12 @@ func (a *AlertService) getNotifier() Notifier {
 	return a.fallback
 }
 
-func (a *AlertService) calculateImportance(n GHNotification) int {
+func (a *AlertService) calculateImportance(ctx context.Context, n GHNotification) int {
 	switch n.Reason {
 	case "mention", "review_requested", "security_alert":
 		return 2
 	}
-	state, err := a.db.GetNotification(n.ID)
+	state, err := a.db.GetNotification(ctx, n.ID)
 	if err == nil && state != nil && state.Priority >= 2 {
 		return 2
 	}
@@ -195,6 +195,7 @@ func (a *AlertService) Shutdown(ctx context.Context) {
 	if a.fallback != nil {
 		a.fallback.Shutdown(ctx)
 	}
+	a.logger.DebugContext(ctx, "alert service shutdown complete")
 }
 
 // BridgeStatus returns the functional state of the primary native bridge.
@@ -223,7 +224,7 @@ func (a *AlertService) ProbeAndCacheBridge(ctx context.Context, version string) 
 	execPath, _ := os.Executable()
 
 	// 2. Check cache
-	cached, err := a.db.GetBridgeHealth()
+	cached, err := a.db.GetBridgeHealth(ctx)
 	if err == nil && cached != nil {
 		if cached.OSVersion == osVersion && cached.BinaryPath == execPath && cached.BinaryVersion == version {
 			a.logger.DebugContext(ctx, "alert service: using cached bridge status", "status", cached.Status)
@@ -247,7 +248,7 @@ func (a *AlertService) ProbeAndCacheBridge(ctx context.Context, version string) 
 	}
 
 	// 4. Update Cache
-	_ = a.db.UpdateBridgeHealth(db.BridgeHealth{
+	_ = a.db.UpdateBridgeHealth(ctx, db.BridgeHealth{
 		Status:        string(status),
 		OSVersion:     osVersion,
 		BinaryPath:    execPath,

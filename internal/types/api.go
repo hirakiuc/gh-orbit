@@ -27,8 +27,8 @@ func (u GHUser) LogValue() slog.Value {
 
 // GitHubClient defines the operations required from the GitHub API client.
 type GitHubClient interface {
-	CurrentUser() (*GHUser, error)
-	MarkThreadAsRead(threadID string) error
+	CurrentUser(ctx context.Context) (*GHUser, error)
+	MarkThreadAsRead(ctx context.Context, threadID string) error
 	REST() *gh.RESTClient
 	GQL() *gh.GraphQLClient
 	HTTP() *http.Client
@@ -196,11 +196,11 @@ type TrafficController interface {
 
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {
-	GetSyncMeta(userID, key string) (*SyncMeta, error)
-	UpdateSyncMeta(s SyncMeta) error
-	UpsertNotification(n Notification) error
-	GetNotification(id string) (*NotificationWithState, error)
-	MarkNotifiedBatch(ids []string) error
+	GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, error)
+	UpdateSyncMeta(ctx context.Context, s SyncMeta) error
+	UpsertNotification(ctx context.Context, n Notification) error
+	GetNotification(ctx context.Context, id string) (*NotificationWithState, error)
+	MarkNotifiedBatch(ctx context.Context, ids []string) error
 }
 
 // EnrichmentRepository defines the database interactions required by the EnrichmentEngine.
@@ -211,10 +211,10 @@ type EnrichmentRepository interface {
 
 // AlertRepository defines the database interactions required by the AlertService.
 type AlertRepository interface {
-	ListNotifications() ([]NotificationWithState, error)
-	GetNotification(id string) (*NotificationWithState, error)
-	GetBridgeHealth() (*BridgeHealth, error)
-	UpdateBridgeHealth(h BridgeHealth) error
+	ListNotifications(ctx context.Context) ([]NotificationWithState, error)
+	GetNotification(ctx context.Context, id string) (*NotificationWithState, error)
+	GetBridgeHealth(ctx context.Context) (*BridgeHealth, error)
+	UpdateBridgeHealth(ctx context.Context, h BridgeHealth) error
 }
 
 // Repository defines the full database capabilities required by the TUI and Services.
@@ -224,10 +224,10 @@ type Repository interface {
 	AlertRepository
 	
 	// Triage specific
-	MarkReadLocally(id string, isRead bool) error
-	ArchiveThread(id string) error
-	UnarchiveThread(id string) error
-	MuteThread(id string) error
-	UnmuteThread(id string) error
-	SetPriority(id string, priority int) error
+	MarkReadLocally(ctx context.Context, id string, isRead bool) error
+	ArchiveThread(ctx context.Context, id string) error
+	UnarchiveThread(ctx context.Context, id string) error
+	MuteThread(ctx context.Context, id string) error
+	UnmuteThread(ctx context.Context, id string) error
+	SetPriority(ctx context.Context, id string, priority int) error
 }

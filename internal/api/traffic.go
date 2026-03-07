@@ -25,10 +25,12 @@ type apiTask struct {
 	priority int
 	fn       func(ctx context.Context) tea.Msg
 	resp     chan tea.Msg
+	ctx      context.Context
 }
 
 // APITrafficController ensures serialized, prioritized access to the GitHub API.
 type APITrafficController struct {
+	ctx    context.Context // Application root context
 	logger *slog.Logger
 	mu     sync.Mutex
 	wg     sync.WaitGroup
@@ -47,6 +49,7 @@ type APITrafficController struct {
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	tc := &APITrafficController{
+		ctx:                ctx,
 		logger:             logger,
 		high:               make(chan *apiTask),
 		med:                make(chan *apiTask),
@@ -67,18 +70,20 @@ func (c *APITrafficController) worker(ctx context.Context) {
 		// Nested select for genuine preemption AND context awareness
 		select {
 		case <-ctx.Done():
-			c.logger.DebugContext(ctx, "traffic controller: worker stopping (context canceled)")
+			c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
 			return
 		case task = <-c.high:
 		default:
 			select {
 			case <-ctx.Done():
+				c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
 				return
 			case task = <-c.high:
 			case task = <-c.med:
 			default:
 				select {
 				case <-ctx.Done():
+					c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
 					return
 				case task = <-c.high:
 				case task = <-c.med:
@@ -95,8 +100,14 @@ func (c *APITrafficController) worker(ctx context.Context) {
 }
 
 func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
+	// Use task's context for span parenting if available
+	taskCtx := t.ctx
+	if taskCtx == nil {
+		taskCtx = ctx
+	}
+
 	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "traffic_controller.execute",
+	_, span := tracer.Start(taskCtx, "traffic_controller.execute",
 		trace.WithAttributes(
 			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
 			attribute.Int("priority", t.priority),
@@ -145,6 +156,7 @@ func (c *APITrafficController) Remaining() int {
 // Shutdown waits for the worker to finish processing.
 func (c *APITrafficController) Shutdown(ctx context.Context) {
 	c.wg.Wait()
+	c.logger.DebugContext(ctx, "traffic controller: shutdown complete")
 }
 
 // Submit wraps an API operation in a serialized, prioritized command.
@@ -160,11 +172,8 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
+			ctx:      c.ctx, // Carry root application context for trace linkage
 		}
-
-		// We don't have access to the context here because tea.Cmd doesn't provide it.
-		// However, the worker loop uses the root application context passed to it during initialization.
-		// If we need trace-aware submission, we'd need to pass context here, but Bubble Tea Cmds are context-less.
 
 		switch priority {
 		case PriorityUser:

@@ -8,15 +8,15 @@ import (
 )
 
 // UpsertMetadata inserts or updates core notification metadata from API polling.
-func (db *DB) UpsertMetadata(n Notification) error {
-	tx, err := db.Begin()
+func (db *DB) UpsertMetadata(ctx context.Context, n Notification) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	// 1. Upsert notification metadata (API fields only)
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO notifications (
 			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, subject_node_id, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -35,7 +35,7 @@ func (db *DB) UpsertMetadata(n Notification) error {
 	}
 
 	// 2. Ensure orbit_state exists
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
 		VALUES (?, 0, 'entry', FALSE)
 		ON CONFLICT(notification_id) DO NOTHING
@@ -52,7 +52,7 @@ func (db *DB) UpsertMetadata(n Notification) error {
 func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState string) error {
 	// 1. Get the subject_node_id for this notification
 	var nodeID string
-	err := db.QueryRow("SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
+	err := db.QueryRowContext(ctx, "SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
 	}
@@ -60,7 +60,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 	now := time.Now()
 
 	// 2. Update the primary target
-	_, err = db.Exec(`
+	_, err = db.ExecContext(ctx, `
 		UPDATE notifications
 		SET body = ?,
 		    author_login = ?,
@@ -76,7 +76,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 
 	// 3. Propagate to peers sharing the same subject (visual continuity win!)
 	if nodeID != "" {
-		_, err = db.Exec(`
+		_, err = db.ExecContext(ctx, `
 			UPDATE notifications
 			SET resource_state = ?,
 			    body = CASE WHEN body = '' THEN ? ELSE body END,
@@ -96,7 +96,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 // UpdateResourceStateByNodeID updates the live status of all resources sharing a GraphQL ID.
 func (db *DB) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state string) error {
 	db.logger.DebugContext(ctx, "db: updating resource state by node_id", "node_id", nodeID, "state", state)
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		UPDATE notifications
 		SET resource_state = ?,
 		    enriched_at = ?
@@ -109,8 +109,8 @@ func (db *DB) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state str
 }
 
 // UpdateSubjectNodeID specifically updates the GraphQL Global Node ID for a resource.
-func (db *DB) UpdateSubjectNodeID(id, nodeID string) error {
-	_, err := db.Exec(`
+func (db *DB) UpdateSubjectNodeID(ctx context.Context, id, nodeID string) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE notifications
 		SET subject_node_id = ?
 		WHERE github_id = ?
@@ -119,8 +119,8 @@ func (db *DB) UpdateSubjectNodeID(id, nodeID string) error {
 }
 
 // UpsertNotification is a compatibility helper that performs a metadata upsert.
-func (db *DB) UpsertNotification(n Notification) error {
-	return db.UpsertMetadata(n)
+func (db *DB) UpsertNotification(ctx context.Context, n Notification) error {
+	return db.UpsertMetadata(ctx, n)
 }
 
 func baseNotificationSelect() string {
@@ -135,9 +135,9 @@ func baseNotificationSelect() string {
 	`
 }
 
-func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
+func (db *DB) GetNotification(ctx context.Context, id string) (*NotificationWithState, error) {
 	query := baseNotificationSelect() + " WHERE n.github_id = ?"
-	row := db.QueryRow(query, id)
+	row := db.QueryRowContext(ctx, query, id)
 
 	var ns NotificationWithState
 	err := row.Scan(
@@ -155,9 +155,9 @@ func (db *DB) GetNotification(id string) (*NotificationWithState, error) {
 }
 
 // ListNotifications returns all notifications with their state.
-func (db *DB) ListNotifications() ([]NotificationWithState, error) {
+func (db *DB) ListNotifications(ctx context.Context) ([]NotificationWithState, error) {
 	query := baseNotificationSelect() + " ORDER BY n.updated_at DESC"
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -180,8 +180,8 @@ func (db *DB) ListNotifications() ([]NotificationWithState, error) {
 }
 
 // UpdateOrbitState updates the local triage state.
-func (db *DB) UpdateOrbitState(state OrbitState) error {
-	_, err := db.Exec(`
+func (db *DB) UpdateOrbitState(ctx context.Context, state OrbitState) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET priority = ?, status = ?, is_read_locally = ?, is_notified = ?
 		WHERE notification_id = ?
@@ -190,8 +190,8 @@ func (db *DB) UpdateOrbitState(state OrbitState) error {
 }
 
 // MarkReadLocally updates the local read state of a notification.
-func (db *DB) MarkReadLocally(id string, isRead bool) error {
-	_, err := db.Exec(`
+func (db *DB) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET is_read_locally = ?
 		WHERE notification_id = ?
@@ -200,8 +200,8 @@ func (db *DB) MarkReadLocally(id string, isRead bool) error {
 }
 
 // ArchiveThread moves a thread to the archived state.
-func (db *DB) ArchiveThread(id string) error {
-	_, err := db.Exec(`
+func (db *DB) ArchiveThread(ctx context.Context, id string) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET status = 'archived'
 		WHERE notification_id = ?
@@ -210,8 +210,8 @@ func (db *DB) ArchiveThread(id string) error {
 }
 
 // UnarchiveThread restores a thread to the tracking state.
-func (db *DB) UnarchiveThread(id string) error {
-	_, err := db.Exec(`
+func (db *DB) UnarchiveThread(ctx context.Context, id string) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET status = 'tracking'
 		WHERE notification_id = ?
@@ -220,8 +220,8 @@ func (db *DB) UnarchiveThread(id string) error {
 }
 
 // MuteThread mutes future alerts for this thread.
-func (db *DB) MuteThread(id string) error {
-	_, err := db.Exec(`
+func (db *DB) MuteThread(ctx context.Context, id string) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET status = 'muted'
 		WHERE notification_id = ?
@@ -230,8 +230,8 @@ func (db *DB) MuteThread(id string) error {
 }
 
 // UnmuteThread unmutes alerts for this thread.
-func (db *DB) UnmuteThread(id string) error {
-	_, err := db.Exec(`
+func (db *DB) UnmuteThread(ctx context.Context, id string) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET status = 'tracking'
 		WHERE notification_id = ?
@@ -240,8 +240,8 @@ func (db *DB) UnmuteThread(id string) error {
 }
 
 // SetPriority updates the local priority of a notification.
-func (db *DB) SetPriority(id string, priority int) error {
-	_, err := db.Exec(`
+func (db *DB) SetPriority(ctx context.Context, id string, priority int) error {
+	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET priority = ?
 		WHERE notification_id = ?
@@ -250,25 +250,25 @@ func (db *DB) SetPriority(id string, priority int) error {
 }
 
 // MarkNotifiedBatch marks multiple notifications as notified in a single transaction.
-func (db *DB) MarkNotifiedBatch(ids []string) error {
+func (db *DB) MarkNotifiedBatch(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	stmt, err := tx.Prepare("UPDATE orbit_state SET is_notified = TRUE WHERE notification_id = ?")
+	stmt, err := tx.PrepareContext(ctx, "UPDATE orbit_state SET is_notified = TRUE WHERE notification_id = ?")
 	if err != nil {
 		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
 	for _, id := range ids {
-		_, err := stmt.Exec(id)
+		_, err := stmt.ExecContext(ctx, id)
 		if err != nil {
 			return fmt.Errorf("failed to mark notification %s as notified: %w", id, err)
 		}
@@ -278,8 +278,8 @@ func (db *DB) MarkNotifiedBatch(ids []string) error {
 }
 
 // GetSyncMeta retrieves the sync metadata for a user and endpoint.
-func (db *DB) GetSyncMeta(userID, key string) (*SyncMeta, error) {
-	row := db.QueryRow(`
+func (db *DB) GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, error) {
+	row := db.QueryRowContext(ctx, `
 		SELECT user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at
 		FROM sync_meta
 		WHERE user_id = ? AND key = ?
@@ -297,8 +297,8 @@ func (db *DB) GetSyncMeta(userID, key string) (*SyncMeta, error) {
 }
 
 // UpdateSyncMeta updates the sync metadata.
-func (db *DB) UpdateSyncMeta(s SyncMeta) error {
-	_, err := db.Exec(`
+func (db *DB) UpdateSyncMeta(ctx context.Context, s SyncMeta) error {
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO sync_meta (user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, key) DO UPDATE SET
@@ -313,8 +313,8 @@ func (db *DB) UpdateSyncMeta(s SyncMeta) error {
 }
 
 // GetBridgeHealth retrieves the cached health status of the bridge.
-func (db *DB) GetBridgeHealth() (*BridgeHealth, error) {
-	row := db.QueryRow(`
+func (db *DB) GetBridgeHealth(ctx context.Context) (*BridgeHealth, error) {
+	row := db.QueryRowContext(ctx, `
 		SELECT status, os_version, binary_path, binary_version, updated_at
 		FROM bridge_health
 		WHERE id = 1
@@ -332,8 +332,8 @@ func (db *DB) GetBridgeHealth() (*BridgeHealth, error) {
 }
 
 // UpdateBridgeHealth updates the cached health status of the bridge.
-func (db *DB) UpdateBridgeHealth(h BridgeHealth) error {
-	_, err := db.Exec(`
+func (db *DB) UpdateBridgeHealth(ctx context.Context, h BridgeHealth) error {
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO bridge_health (id, status, os_version, binary_path, binary_version, updated_at)
 		VALUES (1, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET

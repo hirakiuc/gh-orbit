@@ -3,9 +3,11 @@
 package mocks
 
 import (
-	http "net/http"
+	context "context"
 
 	api "github.com/cli/go-gh/v2/pkg/api"
+
+	http "net/http"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -70,9 +72,9 @@ func (_c *MockGitHubClient_BaseURL_Call) RunAndReturn(run func() string) *MockGi
 	return _c
 }
 
-// CurrentUser provides a mock function with no fields
-func (_m *MockGitHubClient) CurrentUser() (*types.GHUser, error) {
-	ret := _m.Called()
+// CurrentUser provides a mock function with given fields: ctx
+func (_m *MockGitHubClient) CurrentUser(ctx context.Context) (*types.GHUser, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CurrentUser")
@@ -80,19 +82,19 @@ func (_m *MockGitHubClient) CurrentUser() (*types.GHUser, error) {
 
 	var r0 *types.GHUser
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*types.GHUser, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.GHUser, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() *types.GHUser); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) *types.GHUser); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.GHUser)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -106,13 +108,14 @@ type MockGitHubClient_CurrentUser_Call struct {
 }
 
 // CurrentUser is a helper method to define mock.On call
-func (_e *MockGitHubClient_Expecter) CurrentUser() *MockGitHubClient_CurrentUser_Call {
-	return &MockGitHubClient_CurrentUser_Call{Call: _e.mock.On("CurrentUser")}
+//   - ctx context.Context
+func (_e *MockGitHubClient_Expecter) CurrentUser(ctx interface{}) *MockGitHubClient_CurrentUser_Call {
+	return &MockGitHubClient_CurrentUser_Call{Call: _e.mock.On("CurrentUser", ctx)}
 }
 
-func (_c *MockGitHubClient_CurrentUser_Call) Run(run func()) *MockGitHubClient_CurrentUser_Call {
+func (_c *MockGitHubClient_CurrentUser_Call) Run(run func(ctx context.Context)) *MockGitHubClient_CurrentUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -122,7 +125,7 @@ func (_c *MockGitHubClient_CurrentUser_Call) Return(_a0 *types.GHUser, _a1 error
 	return _c
 }
 
-func (_c *MockGitHubClient_CurrentUser_Call) RunAndReturn(run func() (*types.GHUser, error)) *MockGitHubClient_CurrentUser_Call {
+func (_c *MockGitHubClient_CurrentUser_Call) RunAndReturn(run func(context.Context) (*types.GHUser, error)) *MockGitHubClient_CurrentUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -221,17 +224,17 @@ func (_c *MockGitHubClient_HTTP_Call) RunAndReturn(run func() *http.Client) *Moc
 	return _c
 }
 
-// MarkThreadAsRead provides a mock function with given fields: threadID
-func (_m *MockGitHubClient) MarkThreadAsRead(threadID string) error {
-	ret := _m.Called(threadID)
+// MarkThreadAsRead provides a mock function with given fields: ctx, threadID
+func (_m *MockGitHubClient) MarkThreadAsRead(ctx context.Context, threadID string) error {
+	ret := _m.Called(ctx, threadID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkThreadAsRead")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(threadID)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, threadID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -245,14 +248,15 @@ type MockGitHubClient_MarkThreadAsRead_Call struct {
 }
 
 // MarkThreadAsRead is a helper method to define mock.On call
+//   - ctx context.Context
 //   - threadID string
-func (_e *MockGitHubClient_Expecter) MarkThreadAsRead(threadID interface{}) *MockGitHubClient_MarkThreadAsRead_Call {
-	return &MockGitHubClient_MarkThreadAsRead_Call{Call: _e.mock.On("MarkThreadAsRead", threadID)}
+func (_e *MockGitHubClient_Expecter) MarkThreadAsRead(ctx interface{}, threadID interface{}) *MockGitHubClient_MarkThreadAsRead_Call {
+	return &MockGitHubClient_MarkThreadAsRead_Call{Call: _e.mock.On("MarkThreadAsRead", ctx, threadID)}
 }
 
-func (_c *MockGitHubClient_MarkThreadAsRead_Call) Run(run func(threadID string)) *MockGitHubClient_MarkThreadAsRead_Call {
+func (_c *MockGitHubClient_MarkThreadAsRead_Call) Run(run func(ctx context.Context, threadID string)) *MockGitHubClient_MarkThreadAsRead_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -262,7 +266,7 @@ func (_c *MockGitHubClient_MarkThreadAsRead_Call) Return(_a0 error) *MockGitHubC
 	return _c
 }
 
-func (_c *MockGitHubClient_MarkThreadAsRead_Call) RunAndReturn(run func(string) error) *MockGitHubClient_MarkThreadAsRead_Call {
+func (_c *MockGitHubClient_MarkThreadAsRead_Call) RunAndReturn(run func(context.Context, string) error) *MockGitHubClient_MarkThreadAsRead_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"image/color"
 	"log/slog"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
@@ -47,8 +49,12 @@ func TestModel_Update_SyncingState(t *testing.T) {
 	m := newTestModel(t)
 	m.ui.SetSyncing(true)
 
-	// syncCompleteMsg SHOULD reset syncing
-	msg := syncCompleteMsg{}
+	// syncCompleteMsg SHOULD reset syncing and update rate limit
+	msg := syncCompleteMsg{remainingRateLimit: 4500}
+	
+	mockTraffic := m.traffic.(*mocks.MockTrafficController)
+	mockTraffic.EXPECT().UpdateRateLimit(mock.Anything, 4500).Return().Once()
+
 	updatedModel, _ := m.Update(msg)
 	assert.False(t, updatedModel.(*Model).ui.syncing, "expected syncing to be false after syncCompleteMsg")
 
@@ -89,9 +95,20 @@ func TestModel_MarkRead(t *testing.T) {
 	// Mock expectations
 	mockRepo := m.db.(*mocks.MockRepository)
 	mockClient := m.client.(*mocks.MockGitHubClient)
+	mockTraffic := m.traffic.(*mocks.MockTrafficController)
 	
-	mockRepo.EXPECT().MarkReadLocally("test-id", true).Return(nil).Once()
-	mockClient.EXPECT().MarkThreadAsRead("test-id").Return(nil).Once()
+	// TUI actions now route through Traffic Controller
+	mockTraffic.EXPECT().Submit(mock.Anything, mock.Anything).RunAndReturn(func(priority int, fn func(context.Context) tea.Msg) tea.Cmd {
+		return func() tea.Msg {
+			// Actually execute the function to trigger expectations
+			_ = fn(context.Background())
+			return nil
+		}
+	}).Once()
+
+	// The functions are executed INSIDE the Submit callback, so we expect them on the mocks
+	mockRepo.EXPECT().MarkReadLocally(mock.Anything, "test-id", true).Return(nil).Once()
+	mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "test-id").Return(nil).Once()
 
 	m.applyFilters()
 
@@ -100,7 +117,7 @@ func TestModel_MarkRead(t *testing.T) {
 	cmd := m.MarkRead(i)
 	require.NotNil(t, cmd)
 	
-	// Execute cmd to verify client call
+	// Execute cmd to verify submission and internal calls
 	msg := cmd()
 	require.Nil(t, msg)
 

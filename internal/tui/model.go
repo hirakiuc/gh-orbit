@@ -168,7 +168,8 @@ func (m *Model) Init() tea.Cmd {
 
 func (m *Model) loadNotifications() tea.Cmd {
 	return func() tea.Msg {
-		notifications, err := m.db.ListNotifications()
+		ctx := context.Background()
+		notifications, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return errMsg{err: err}
 		}
