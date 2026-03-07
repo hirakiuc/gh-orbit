@@ -90,3 +90,6 @@ bin/
 *.log
 logs/
 gh-orbit
+coverage.out
+coverage.html
+artifacts/

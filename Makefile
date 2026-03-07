@@ -3,7 +3,7 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.10.1
 
-.PHONY: all build release-build test lint vulncheck fmt clean help generate serena
+.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage artifacts
 
 all: build
 
@@ -13,6 +13,15 @@ build:
 		echo "Ad-hoc signing binary for macOS..."; \
 		codesign -f -s - bin/$(BINARY_NAME); \
 	fi
+
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated at coverage.html"
+
+artifacts:
+	@mkdir -p artifacts
+	go test -v -artifacts ./...
 
 release-build:
 	GOOS=darwin GOARCH=amd64 go build -o bin/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
