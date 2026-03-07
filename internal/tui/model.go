@@ -217,6 +217,11 @@ type notificationsLoadedMsg struct {
 	notifications []types.NotificationWithState
 }
 
+type priorityUpdatedMsg struct {
+	notifications []types.NotificationWithState
+	toast         string
+}
+
 type syncCompleteMsg struct {
 	remainingRateLimit int
 }

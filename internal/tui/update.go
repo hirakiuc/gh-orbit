@@ -44,6 +44,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.enrichViewport())
 		cmds = append(cmds, m.tickHeartbeat())
 
+	case priorityUpdatedMsg:
+		m.allNotifications = msg.notifications
+		m.applyFilters()
+		cmds = append(cmds, m.ui.SetToast(msg.toast))
+
 	case syncCompleteMsg:
 		m.ui.SetSyncing(false)
 		m.traffic.UpdateRateLimit(context.Background(), msg.remainingRateLimit)
@@ -94,7 +99,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case clearStatusMsg:
-		m.ui.SetToast("")
+		m.ui, cmd = m.ui.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case errMsg:
 		m.err = msg.err
@@ -169,7 +175,6 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.ui.fetchingDetail = true
 					cmds = append(cmds, m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType))
 				} else {
-					m.detailView.activeDetail = m.renderMarkdown(i.notification.Body)
 					m.detailView.viewport.SetContent(m.detailView.activeDetail)
 				}
 			}
@@ -290,13 +295,7 @@ func (m *Model) setPriority(priority int) tea.Cmd {
 			case 3: toast = "Priority set to High"
 			}
 
-			// We must return a function that returns the messages to be used as tea.Cmd
-			return func() tea.Msg {
-				return tea.Batch(
-					func() tea.Msg { return notificationsLoadedMsg{notifications: notifs} },
-					m.ui.SetToast(toast),
-				)
-			}
+			return priorityUpdatedMsg{notifications: notifs, toast: toast}
 		})
 	}
 	return nil
