@@ -35,14 +35,14 @@ type EnrichmentResult struct {
 // EnrichmentEngine handles fetching and caching of notification details.
 type EnrichmentEngine struct {
 	client *Client
-	db     *db.DB
+	db     EnrichmentRepository
 	logger *slog.Logger
 	cache  map[string]EnrichmentResult
 	mu     sync.RWMutex
 	sf     singleflight.Group
 }
 
-func NewEnrichmentEngine(ctx context.Context, client *Client, database *db.DB, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(ctx context.Context, client *Client, database EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
 	e := &EnrichmentEngine{
 		client: client,
 		db:     database,

@@ -28,7 +28,7 @@ type Notifier interface {
 type AlertService struct {
 	ctx      context.Context
 	config   *config.Config
-	db       *db.DB
+	db       AlertRepository
 	logger   *slog.Logger
 	
 	// Tiered Notifiers
@@ -42,7 +42,7 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(ctx context.Context, cfg *config.Config, database *db.DB, logger *slog.Logger) *AlertService {
+func NewAlertService(ctx context.Context, cfg *config.Config, database AlertRepository, logger *slog.Logger) *AlertService {
 	return &AlertService{
 		ctx:            ctx,
 		config:         cfg,
