@@ -15,20 +15,11 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
-// Notifier defines the interface for delivering system notifications.
-type Notifier interface {
-	Notify(title, subtitle, body, url string, priority int) error
-	Shutdown()
-	Status() BridgeStatus
-	Warmup() // Proactive health check
-	Ready() <-chan struct{}
-}
-
 // AlertService coordinates the logic for when and how to send system alerts.
 type AlertService struct {
 	ctx      context.Context
 	config   *config.Config
-	db       *db.DB
+	db       AlertRepository
 	logger   *slog.Logger
 	
 	// Tiered Notifiers
@@ -42,7 +33,7 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(ctx context.Context, cfg *config.Config, database *db.DB, logger *slog.Logger) *AlertService {
+func NewAlertService(ctx context.Context, cfg *config.Config, database AlertRepository, logger *slog.Logger) *AlertService {
 	return &AlertService{
 		ctx:            ctx,
 		config:         cfg,

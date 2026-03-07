@@ -1,94 +1,45 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 	"time"
 
-	"context"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
-
-type mockNotifier struct {
-	calls []string
-}
-
-func (m *mockNotifier) Notify(title, subtitle, body, url string, priority int) error {
-	m.calls = append(m.calls, title)
-	return nil
-}
-
-func (m *mockNotifier) Shutdown() {}
-
-func (m *mockNotifier) Warmup() {}
-
-func (m *mockNotifier) Ready() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
-}
-
-func (m *mockNotifier) Status() BridgeStatus {
-	return StatusHealthy
-}
 
 func TestAlertService_Throttling(t *testing.T) {
 	logger := slog.Default()
 	ctx := context.Background()
-	database, _ := db.OpenInMemory(ctx, logger)
+	
+	// We use real in-memory DB for the Repository part of the Hybrid strategy
+	database, err := db.OpenInMemory(ctx, logger)
+	require.NoError(t, err)
 	defer func() { _ = database.Close() }()
 
 	cfg := &config.Config{}
 	cfg.Notifications.Enabled = true
 
-	notifier := &mockNotifier{}
-	service := &AlertService{
-		config:         cfg,
-		db:             database,
-		logger:         logger,
-		native:         notifier,
-		fallback:       &mockNotifier{}, // Secondary mock
-		syncRepoCounts: make(map[string]int),
-	}
+	t.Run("Silent Initial Baseline", func(t *testing.T) {
+		mockNative := mocks.NewMockNotifier(t)
+		
+		service := NewAlertService(ctx, cfg, database, logger)
+		service.native = mockNative // Inject mock
 
-	// 1. Silent Initial Baseline Test
-	service.SyncStart() // Should detect empty DB
-	if !service.isInitializing {
-		t.Error("Expected isInitializing to be true for empty DB")
-	}
+		// 1. Initial state (empty DB)
+		service.SyncStart()
+		assert.True(t, service.isInitializing)
 
-	err := service.Notify(GHNotification{
-		ID: "1",
-		Repository: struct {
-			FullName string `json:"full_name"`
-		}{FullName: "repo/a"},
-		Subject: struct {
-			Title  string `json:"title"`
-			URL    string `json:"url"`
-			Type   string `json:"type"`
-			NodeID string `json:"node_id"`
-		}{Title: "T1"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(notifier.calls) > 0 {
-		t.Error("Expected zero alerts during initial baseline sync")
-	}
-
-	// 2. Throttling Test (Seed DB to end baseline)
-	_ = database.UpsertNotification(db.Notification{GitHubID: "seed", UpdatedAt: time.Now()})
-	service.SyncStart()
-	if service.isInitializing {
-		t.Error("Expected isInitializing to be false after seeding DB")
-	}
-
-	// Send 10 notifications
-	for i := 1; i <= 10; i++ {
-		_ = service.Notify(GHNotification{
-			ID: "id",
+		err := service.Notify(types.GHNotification{
+			ID: "1",
 			Repository: struct {
 				FullName string `json:"full_name"`
 			}{FullName: "repo/a"},
@@ -97,15 +48,46 @@ func TestAlertService_Throttling(t *testing.T) {
 				URL    string `json:"url"`
 				Type   string `json:"type"`
 				NodeID string `json:"node_id"`
-			}{Title: "Notification"},
+			}{Title: "T1"},
 		})
-	}
+		require.NoError(t, err)
+		// mockNative.Notify should NOT be called
+	})
 
-	// Expect 5 individual alerts + 1 summary alert = 6 total
-	if len(notifier.calls) != 6 {
-		t.Errorf("Expected 6 native alerts due to throttling, got %d", len(notifier.calls))
-	}
-	if notifier.calls[5] != "New Notifications" {
-		t.Errorf("Expected summary alert as the 6th call, got %s", notifier.calls[5])
-	}
+	t.Run("Throttling Logic", func(t *testing.T) {
+		mockNative := mocks.NewMockNotifier(t)
+		
+		// Seed DB to end baseline
+		err := database.UpsertNotification(db.Notification{GitHubID: "seed", UpdatedAt: time.Now()})
+		require.NoError(t, err)
+
+		service := NewAlertService(ctx, cfg, database, logger)
+		service.native = mockNative
+
+		mockNative.EXPECT().Status().Return(types.StatusHealthy).Maybe()
+		
+		// Expect 5 individual alerts
+		mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(5)
+		// Expect 1 summary alert
+		mockNative.EXPECT().Notify("New Notifications", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+		service.SyncStart()
+		assert.False(t, service.isInitializing)
+
+		// Send 10 notifications
+		for i := 1; i <= 10; i++ {
+			_ = service.Notify(types.GHNotification{
+				ID: "id",
+				Repository: struct {
+					FullName string `json:"full_name"`
+				}{FullName: "repo/a"},
+				Subject: struct {
+					Title  string `json:"title"`
+					URL    string `json:"url"`
+					Type   string `json:"type"`
+					NodeID string `json:"node_id"`
+				}{Title: "Notification"},
+			})
+		}
+	})
 }

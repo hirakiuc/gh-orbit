@@ -24,3 +24,10 @@
 - **Approvals**: Mandatory user agreement before any merge or destructive action.
 - **Roadmap**: Refer to `.agent/implementation_plan.md`. Suggest next task on completion.
 - **Clarity**: Explain intent before executing critical shell commands.
+
+## 3. Testing Strategy
+
+- Use the testify for asserting in test cases.
+  - For assertions of prerequisites in test cases, use `require` so that the test fails if the prerequisite is not met immediately.
+  - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
+- Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.

@@ -17,12 +17,12 @@ const DefaultPollInterval = 60 // seconds
 // SyncEngine orchestrates the synchronization of notifications.
 type SyncEngine struct {
 	fetcher Fetcher
-	db      *db.DB
+	db      SyncRepository
 	alerts  *AlertService
 	logger  *slog.Logger
 }
 
-func NewSyncEngine(ctx context.Context, fetcher Fetcher, database *db.DB, alerts *AlertService, logger *slog.Logger) *SyncEngine {
+func NewSyncEngine(ctx context.Context, fetcher Fetcher, database SyncRepository, alerts *AlertService, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
 		fetcher: fetcher,
 		db:      database,

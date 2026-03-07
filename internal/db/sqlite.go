@@ -48,8 +48,11 @@ func Open(ctx context.Context, logger *slog.Logger) (*DB, error) {
 }
 
 // OpenInMemory opens an in-memory SQLite database for testing.
+// It uses hardened pragmas to ensure test parity with production.
 func OpenInMemory(ctx context.Context, logger *slog.Logger) (*DB, error) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(1)")
+	// Use shared cache and mandatory pragmas for high-fidelity testing
+	dsn := "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open in-memory database: %w", err)
 	}

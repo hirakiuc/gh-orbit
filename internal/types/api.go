@@ -1,8 +1,7 @@
-package api
+package types
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
@@ -22,20 +21,6 @@ type GHNotification struct {
 		Type   string `json:"type"`
 		NodeID string `json:"node_id"`
 	} `json:"subject"`
-}
-
-// GHUser represents the GitHub API response for a user.
-type GHUser struct {
-	ID    int64  `json:"id"`
-	Login string `json:"login"`
-}
-
-// LogValue implements slog.LogValuer to redact sensitive user data.
-func (u GHUser) LogValue() slog.Value {
-	return slog.GroupValue(
-		slog.Int64("id", u.ID),
-		slog.String("login", "<REDACTED>"),
-	)
 }
 
 // BridgeStatus represents the functional state of the native system bridge.
@@ -71,4 +56,36 @@ type DoctorReport struct {
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
 	FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error)
+}
+
+// Notifier defines the interface for delivering system notifications.
+type Notifier interface {
+	Notify(title, subtitle, body, url string, priority int) error
+	Shutdown()
+	Status() BridgeStatus
+	Warmup() // Proactive health check
+	Ready() <-chan struct{}
+}
+
+// SyncRepository defines the database interactions required by the SyncEngine.
+type SyncRepository interface {
+	GetSyncMeta(userID, key string) (*db.SyncMeta, error)
+	UpdateSyncMeta(s db.SyncMeta) error
+	UpsertNotification(n db.Notification) error
+	GetNotification(id string) (*db.NotificationWithState, error)
+	MarkNotifiedBatch(ids []string) error
+}
+
+// EnrichmentRepository defines the database interactions required by the EnrichmentEngine.
+type EnrichmentRepository interface {
+	EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState string) error
+	UpdateResourceStateByNodeID(ctx context.Context, nodeID, state string) error
+}
+
+// AlertRepository defines the database interactions required by the AlertService.
+type AlertRepository interface {
+	ListNotifications() ([]db.NotificationWithState, error)
+	GetNotification(id string) (*db.NotificationWithState, error)
+	GetBridgeHealth() (*db.BridgeHealth, error)
+	UpdateBridgeHealth(h db.BridgeHealth) error
 }

@@ -2,11 +2,26 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cli/go-gh/v2/pkg/auth"
 )
+
+// GHUser represents the GitHub API response for a user.
+type GHUser struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+}
+
+// LogValue implements slog.LogValuer to redact sensitive user data.
+func (u GHUser) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int64("id", u.ID),
+		slog.String("login", "<REDACTED>"),
+	)
+}
 
 // Client wraps the GitHub REST and GQL API clients.
 type Client struct {

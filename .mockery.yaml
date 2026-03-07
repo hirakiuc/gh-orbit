@@ -1,0 +1,24 @@
+# Mockery configuration for gh-orbit (v2.53+)
+# See: https://vektra.github.io/mockery/v2.53/features/#packages-configuration
+
+with-expecter: true # Enables the more type-safe .EXPECT() syntax for testify
+issue-845-fix: true # Resolves deprecation warning
+
+# Future-proofing for v3 (Resolves remaining deprecation warnings)
+resolve-type-alias: false
+disable-version-string: true
+
+packages:
+  github.com/hirakiuc/gh-orbit/internal/types:
+    config:
+      # Generate mocks in internal/mocks from the neutral types package
+      dir: internal/mocks
+      outpkg: mocks
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+    
+    interfaces:
+      AlertRepository:
+      EnrichmentRepository:
+      SyncRepository:
+      Fetcher:
+      Notifier:
