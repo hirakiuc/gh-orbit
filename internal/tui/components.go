@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -30,13 +31,16 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 		icon = " "
 	}
 
-	// 2. Resource ID Extraction
+	// 2. Unread Indicator
+	unread := renderUnreadIndicator(styles, n.IsReadLocally)
+
+	// 3. Resource ID Extraction
 	id := ""
 	if lastIdx := strings.LastIndex(n.SubjectURL, "/"); lastIdx != -1 {
 		id = "#" + n.SubjectURL[lastIdx+1:]
 	}
 
-	// 3. Title Styling (Read vs Unread)
+	// 4. Title Styling (Read vs Unread)
 	titleStr := n.SubjectTitle
 	titleStyle := styles.Unread
 	if n.IsReadLocally {
@@ -46,7 +50,7 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 		titleStyle = styles.SelectedTitle
 	}
 
-	// 4. Status Badge Logic
+	// 5. Status Badge Logic
 	badge := ""
 	if ctx.IsFetching {
 		badge = styles.StateSkeleton.Render(" ◌ FETCH ")
@@ -67,9 +71,13 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 		}
 	}
 
-	// 5. Layout with truncation
-	// indicator is 2, icon is 2, id is ~5, badge is ~10. Total fixed ~20.
-	fixedWidth := 25
+	// 6. Layout with truncation
+	// fixed widths: icon (2), unread (2), id (~5)
+	fixedWidth := 15
+	if badge != "" {
+		fixedWidth += lipgloss.Width(badge) + 1
+	}
+
 	availableTitleWidth := ctx.Width - fixedWidth
 	if availableTitleWidth < 10 {
 		availableTitleWidth = 10
@@ -78,5 +86,12 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 	title := titleStyle.Width(availableTitleWidth).MaxWidth(availableTitleWidth).Render(titleStr)
 	idStr := styles.SelectedDescription.Render(id) // Use a subtle style for ID
 
-	return fmt.Sprintf("%s%s %s %s", icon, title, idStr, badge)
+	return fmt.Sprintf("%s%s%s %s %s", icon, unread, badge, title, idStr)
+}
+
+func renderUnreadIndicator(styles Styles, isRead bool) string {
+	if isRead {
+		return "  "
+	}
+	return styles.Unread.Render("• ")
 }
