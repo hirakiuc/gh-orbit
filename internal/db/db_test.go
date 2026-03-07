@@ -228,12 +228,14 @@ func TestRepository_ConstraintError(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	// Insert once
-	_, err = db.DB.Exec(`INSERT INTO notifications (github_id, subject_title, subject_type, reason, repository_full_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+	_, err = db.Exec(`INSERT INTO notifications
+ (github_id, subject_title, subject_type, reason, repository_full_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		"dup", "title", "Issue", "reason", "repo", time.Now())
 	require.NoError(t, err)
 
 	// Insert duplicate ID
-	_, err = db.DB.Exec(`INSERT INTO notifications (github_id, subject_title, subject_type, reason, repository_full_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+	_, err = db.Exec(`INSERT INTO notifications
+ (github_id, subject_title, subject_type, reason, repository_full_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		"dup", "title", "Issue", "reason", "repo", time.Now())
 	
 	require.Error(t, err)

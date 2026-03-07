@@ -402,7 +402,12 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 		tui.WithVersion(version),
 	)
 
-	p := tea.NewProgram(m)
+	var opts []tea.ProgramOption
+	if testMode {
+		opts = append(opts, tea.WithInput(nil), tea.WithOutput(os.Stderr))
+	}
+
+	p := tea.NewProgram(m, opts...)
 
 	// Headless Test Mode: Quit immediately after starting
 	if testMode {
