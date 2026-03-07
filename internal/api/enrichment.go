@@ -31,6 +31,7 @@ type EnrichmentEngine struct {
 	cache  map[string]EnrichmentResult
 	mu     sync.RWMutex
 	sf     singleflight.Group
+	done   chan struct{}
 }
 
 func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
@@ -39,6 +40,7 @@ func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database Enri
 		db:     database,
 		logger: logger,
 		cache:  make(map[string]EnrichmentResult),
+		done:   make(chan struct{}),
 	}
 	
 	// Start background pruning worker with application context
@@ -313,12 +315,19 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 		case <-ctx.Done():
 			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping (context canceled)")
 			return
+		case <-e.done:
+			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping (explicit shutdown)")
+			return
 		case <-ticker.C:
 			e.pruneExpired(ctx)
 		}
 	}
 }
 
+// Shutdown stops the background workers.
+func (e *EnrichmentEngine) Shutdown(_ context.Context) {
+	close(e.done)
+}
 func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

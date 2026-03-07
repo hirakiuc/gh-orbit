@@ -27,6 +27,8 @@ packages:
       Enricher:
       Alerter:
       TrafficController:
+      RESTClient:
+      GraphQLClient:
 
   github.com/hirakiuc/gh-orbit/internal/api:
     config:

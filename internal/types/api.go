@@ -3,11 +3,11 @@ package types
 import (
 	"context"
 	"database/sql"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
 
-	gh "github.com/cli/go-gh/v2/pkg/api"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -29,10 +29,20 @@ func (u GHUser) LogValue() slog.Value {
 type GitHubClient interface {
 	CurrentUser(ctx context.Context) (*GHUser, error)
 	MarkThreadAsRead(ctx context.Context, threadID string) error
-	REST() *gh.RESTClient
-	GQL() *gh.GraphQLClient
+	REST() RESTClient
+	GQL() GraphQLClient
 	HTTP() *http.Client
 	BaseURL() string
+}
+
+// RESTClient defines the minimum interface needed from go-gh REST client.
+type RESTClient interface {
+	DoWithContext(ctx context.Context, method, path string, body io.Reader, response interface{}) error
+}
+
+// GraphQLClient defines the minimum interface needed from go-gh GQL client.
+type GraphQLClient interface {
+	DoWithContext(ctx context.Context, query string, variables map[string]interface{}, response interface{}) error
 }
 
 // Notification represents the core notification entity.
@@ -181,6 +191,7 @@ type Enricher interface {
 	FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error)
 	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]EnrichmentResult
 	GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd
+	Shutdown(ctx context.Context)
 }
 
 // EnrichmentResult holds the fetched details for a notification.
