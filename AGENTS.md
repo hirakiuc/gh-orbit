@@ -31,3 +31,11 @@
   - For assertions of prerequisites in test cases, use `require` so that the test fails if the prerequisite is not met immediately.
   - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
 - Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
+
+## 4. Reliability & Precision Rules
+
+- **API Verification**: Always run `go doc <package>.<symbol>` before implementing calls to external libraries (especially `v2+` versions) to ensure 100% signature and behavior accuracy.
+- **Surgical Refactoring**: For large controller or logic files (>200 lines, e.g., `update.go`), prioritize the use of `replace` or `insert_after_symbol` instead of `write_file` to prevent accidental feature regressions (logic erasure).
+- **Mock Synchronicity**: When modifying interfaces, run `make generate` immediately after the interface change and before fixing implementations or tests to maintain a consistent build state.
+- **Impact Analysis**: Before modifying a core interface or symbol, use Serena MCP's `find_referencing_symbols` to map the blast radius. This ensures that tests and dependent logic are updated in the same turn, preventing build-fail loops.
+- **Feature Preservation**: Before refactoring complex logic paths, explicitly list the features being touched and verify their parity after the change.
