@@ -22,17 +22,17 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 	return &MockRepository_Expecter{mock: &_m.Mock}
 }
 
-// ArchiveThread provides a mock function with given fields: id
-func (_m *MockRepository) ArchiveThread(id string) error {
-	ret := _m.Called(id)
+// ArchiveThread provides a mock function with given fields: ctx, id
+func (_m *MockRepository) ArchiveThread(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ArchiveThread")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -46,14 +46,15 @@ type MockRepository_ArchiveThread_Call struct {
 }
 
 // ArchiveThread is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) ArchiveThread(id interface{}) *MockRepository_ArchiveThread_Call {
-	return &MockRepository_ArchiveThread_Call{Call: _e.mock.On("ArchiveThread", id)}
+func (_e *MockRepository_Expecter) ArchiveThread(ctx interface{}, id interface{}) *MockRepository_ArchiveThread_Call {
+	return &MockRepository_ArchiveThread_Call{Call: _e.mock.On("ArchiveThread", ctx, id)}
 }
 
-func (_c *MockRepository_ArchiveThread_Call) Run(run func(id string)) *MockRepository_ArchiveThread_Call {
+func (_c *MockRepository_ArchiveThread_Call) Run(run func(ctx context.Context, id string)) *MockRepository_ArchiveThread_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -63,7 +64,7 @@ func (_c *MockRepository_ArchiveThread_Call) Return(_a0 error) *MockRepository_A
 	return _c
 }
 
-func (_c *MockRepository_ArchiveThread_Call) RunAndReturn(run func(string) error) *MockRepository_ArchiveThread_Call {
+func (_c *MockRepository_ArchiveThread_Call) RunAndReturn(run func(context.Context, string) error) *MockRepository_ArchiveThread_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -119,9 +120,9 @@ func (_c *MockRepository_EnrichNotification_Call) RunAndReturn(run func(context.
 	return _c
 }
 
-// GetBridgeHealth provides a mock function with no fields
-func (_m *MockRepository) GetBridgeHealth() (*types.BridgeHealth, error) {
-	ret := _m.Called()
+// GetBridgeHealth provides a mock function with given fields: ctx
+func (_m *MockRepository) GetBridgeHealth(ctx context.Context) (*types.BridgeHealth, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBridgeHealth")
@@ -129,19 +130,19 @@ func (_m *MockRepository) GetBridgeHealth() (*types.BridgeHealth, error) {
 
 	var r0 *types.BridgeHealth
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*types.BridgeHealth, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.BridgeHealth, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() *types.BridgeHealth); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) *types.BridgeHealth); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.BridgeHealth)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -155,13 +156,14 @@ type MockRepository_GetBridgeHealth_Call struct {
 }
 
 // GetBridgeHealth is a helper method to define mock.On call
-func (_e *MockRepository_Expecter) GetBridgeHealth() *MockRepository_GetBridgeHealth_Call {
-	return &MockRepository_GetBridgeHealth_Call{Call: _e.mock.On("GetBridgeHealth")}
+//   - ctx context.Context
+func (_e *MockRepository_Expecter) GetBridgeHealth(ctx interface{}) *MockRepository_GetBridgeHealth_Call {
+	return &MockRepository_GetBridgeHealth_Call{Call: _e.mock.On("GetBridgeHealth", ctx)}
 }
 
-func (_c *MockRepository_GetBridgeHealth_Call) Run(run func()) *MockRepository_GetBridgeHealth_Call {
+func (_c *MockRepository_GetBridgeHealth_Call) Run(run func(ctx context.Context)) *MockRepository_GetBridgeHealth_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -171,14 +173,14 @@ func (_c *MockRepository_GetBridgeHealth_Call) Return(_a0 *types.BridgeHealth, _
 	return _c
 }
 
-func (_c *MockRepository_GetBridgeHealth_Call) RunAndReturn(run func() (*types.BridgeHealth, error)) *MockRepository_GetBridgeHealth_Call {
+func (_c *MockRepository_GetBridgeHealth_Call) RunAndReturn(run func(context.Context) (*types.BridgeHealth, error)) *MockRepository_GetBridgeHealth_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetNotification provides a mock function with given fields: id
-func (_m *MockRepository) GetNotification(id string) (*types.NotificationWithState, error) {
-	ret := _m.Called(id)
+// GetNotification provides a mock function with given fields: ctx, id
+func (_m *MockRepository) GetNotification(ctx context.Context, id string) (*types.NotificationWithState, error) {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetNotification")
@@ -186,19 +188,19 @@ func (_m *MockRepository) GetNotification(id string) (*types.NotificationWithSta
 
 	var r0 *types.NotificationWithState
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*types.NotificationWithState, error)); ok {
-		return rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*types.NotificationWithState, error)); ok {
+		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(string) *types.NotificationWithState); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *types.NotificationWithState); ok {
+		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.NotificationWithState)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(id)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -212,14 +214,15 @@ type MockRepository_GetNotification_Call struct {
 }
 
 // GetNotification is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) GetNotification(id interface{}) *MockRepository_GetNotification_Call {
-	return &MockRepository_GetNotification_Call{Call: _e.mock.On("GetNotification", id)}
+func (_e *MockRepository_Expecter) GetNotification(ctx interface{}, id interface{}) *MockRepository_GetNotification_Call {
+	return &MockRepository_GetNotification_Call{Call: _e.mock.On("GetNotification", ctx, id)}
 }
 
-func (_c *MockRepository_GetNotification_Call) Run(run func(id string)) *MockRepository_GetNotification_Call {
+func (_c *MockRepository_GetNotification_Call) Run(run func(ctx context.Context, id string)) *MockRepository_GetNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -229,14 +232,14 @@ func (_c *MockRepository_GetNotification_Call) Return(_a0 *types.NotificationWit
 	return _c
 }
 
-func (_c *MockRepository_GetNotification_Call) RunAndReturn(run func(string) (*types.NotificationWithState, error)) *MockRepository_GetNotification_Call {
+func (_c *MockRepository_GetNotification_Call) RunAndReturn(run func(context.Context, string) (*types.NotificationWithState, error)) *MockRepository_GetNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetSyncMeta provides a mock function with given fields: userID, key
-func (_m *MockRepository) GetSyncMeta(userID string, key string) (*types.SyncMeta, error) {
-	ret := _m.Called(userID, key)
+// GetSyncMeta provides a mock function with given fields: ctx, userID, key
+func (_m *MockRepository) GetSyncMeta(ctx context.Context, userID string, key string) (*types.SyncMeta, error) {
+	ret := _m.Called(ctx, userID, key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetSyncMeta")
@@ -244,19 +247,19 @@ func (_m *MockRepository) GetSyncMeta(userID string, key string) (*types.SyncMet
 
 	var r0 *types.SyncMeta
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string) (*types.SyncMeta, error)); ok {
-		return rf(userID, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*types.SyncMeta, error)); ok {
+		return rf(ctx, userID, key)
 	}
-	if rf, ok := ret.Get(0).(func(string, string) *types.SyncMeta); ok {
-		r0 = rf(userID, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *types.SyncMeta); ok {
+		r0 = rf(ctx, userID, key)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.SyncMeta)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = rf(userID, key)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, userID, key)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -270,15 +273,16 @@ type MockRepository_GetSyncMeta_Call struct {
 }
 
 // GetSyncMeta is a helper method to define mock.On call
+//   - ctx context.Context
 //   - userID string
 //   - key string
-func (_e *MockRepository_Expecter) GetSyncMeta(userID interface{}, key interface{}) *MockRepository_GetSyncMeta_Call {
-	return &MockRepository_GetSyncMeta_Call{Call: _e.mock.On("GetSyncMeta", userID, key)}
+func (_e *MockRepository_Expecter) GetSyncMeta(ctx interface{}, userID interface{}, key interface{}) *MockRepository_GetSyncMeta_Call {
+	return &MockRepository_GetSyncMeta_Call{Call: _e.mock.On("GetSyncMeta", ctx, userID, key)}
 }
 
-func (_c *MockRepository_GetSyncMeta_Call) Run(run func(userID string, key string)) *MockRepository_GetSyncMeta_Call {
+func (_c *MockRepository_GetSyncMeta_Call) Run(run func(ctx context.Context, userID string, key string)) *MockRepository_GetSyncMeta_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -288,14 +292,14 @@ func (_c *MockRepository_GetSyncMeta_Call) Return(_a0 *types.SyncMeta, _a1 error
 	return _c
 }
 
-func (_c *MockRepository_GetSyncMeta_Call) RunAndReturn(run func(string, string) (*types.SyncMeta, error)) *MockRepository_GetSyncMeta_Call {
+func (_c *MockRepository_GetSyncMeta_Call) RunAndReturn(run func(context.Context, string, string) (*types.SyncMeta, error)) *MockRepository_GetSyncMeta_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// ListNotifications provides a mock function with no fields
-func (_m *MockRepository) ListNotifications() ([]types.NotificationWithState, error) {
-	ret := _m.Called()
+// ListNotifications provides a mock function with given fields: ctx
+func (_m *MockRepository) ListNotifications(ctx context.Context) ([]types.NotificationWithState, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListNotifications")
@@ -303,19 +307,19 @@ func (_m *MockRepository) ListNotifications() ([]types.NotificationWithState, er
 
 	var r0 []types.NotificationWithState
 	var r1 error
-	if rf, ok := ret.Get(0).(func() ([]types.NotificationWithState, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) ([]types.NotificationWithState, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() []types.NotificationWithState); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) []types.NotificationWithState); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]types.NotificationWithState)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -329,13 +333,14 @@ type MockRepository_ListNotifications_Call struct {
 }
 
 // ListNotifications is a helper method to define mock.On call
-func (_e *MockRepository_Expecter) ListNotifications() *MockRepository_ListNotifications_Call {
-	return &MockRepository_ListNotifications_Call{Call: _e.mock.On("ListNotifications")}
+//   - ctx context.Context
+func (_e *MockRepository_Expecter) ListNotifications(ctx interface{}) *MockRepository_ListNotifications_Call {
+	return &MockRepository_ListNotifications_Call{Call: _e.mock.On("ListNotifications", ctx)}
 }
 
-func (_c *MockRepository_ListNotifications_Call) Run(run func()) *MockRepository_ListNotifications_Call {
+func (_c *MockRepository_ListNotifications_Call) Run(run func(ctx context.Context)) *MockRepository_ListNotifications_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -345,22 +350,22 @@ func (_c *MockRepository_ListNotifications_Call) Return(_a0 []types.Notification
 	return _c
 }
 
-func (_c *MockRepository_ListNotifications_Call) RunAndReturn(run func() ([]types.NotificationWithState, error)) *MockRepository_ListNotifications_Call {
+func (_c *MockRepository_ListNotifications_Call) RunAndReturn(run func(context.Context) ([]types.NotificationWithState, error)) *MockRepository_ListNotifications_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// MarkNotifiedBatch provides a mock function with given fields: ids
-func (_m *MockRepository) MarkNotifiedBatch(ids []string) error {
-	ret := _m.Called(ids)
+// MarkNotifiedBatch provides a mock function with given fields: ctx, ids
+func (_m *MockRepository) MarkNotifiedBatch(ctx context.Context, ids []string) error {
+	ret := _m.Called(ctx, ids)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkNotifiedBatch")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func([]string) error); ok {
-		r0 = rf(ids)
+	if rf, ok := ret.Get(0).(func(context.Context, []string) error); ok {
+		r0 = rf(ctx, ids)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -374,14 +379,15 @@ type MockRepository_MarkNotifiedBatch_Call struct {
 }
 
 // MarkNotifiedBatch is a helper method to define mock.On call
+//   - ctx context.Context
 //   - ids []string
-func (_e *MockRepository_Expecter) MarkNotifiedBatch(ids interface{}) *MockRepository_MarkNotifiedBatch_Call {
-	return &MockRepository_MarkNotifiedBatch_Call{Call: _e.mock.On("MarkNotifiedBatch", ids)}
+func (_e *MockRepository_Expecter) MarkNotifiedBatch(ctx interface{}, ids interface{}) *MockRepository_MarkNotifiedBatch_Call {
+	return &MockRepository_MarkNotifiedBatch_Call{Call: _e.mock.On("MarkNotifiedBatch", ctx, ids)}
 }
 
-func (_c *MockRepository_MarkNotifiedBatch_Call) Run(run func(ids []string)) *MockRepository_MarkNotifiedBatch_Call {
+func (_c *MockRepository_MarkNotifiedBatch_Call) Run(run func(ctx context.Context, ids []string)) *MockRepository_MarkNotifiedBatch_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].([]string))
+		run(args[0].(context.Context), args[1].([]string))
 	})
 	return _c
 }
@@ -391,22 +397,22 @@ func (_c *MockRepository_MarkNotifiedBatch_Call) Return(_a0 error) *MockReposito
 	return _c
 }
 
-func (_c *MockRepository_MarkNotifiedBatch_Call) RunAndReturn(run func([]string) error) *MockRepository_MarkNotifiedBatch_Call {
+func (_c *MockRepository_MarkNotifiedBatch_Call) RunAndReturn(run func(context.Context, []string) error) *MockRepository_MarkNotifiedBatch_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// MarkReadLocally provides a mock function with given fields: id, isRead
-func (_m *MockRepository) MarkReadLocally(id string, isRead bool) error {
-	ret := _m.Called(id, isRead)
+// MarkReadLocally provides a mock function with given fields: ctx, id, isRead
+func (_m *MockRepository) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
+	ret := _m.Called(ctx, id, isRead)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkReadLocally")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, bool) error); ok {
-		r0 = rf(id, isRead)
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, id, isRead)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -420,15 +426,16 @@ type MockRepository_MarkReadLocally_Call struct {
 }
 
 // MarkReadLocally is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
 //   - isRead bool
-func (_e *MockRepository_Expecter) MarkReadLocally(id interface{}, isRead interface{}) *MockRepository_MarkReadLocally_Call {
-	return &MockRepository_MarkReadLocally_Call{Call: _e.mock.On("MarkReadLocally", id, isRead)}
+func (_e *MockRepository_Expecter) MarkReadLocally(ctx interface{}, id interface{}, isRead interface{}) *MockRepository_MarkReadLocally_Call {
+	return &MockRepository_MarkReadLocally_Call{Call: _e.mock.On("MarkReadLocally", ctx, id, isRead)}
 }
 
-func (_c *MockRepository_MarkReadLocally_Call) Run(run func(id string, isRead bool)) *MockRepository_MarkReadLocally_Call {
+func (_c *MockRepository_MarkReadLocally_Call) Run(run func(ctx context.Context, id string, isRead bool)) *MockRepository_MarkReadLocally_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(bool))
+		run(args[0].(context.Context), args[1].(string), args[2].(bool))
 	})
 	return _c
 }
@@ -438,22 +445,22 @@ func (_c *MockRepository_MarkReadLocally_Call) Return(_a0 error) *MockRepository
 	return _c
 }
 
-func (_c *MockRepository_MarkReadLocally_Call) RunAndReturn(run func(string, bool) error) *MockRepository_MarkReadLocally_Call {
+func (_c *MockRepository_MarkReadLocally_Call) RunAndReturn(run func(context.Context, string, bool) error) *MockRepository_MarkReadLocally_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// MuteThread provides a mock function with given fields: id
-func (_m *MockRepository) MuteThread(id string) error {
-	ret := _m.Called(id)
+// MuteThread provides a mock function with given fields: ctx, id
+func (_m *MockRepository) MuteThread(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MuteThread")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -467,14 +474,15 @@ type MockRepository_MuteThread_Call struct {
 }
 
 // MuteThread is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) MuteThread(id interface{}) *MockRepository_MuteThread_Call {
-	return &MockRepository_MuteThread_Call{Call: _e.mock.On("MuteThread", id)}
+func (_e *MockRepository_Expecter) MuteThread(ctx interface{}, id interface{}) *MockRepository_MuteThread_Call {
+	return &MockRepository_MuteThread_Call{Call: _e.mock.On("MuteThread", ctx, id)}
 }
 
-func (_c *MockRepository_MuteThread_Call) Run(run func(id string)) *MockRepository_MuteThread_Call {
+func (_c *MockRepository_MuteThread_Call) Run(run func(ctx context.Context, id string)) *MockRepository_MuteThread_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -484,22 +492,22 @@ func (_c *MockRepository_MuteThread_Call) Return(_a0 error) *MockRepository_Mute
 	return _c
 }
 
-func (_c *MockRepository_MuteThread_Call) RunAndReturn(run func(string) error) *MockRepository_MuteThread_Call {
+func (_c *MockRepository_MuteThread_Call) RunAndReturn(run func(context.Context, string) error) *MockRepository_MuteThread_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// SetPriority provides a mock function with given fields: id, priority
-func (_m *MockRepository) SetPriority(id string, priority int) error {
-	ret := _m.Called(id, priority)
+// SetPriority provides a mock function with given fields: ctx, id, priority
+func (_m *MockRepository) SetPriority(ctx context.Context, id string, priority int) error {
+	ret := _m.Called(ctx, id, priority)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetPriority")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, int) error); ok {
-		r0 = rf(id, priority)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) error); ok {
+		r0 = rf(ctx, id, priority)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -513,15 +521,16 @@ type MockRepository_SetPriority_Call struct {
 }
 
 // SetPriority is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
 //   - priority int
-func (_e *MockRepository_Expecter) SetPriority(id interface{}, priority interface{}) *MockRepository_SetPriority_Call {
-	return &MockRepository_SetPriority_Call{Call: _e.mock.On("SetPriority", id, priority)}
+func (_e *MockRepository_Expecter) SetPriority(ctx interface{}, id interface{}, priority interface{}) *MockRepository_SetPriority_Call {
+	return &MockRepository_SetPriority_Call{Call: _e.mock.On("SetPriority", ctx, id, priority)}
 }
 
-func (_c *MockRepository_SetPriority_Call) Run(run func(id string, priority int)) *MockRepository_SetPriority_Call {
+func (_c *MockRepository_SetPriority_Call) Run(run func(ctx context.Context, id string, priority int)) *MockRepository_SetPriority_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(int))
 	})
 	return _c
 }
@@ -531,22 +540,22 @@ func (_c *MockRepository_SetPriority_Call) Return(_a0 error) *MockRepository_Set
 	return _c
 }
 
-func (_c *MockRepository_SetPriority_Call) RunAndReturn(run func(string, int) error) *MockRepository_SetPriority_Call {
+func (_c *MockRepository_SetPriority_Call) RunAndReturn(run func(context.Context, string, int) error) *MockRepository_SetPriority_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// UnarchiveThread provides a mock function with given fields: id
-func (_m *MockRepository) UnarchiveThread(id string) error {
-	ret := _m.Called(id)
+// UnarchiveThread provides a mock function with given fields: ctx, id
+func (_m *MockRepository) UnarchiveThread(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UnarchiveThread")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -560,14 +569,15 @@ type MockRepository_UnarchiveThread_Call struct {
 }
 
 // UnarchiveThread is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) UnarchiveThread(id interface{}) *MockRepository_UnarchiveThread_Call {
-	return &MockRepository_UnarchiveThread_Call{Call: _e.mock.On("UnarchiveThread", id)}
+func (_e *MockRepository_Expecter) UnarchiveThread(ctx interface{}, id interface{}) *MockRepository_UnarchiveThread_Call {
+	return &MockRepository_UnarchiveThread_Call{Call: _e.mock.On("UnarchiveThread", ctx, id)}
 }
 
-func (_c *MockRepository_UnarchiveThread_Call) Run(run func(id string)) *MockRepository_UnarchiveThread_Call {
+func (_c *MockRepository_UnarchiveThread_Call) Run(run func(ctx context.Context, id string)) *MockRepository_UnarchiveThread_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -577,22 +587,22 @@ func (_c *MockRepository_UnarchiveThread_Call) Return(_a0 error) *MockRepository
 	return _c
 }
 
-func (_c *MockRepository_UnarchiveThread_Call) RunAndReturn(run func(string) error) *MockRepository_UnarchiveThread_Call {
+func (_c *MockRepository_UnarchiveThread_Call) RunAndReturn(run func(context.Context, string) error) *MockRepository_UnarchiveThread_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// UnmuteThread provides a mock function with given fields: id
-func (_m *MockRepository) UnmuteThread(id string) error {
-	ret := _m.Called(id)
+// UnmuteThread provides a mock function with given fields: ctx, id
+func (_m *MockRepository) UnmuteThread(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UnmuteThread")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -606,14 +616,15 @@ type MockRepository_UnmuteThread_Call struct {
 }
 
 // UnmuteThread is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) UnmuteThread(id interface{}) *MockRepository_UnmuteThread_Call {
-	return &MockRepository_UnmuteThread_Call{Call: _e.mock.On("UnmuteThread", id)}
+func (_e *MockRepository_Expecter) UnmuteThread(ctx interface{}, id interface{}) *MockRepository_UnmuteThread_Call {
+	return &MockRepository_UnmuteThread_Call{Call: _e.mock.On("UnmuteThread", ctx, id)}
 }
 
-func (_c *MockRepository_UnmuteThread_Call) Run(run func(id string)) *MockRepository_UnmuteThread_Call {
+func (_c *MockRepository_UnmuteThread_Call) Run(run func(ctx context.Context, id string)) *MockRepository_UnmuteThread_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -623,22 +634,22 @@ func (_c *MockRepository_UnmuteThread_Call) Return(_a0 error) *MockRepository_Un
 	return _c
 }
 
-func (_c *MockRepository_UnmuteThread_Call) RunAndReturn(run func(string) error) *MockRepository_UnmuteThread_Call {
+func (_c *MockRepository_UnmuteThread_Call) RunAndReturn(run func(context.Context, string) error) *MockRepository_UnmuteThread_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// UpdateBridgeHealth provides a mock function with given fields: h
-func (_m *MockRepository) UpdateBridgeHealth(h types.BridgeHealth) error {
-	ret := _m.Called(h)
+// UpdateBridgeHealth provides a mock function with given fields: ctx, h
+func (_m *MockRepository) UpdateBridgeHealth(ctx context.Context, h types.BridgeHealth) error {
+	ret := _m.Called(ctx, h)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateBridgeHealth")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.BridgeHealth) error); ok {
-		r0 = rf(h)
+	if rf, ok := ret.Get(0).(func(context.Context, types.BridgeHealth) error); ok {
+		r0 = rf(ctx, h)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -652,14 +663,15 @@ type MockRepository_UpdateBridgeHealth_Call struct {
 }
 
 // UpdateBridgeHealth is a helper method to define mock.On call
+//   - ctx context.Context
 //   - h types.BridgeHealth
-func (_e *MockRepository_Expecter) UpdateBridgeHealth(h interface{}) *MockRepository_UpdateBridgeHealth_Call {
-	return &MockRepository_UpdateBridgeHealth_Call{Call: _e.mock.On("UpdateBridgeHealth", h)}
+func (_e *MockRepository_Expecter) UpdateBridgeHealth(ctx interface{}, h interface{}) *MockRepository_UpdateBridgeHealth_Call {
+	return &MockRepository_UpdateBridgeHealth_Call{Call: _e.mock.On("UpdateBridgeHealth", ctx, h)}
 }
 
-func (_c *MockRepository_UpdateBridgeHealth_Call) Run(run func(h types.BridgeHealth)) *MockRepository_UpdateBridgeHealth_Call {
+func (_c *MockRepository_UpdateBridgeHealth_Call) Run(run func(ctx context.Context, h types.BridgeHealth)) *MockRepository_UpdateBridgeHealth_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.BridgeHealth))
+		run(args[0].(context.Context), args[1].(types.BridgeHealth))
 	})
 	return _c
 }
@@ -669,7 +681,7 @@ func (_c *MockRepository_UpdateBridgeHealth_Call) Return(_a0 error) *MockReposit
 	return _c
 }
 
-func (_c *MockRepository_UpdateBridgeHealth_Call) RunAndReturn(run func(types.BridgeHealth) error) *MockRepository_UpdateBridgeHealth_Call {
+func (_c *MockRepository_UpdateBridgeHealth_Call) RunAndReturn(run func(context.Context, types.BridgeHealth) error) *MockRepository_UpdateBridgeHealth_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -722,17 +734,17 @@ func (_c *MockRepository_UpdateResourceStateByNodeID_Call) RunAndReturn(run func
 	return _c
 }
 
-// UpdateSyncMeta provides a mock function with given fields: s
-func (_m *MockRepository) UpdateSyncMeta(s types.SyncMeta) error {
-	ret := _m.Called(s)
+// UpdateSyncMeta provides a mock function with given fields: ctx, s
+func (_m *MockRepository) UpdateSyncMeta(ctx context.Context, s types.SyncMeta) error {
+	ret := _m.Called(ctx, s)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateSyncMeta")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.SyncMeta) error); ok {
-		r0 = rf(s)
+	if rf, ok := ret.Get(0).(func(context.Context, types.SyncMeta) error); ok {
+		r0 = rf(ctx, s)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -746,14 +758,15 @@ type MockRepository_UpdateSyncMeta_Call struct {
 }
 
 // UpdateSyncMeta is a helper method to define mock.On call
+//   - ctx context.Context
 //   - s types.SyncMeta
-func (_e *MockRepository_Expecter) UpdateSyncMeta(s interface{}) *MockRepository_UpdateSyncMeta_Call {
-	return &MockRepository_UpdateSyncMeta_Call{Call: _e.mock.On("UpdateSyncMeta", s)}
+func (_e *MockRepository_Expecter) UpdateSyncMeta(ctx interface{}, s interface{}) *MockRepository_UpdateSyncMeta_Call {
+	return &MockRepository_UpdateSyncMeta_Call{Call: _e.mock.On("UpdateSyncMeta", ctx, s)}
 }
 
-func (_c *MockRepository_UpdateSyncMeta_Call) Run(run func(s types.SyncMeta)) *MockRepository_UpdateSyncMeta_Call {
+func (_c *MockRepository_UpdateSyncMeta_Call) Run(run func(ctx context.Context, s types.SyncMeta)) *MockRepository_UpdateSyncMeta_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.SyncMeta))
+		run(args[0].(context.Context), args[1].(types.SyncMeta))
 	})
 	return _c
 }
@@ -763,22 +776,22 @@ func (_c *MockRepository_UpdateSyncMeta_Call) Return(_a0 error) *MockRepository_
 	return _c
 }
 
-func (_c *MockRepository_UpdateSyncMeta_Call) RunAndReturn(run func(types.SyncMeta) error) *MockRepository_UpdateSyncMeta_Call {
+func (_c *MockRepository_UpdateSyncMeta_Call) RunAndReturn(run func(context.Context, types.SyncMeta) error) *MockRepository_UpdateSyncMeta_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// UpsertNotification provides a mock function with given fields: n
-func (_m *MockRepository) UpsertNotification(n types.Notification) error {
-	ret := _m.Called(n)
+// UpsertNotification provides a mock function with given fields: ctx, n
+func (_m *MockRepository) UpsertNotification(ctx context.Context, n types.Notification) error {
+	ret := _m.Called(ctx, n)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpsertNotification")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Notification) error); ok {
-		r0 = rf(n)
+	if rf, ok := ret.Get(0).(func(context.Context, types.Notification) error); ok {
+		r0 = rf(ctx, n)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -792,14 +805,15 @@ type MockRepository_UpsertNotification_Call struct {
 }
 
 // UpsertNotification is a helper method to define mock.On call
+//   - ctx context.Context
 //   - n types.Notification
-func (_e *MockRepository_Expecter) UpsertNotification(n interface{}) *MockRepository_UpsertNotification_Call {
-	return &MockRepository_UpsertNotification_Call{Call: _e.mock.On("UpsertNotification", n)}
+func (_e *MockRepository_Expecter) UpsertNotification(ctx interface{}, n interface{}) *MockRepository_UpsertNotification_Call {
+	return &MockRepository_UpsertNotification_Call{Call: _e.mock.On("UpsertNotification", ctx, n)}
 }
 
-func (_c *MockRepository_UpsertNotification_Call) Run(run func(n types.Notification)) *MockRepository_UpsertNotification_Call {
+func (_c *MockRepository_UpsertNotification_Call) Run(run func(ctx context.Context, n types.Notification)) *MockRepository_UpsertNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Notification))
+		run(args[0].(context.Context), args[1].(types.Notification))
 	})
 	return _c
 }
@@ -809,7 +823,7 @@ func (_c *MockRepository_UpsertNotification_Call) Return(_a0 error) *MockReposit
 	return _c
 }
 
-func (_c *MockRepository_UpsertNotification_Call) RunAndReturn(run func(types.Notification) error) *MockRepository_UpsertNotification_Call {
+func (_c *MockRepository_UpsertNotification_Call) RunAndReturn(run func(context.Context, types.Notification) error) *MockRepository_UpsertNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }

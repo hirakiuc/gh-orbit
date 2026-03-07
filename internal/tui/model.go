@@ -75,7 +75,6 @@ type Model struct {
 	PollInterval int
 	heartbeatID  uint64
 	clockID      uint64
-	syncCounter  int
 }
 
 // Option defines a functional option for Model configuration.
@@ -168,7 +167,8 @@ func (m *Model) Init() tea.Cmd {
 
 func (m *Model) loadNotifications() tea.Cmd {
 	return func() tea.Msg {
-		notifications, err := m.db.ListNotifications()
+		ctx := context.Background()
+		notifications, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -217,12 +217,13 @@ type notificationsLoadedMsg struct {
 	notifications []types.NotificationWithState
 }
 
-type syncCompleteMsg struct {
-	remainingRateLimit int
+type priorityUpdatedMsg struct {
+	notifications []types.NotificationWithState
+	toast         string
 }
 
-type enrichmentCompleteMsg struct {
-	notifications []types.NotificationWithState
+type syncCompleteMsg struct {
+	remainingRateLimit int
 }
 
 type detailLoadedMsg struct {
@@ -241,8 +242,6 @@ type actionCompleteMsg struct{}
 
 type clearStatusMsg struct{}
 
-type viewportEnrichMsg struct{}
-
 type pollTickMsg struct {
 	ID uint64
 }
@@ -250,3 +249,5 @@ type pollTickMsg struct {
 type clockTickMsg struct {
 	ID uint64
 }
+
+type viewportEnrichMsg struct{}

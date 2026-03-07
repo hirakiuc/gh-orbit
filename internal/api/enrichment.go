@@ -129,7 +129,8 @@ func (e *EnrichmentEngine) fetchDetailRaw(ctx context.Context, u string, subject
 		} `json:"commit"`
 	}
 
-	err := e.client.REST().Get(path, &data)
+	// Best Practice: Use DoWithContext for context propagation in go-gh REST
+	err := e.client.REST().DoWithContext(ctx, "GET", path, nil, &data)
 	if err != nil {
 		return EnrichmentResult{}, fmt.Errorf("failed to fetch detail from %s: %w", u, err)
 	}
@@ -259,7 +260,9 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		} `json:"rateLimit"`
 	}
 
-	err := e.client.GQL().Do(queryString, variables, &data)
+	// Best Practice: Use DoWithContext for generic context propagation in go-gh GQL
+	// Signature: DoWithContext(ctx, query, variables, response)
+	err := e.client.GQL().DoWithContext(ctx, queryString, variables, &data)
 	if err != nil {
 		e.logger.ErrorContext(ctx, "enrichment: graphql batch fetch failed", "error", err)
 		return
@@ -308,16 +311,15 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Use background context for the final log because the pruningWorker's context is canceled
-			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping")
+			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping (context canceled)")
 			return
 		case <-ticker.C:
-			e.pruneExpired()
+			e.pruneExpired(ctx)
 		}
 	}
 }
 
-func (e *EnrichmentEngine) pruneExpired() {
+func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -329,8 +331,8 @@ func (e *EnrichmentEngine) pruneExpired() {
 		}
 	}
 
-	if count > 0 && e.logger.Enabled(context.Background(), slog.LevelDebug) {
-		e.logger.DebugContext(context.Background(), "enrichment: pruned expired cache entries", "count", count)
+	if count > 0 && e.logger.Enabled(ctx, slog.LevelDebug) {
+		e.logger.DebugContext(ctx, "enrichment: pruned expired cache entries", "count", count)
 	}
 }
 

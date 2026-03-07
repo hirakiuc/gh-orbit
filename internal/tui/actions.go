@@ -61,28 +61,25 @@ func (m *Model) ViewItem(i item) tea.Cmd {
 
 // OpenBrowser opens the given URL in the default browser.
 func (m *Model) OpenBrowser(url string) tea.Cmd {
-	ctx := context.Background()
-	m.logger.InfoContext(ctx, "opening browser", "url", url)
 	if !isValidGitHubURL(url) {
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("refusing to open untrusted URL: %s", url)}
 		}
 	}
 
-	return func() tea.Msg {
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		m.logger.InfoContext(ctx, "opening browser", "url", url)
 		b := browser.New("", nil, nil)
 		if err := b.Browse(url); err != nil {
 			m.logger.ErrorContext(ctx, "failed to open browser", "error", err)
 			return errMsg{err: err}
 		}
 		return actionCompleteMsg{}
-	}
+	})
 }
 
 // CheckoutPR executes 'gh pr checkout' for the given repo and PR number.
 func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
-	ctx := context.Background()
-	m.logger.InfoContext(ctx, "checking out PR", "repo", repo, "number", number)
 	if !reRepoName.MatchString(repo) {
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("invalid repository name: %s", repo)}
@@ -100,14 +97,17 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 		selectedItem = i
 	}
 
+	// Bubble Tea ExecProcess uses its own lifecycle, but we still log with context
+	m.logger.InfoContext(context.Background(), "checking out PR", "repo", repo, "number", number)
+
 	// #nosec G204: PR number and repo name are strictly regex-validated above
 	c := exec.Command("gh", "pr", "checkout", number, "-R", repo)
 	checkoutCmd := tea.ExecProcess(c, func(err error) tea.Msg {
 		if err != nil {
-			m.logger.ErrorContext(ctx, "checkout failed", "error", err)
+			m.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
 			return errMsg{err: err}
 		}
-		m.logger.InfoContext(ctx, "checkout successful", "repo", repo, "number", number)
+		m.logger.InfoContext(context.Background(), "checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
 	})
 
@@ -135,24 +135,21 @@ func (m *Model) MarkRead(i item) tea.Cmd {
 	i.notification.IsReadLocally = true
 	m.listView.list.SetItem(m.listView.list.Index(), i)
 
-	// 3. Persistent Local Update
-	err := m.db.MarkReadLocally(i.notification.GitHubID, true)
-	if err != nil {
-		m.logger.ErrorContext(context.Background(), "failed to update local read state", "error", err)
-	}
-
 	m.applyFilters()
 
-	// 4. Asynchronous Remote Sync
-	return func() tea.Msg {
-		err := m.client.MarkThreadAsRead(i.notification.GitHubID)
+	// 3. Persistent Local & Remote Update via Traffic Controller
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		err := m.db.MarkReadLocally(ctx, i.notification.GitHubID, true)
 		if err != nil {
-			m.logger.ErrorContext(context.Background(), "failed to mark thread as read on GitHub", "error", err)
-			// We don't return an error message here to avoid interrupting the UI,
-			// as the local state is already updated.
+			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
+		}
+
+		err = m.client.MarkThreadAsRead(ctx, i.notification.GitHubID)
+		if err != nil {
+			m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)
 		}
 		return nil
-	}
+	})
 }
 
 // ToggleRead manually toggles the read status.
@@ -171,13 +168,7 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	i.notification.IsReadLocally = newState
 	m.listView.list.SetItem(m.listView.list.Index(), i)
 
-	// 3. Update DB
-	err := m.db.MarkReadLocally(i.notification.GitHubID, newState)
-	if err != nil {
-		m.err = err
-	}
-
-	// 4. Status Feedback
+	// 3. Status Feedback
 	toast := "Marked as unread"
 	if newState {
 		toast = "Marked as read"
@@ -185,17 +176,20 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 
 	m.applyFilters()
 
-	// 5. Remote Sync + Timed Clear
-	var cmds []tea.Cmd
-	cmds = append(cmds, m.ui.SetToast(toast))
-	if newState {
-		cmds = append(cmds, func() tea.Msg {
-			_ = m.client.MarkThreadAsRead(i.notification.GitHubID)
-			return nil
-		})
-	}
+	// 4. Update via Traffic Controller
+	updateCmd := m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		err := m.db.MarkReadLocally(ctx, i.notification.GitHubID, newState)
+		if err != nil {
+			m.logger.ErrorContext(ctx, "failed to toggle local read state", "error", err)
+		}
 
-	return tea.Batch(cmds...)
+		if newState {
+			_ = m.client.MarkThreadAsRead(ctx, i.notification.GitHubID)
+		}
+		return nil
+	})
+
+	return tea.Batch(m.ui.SetToast(toast), updateCmd)
 }
 
 // ViewPRWeb executes 'gh pr view --web' for the given repo and PR number.
@@ -215,9 +209,6 @@ func (m *Model) ViewReleaseWeb(repo, tag string) tea.Cmd {
 
 // ghViewCmd executes a 'gh <cmd> view --web' command.
 func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
-	ctx := context.Background()
-	m.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
-
 	// Validation
 	if !reRepoName.MatchString(repo) {
 		return func() tea.Msg { return errMsg{err: fmt.Errorf("invalid repo: %s", repo)} }
@@ -230,7 +221,8 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 		return func() tea.Msg { return errMsg{err: fmt.Errorf("invalid number: %s", arg)} }
 	}
 
-	return func() tea.Msg {
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		m.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
 		// #nosec G204: all parameters are strictly regex-validated above
 		c := exec.Command("gh", ghCmd, "view", arg, "-R", repo, "--web")
 		if err := c.Run(); err != nil {
@@ -238,7 +230,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 			return errMsg{err: err}
 		}
 		return actionCompleteMsg{}
-	}
+	})
 }
 
 // URL extraction helpers

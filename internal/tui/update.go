@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -22,18 +21,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.listView.list.SetSize(msg.Width, msg.Height-3)
-		
-		vpWidth := msg.Width - 4
-		if vpWidth < 0 { vpWidth = 0 }
-		m.detailView.viewport.SetWidth(vpWidth)
-		
-		vpHeight := msg.Height - 8
-		if vpHeight < 0 { vpHeight = 0 }
-		m.detailView.viewport.SetHeight(vpHeight)
-
-		m.updateMarkdownRenderer()
 		m.ui.SetSize(msg.Width, msg.Height)
+		m.listView.list.SetSize(msg.Width, msg.Height-6)
+		
+		m.detailView.viewport.SetWidth(msg.Width - 4)
+		m.detailView.viewport.SetHeight(msg.Height - 8)
+		m.updateMarkdownRenderer()
 
 	case tea.BackgroundColorMsg:
 		m.isDark = msg.IsDark()
@@ -51,44 +44,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.enrichViewport())
 		cmds = append(cmds, m.tickHeartbeat())
 
-	case syncCompleteMsg:
-		cmds = append(cmds, m.ui.SetSyncing(false))
-		// Note: We need to reload notifications from DB after sync
-		cmds = append(cmds, m.loadNotifications())
-		m.LastSyncAt = time.Now()
-		// Schedule next heartbeat
-		cmds = append(cmds, m.tickHeartbeat())
-
-	case enrichmentCompleteMsg:
+	case priorityUpdatedMsg:
 		m.allNotifications = msg.notifications
 		m.applyFilters()
-		// No new heartbeat here - this breaks the recursive loop
+		cmds = append(cmds, m.ui.SetToast(msg.toast))
 
-	case pollTickMsg:
-		// Only process if ID matches current (Timer ID Tagging)
-		if msg.ID == m.heartbeatID {
-			if !m.ui.syncing {
-				m.syncCounter++
-				// Every 5th background poll is a "Cold" refresh to ensure eventual consistency
-				force := (m.syncCounter%5 == 0)
-				cmds = append(cmds, m.syncNotificationsWithForce(force))
-			} else {
-				// If already busy, skip this tick but keep the pulse going
-				cmds = append(cmds, m.tickHeartbeat())
-			}
-		}
-
-
-	case clockTickMsg:
-		if msg.ID == m.clockID {
-			cmds = append(cmds, m.tickClock())
-		}
-
-	case viewportEnrichMsg:
-		cmds = append(cmds, m.enrichViewport())
+	case syncCompleteMsg:
+		m.ui.SetSyncing(false)
+		m.traffic.UpdateRateLimit(context.Background(), msg.remainingRateLimit)
+		cmds = append(cmds, m.loadNotifications())
+		m.LastSyncAt = time.Now()
 
 	case detailLoadedMsg:
-		cmds = append(cmds, m.ui.SetFetching(false))
+		m.ui.fetchingDetail = false
 		// Update master copy
 		for idx, n := range m.allNotifications {
 			if n.GitHubID == msg.GitHubID {
@@ -109,6 +77,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.applyFilters()
 
+	case pollTickMsg:
+		if msg.ID == m.heartbeatID {
+			if time.Since(m.LastSyncAt).Seconds() >= float64(m.PollInterval) {
+				cmds = append(cmds, m.syncNotificationsWithForce(false))
+				m.ui.SetSyncing(true)
+			}
+			cmds = append(cmds, m.tickHeartbeat())
+		}
+
+	case clockTickMsg:
+		if msg.ID == m.clockID {
+			cmds = append(cmds, m.tickClock())
+		}
+
+	case viewportEnrichMsg:
+		cmds = append(cmds, m.enrichViewport())
+
 	case spinner.TickMsg:
 		m.ui, cmd = m.ui.Update(msg)
 		cmds = append(cmds, cmd)
@@ -118,20 +103,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case errMsg:
-		cmds = append(cmds, m.ui.SetSyncing(false))
-		cmds = append(cmds, m.ui.SetFetching(false))
 		m.err = msg.err
-	}
-
-	// Sync fetching state to delegate for skeleton UI
-	if m.listView.delegate.IsFetching != m.ui.fetchingDetail {
-		m.listView.delegate.IsFetching = m.ui.fetchingDetail
-		m.listView.list.SetDelegate(m.listView.delegate)
+		m.ui.SetSyncing(false)
+		m.ui.fetchingDetail = false
 	}
 
 	// 2. Handle state-dependent messages (Router Pattern)
 	var stateCmd tea.Cmd
 	oldIndex := m.listView.list.Index()
+	
 	switch m.state {
 	case StateDetail:
 		_, stateCmd = m.updateDetail(msg)
@@ -142,7 +122,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Trigger debounced enrichment if viewport might have changed
 	if m.state == StateList && m.listView.list.Index() != oldIndex {
-		duration := time.Duration(m.config.Enrichment.DebounceMS) * time.Millisecond
+		duration := 250 * time.Millisecond // Default debounce
 		cmds = append(cmds, tea.Tick(duration, func(_ time.Time) tea.Msg {
 			return viewportEnrichMsg{}
 		}))
@@ -152,7 +132,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyPressMsg); ok {
+	if msg, ok := msg.(tea.KeyMsg); ok {
 		if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" || msg.String() == "q" {
 			m.state = StateList
 			return m, nil
@@ -168,7 +148,7 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
+	case tea.KeyMsg:
 		// Only handle custom keys if the list isn't filtering
 		if m.listView.list.FilterState() == list.Filtering {
 			break
@@ -179,60 +159,24 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case msg.String() == "q":
 			if m.listView.list.Help.ShowAll {
-				// Close help overlay by sending "?" to the list
-				m.listView.list, cmd = m.listView.list.Update(tea.KeyPressMsg{
-					Text: "?",
-					Code: '?',
-				})
-				return m, cmd
+				// Bubble Tea v2 list handles its own help toggle
+				break
 			}
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Sync):
-			if m.ui.syncing {
-				return m, nil
+			if !m.ui.syncing {
+				cmds = append(cmds, m.syncNotificationsWithForce(true))
+				m.ui.SetSyncing(true)
 			}
-			return m, tea.Batch(
-				m.ui.SetSyncing(true),
-				m.syncNotificationsWithForce(true), // Manual is always Cold
-			)
 		case key.Matches(msg, m.keys.ToggleDetail):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				m.state = StateDetail
 				if !i.notification.IsEnriched {
-					return m, tea.Batch(
-						m.ui.SetFetching(true),
-						m.enrich.GetEnrichmentCmd(
-							i.notification.GitHubID,
-							i.notification.SubjectURL,
-							i.notification.SubjectType,
-							func(res types.EnrichmentResult) tea.Msg {
-								return detailLoadedMsg{
-									GitHubID:      i.notification.GitHubID,
-									Body:          res.Body,
-									Author:        res.Author,
-									HTMLURL:       res.HTMLURL,
-									ResourceState: res.ResourceState,
-								}
-							},
-							func(err error) tea.Msg { return errMsg{err: err} },
-						),
-					)
+					m.ui.fetchingDetail = true
+					cmds = append(cmds, m.FetchDetailCmd(i.notification.GitHubID, i.notification.SubjectURL, i.notification.SubjectType))
+				} else {
+					m.detailView.viewport.SetContent(m.detailView.activeDetail)
 				}
-				// Prepare viewport content
-				m.detailView.activeDetail = m.renderMarkdown(i.notification.Body)
-				m.detailView.viewport.SetContent(m.detailView.activeDetail)
-				return m, nil
-			}
-			return m, nil
-		case key.Matches(msg, m.keys.CopyURL):
-			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-				if isValidGitHubURL(i.notification.HTMLURL) {
-					return m, tea.Batch(
-						tea.SetClipboard(i.notification.HTMLURL),
-						m.ui.SetToast("Copied URL to clipboard"),
-					)
-				}
-				m.err = fmt.Errorf("refusing to open untrusted URL: %s", i.notification.HTMLURL)
 			}
 		case key.Matches(msg, m.keys.ToggleRead):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
@@ -245,35 +189,33 @@ func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.listView.activeTab = (m.listView.activeTab - 1 + 4) % 4
 			m.applyFilters()
 		case key.Matches(msg, m.keys.OpenBrowser):
-			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.HTMLURL != "" {
-				return m, tea.Batch(m.OpenBrowser(i.notification.HTMLURL), m.ui.SetToast("Opening browser..."))
+			if i, ok := m.listView.list.SelectedItem().(item); ok {
+				cmds = append(cmds, m.ViewItem(i))
 			}
 		case key.Matches(msg, m.keys.CheckoutPR):
 			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-				prNumber := extractNumberFromURL(i.notification.SubjectURL)
-				if prNumber != "" {
-					return m, tea.Batch(m.CheckoutPR(i.notification.RepositoryFullName, prNumber), m.ui.SetToast("Launching gh pr checkout..."))
+				number := extractNumberFromURL(i.notification.SubjectURL)
+				if number != "" {
+					cmds = append(cmds, m.CheckoutPR(i.notification.RepositoryFullName, number))
 				}
-				m.err = fmt.Errorf("could not extract PR number from URL: %s", i.notification.SubjectURL)
-			}
-		case key.Matches(msg, m.keys.ViewContextual):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				return m, m.ViewItem(i)
 			}
 		case key.Matches(msg, m.keys.SetPriorityLow):
-			return m, m.setPriority(1)
+			cmds = append(cmds, m.setPriority(1))
 		case key.Matches(msg, m.keys.SetPriorityMed):
-			return m, m.setPriority(2)
+			cmds = append(cmds, m.setPriority(2))
 		case key.Matches(msg, m.keys.SetPriorityHigh):
-			return m, m.setPriority(3)
+			cmds = append(cmds, m.setPriority(3))
 		case key.Matches(msg, m.keys.ClearPriority):
-			return m, m.setPriority(0)
+			cmds = append(cmds, m.setPriority(0))
 		case key.Matches(msg, m.keys.FilterPR):
-			return m, m.toggleResourceFilter("PullRequest", "PRs")
+			m.toggleResourceFilter("PullRequest", "PRs")
 		case key.Matches(msg, m.keys.FilterIssue):
-			return m, m.toggleResourceFilter("Issue", "Issues")
+			m.toggleResourceFilter("Issue", "Issues")
 		case key.Matches(msg, m.keys.FilterDiscussion):
-			return m, m.toggleResourceFilter("Discussion", "Discussions")
+			m.toggleResourceFilter("Discussion", "Discussions")
+		case msg.String() == "1", msg.String() == "2", msg.String() == "3", msg.String() == "4":
+			m.listView.activeTab = int(msg.String()[0]-'1')
+			m.applyFilters()
 		}
 	}
 
@@ -294,16 +236,15 @@ func (m *Model) enrichViewport() tea.Cmd {
 	var toEnrich []types.NotificationWithState
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
-			// Pick items that are not enriched OR have expired statuses
 			var isExpired bool
 			if i.notification.IsEnriched {
 				if i.notification.EnrichedAt.Valid {
 					isExpired = time.Since(i.notification.EnrichedAt.Time) > api.StatusTTL
 				} else {
-					isExpired = true // Enriched but no timestamp? Refresh.
+					isExpired = true
 				}
 			}
-			
+
 			if !i.notification.IsEnriched || isExpired {
 				toEnrich = append(toEnrich, i.notification)
 			}
@@ -314,101 +255,72 @@ func (m *Model) enrichViewport() tea.Cmd {
 		return nil
 	}
 
-	// Bulk background enrichment using the Traffic Controller
 	return m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
-		// Use GraphQL Batching for efficient viewport enrichment
 		results := m.enrich.FetchHybridBatch(ctx, toEnrich)
 		if len(results) == 0 {
 			return nil
 		}
 
-		// Since multiple items were updated in DB, we trigger a refresh of the local list state.
-		// We use the new enrichmentCompleteMsg to avoid recursive heartbeat storms.
-		notifs, err := m.db.ListNotifications()
+		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return enrichmentCompleteMsg{notifications: notifs}
+		return notificationsLoadedMsg{notifications: notifs}
 	})
 }
 
 func (m *Model) setPriority(priority int) tea.Cmd {
 	if i, ok := m.listView.list.SelectedItem().(item); ok {
-		// Toggle logic: if already at this priority, reset to 0
+		// Toggle logic
 		if i.notification.Priority == priority {
 			priority = 0
 		}
 
-		i.notification.Priority = priority
-		err := m.db.SetPriority(i.notification.GitHubID, priority)
-		if err != nil {
-			m.err = err
-		}
-
-		// Update feedback
-		msg := "Priority cleared"
-		switch priority {
-		case 1:
-			msg = "Priority set to Low"
-		case 2:
-			msg = "Priority set to Medium"
-		case 3:
-			msg = "Priority set to High"
-		}
-
-		// Update allNotifications master copy
-		for idx, n := range m.allNotifications {
-			if n.GitHubID == i.notification.GitHubID {
-				m.allNotifications[idx].Priority = priority
-				break
+		return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+			err := m.db.SetPriority(ctx, i.notification.GitHubID, priority)
+			if err != nil {
+				return errMsg{err: err}
 			}
-		}
-		m.applyFilters()
 
-		return m.ui.SetToast(msg)
+			// Reload to reflect state
+			notifs, err := m.db.ListNotifications(ctx)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			
+			toast := "Priority cleared"
+			switch priority {
+			case 1: toast = "Priority set to Low"
+			case 2: toast = "Priority set to Medium"
+			case 3: toast = "Priority set to High"
+			}
+
+			return priorityUpdatedMsg{notifications: notifs, toast: toast}
+		})
 	}
 	return nil
 }
 
-func (m *Model) toggleResourceFilter(filterType, label string) tea.Cmd {
-	if m.listView.resourceFilter == filterType {
-		m.listView.resourceFilter = ""
-		m.ui.SetResourceFilter("")
-		m.applyFilters()
-		return m.ui.SetToast("Filter cleared")
-	}
-
-	m.listView.resourceFilter = filterType
-	m.ui.SetResourceFilter(label)
-	m.applyFilters()
-	return m.ui.SetToast(fmt.Sprintf("Filtering by %s", label))
-}
-
 func (m *Model) applyFilters() {
-	// 1. Store currently selected ID
 	var selectedID string
 	if i, ok := m.listView.list.SelectedItem().(item); ok {
 		selectedID = i.notification.GitHubID
 	}
 
-	// 2. Filter allNotifications
 	var filtered []list.Item
 	for _, n := range m.allNotifications {
 		keep := false
-
-		// Apply Tab Filter
 		switch m.listView.activeTab {
 		case TabInbox:
-			if !n.IsReadLocally || n.Priority > 0 { keep = true }
+			keep = !n.IsReadLocally && n.Status != "archived"
 		case TabUnread:
-			if !n.IsReadLocally { keep = true }
+			keep = !n.IsReadLocally
 		case TabTriaged:
-			if n.Priority > 0 { keep = true }
+			keep = n.Priority > 0
 		case TabAll:
 			keep = true
 		}
 
-		// Apply Resource Type Filter (if active)
 		if keep && m.listView.resourceFilter != "" {
 			if n.SubjectType != m.listView.resourceFilter {
 				keep = false
@@ -420,10 +332,8 @@ func (m *Model) applyFilters() {
 		}
 	}
 
-	// 3. Update list items
 	m.listView.list.SetItems(filtered)
 
-	// 4. Restore selection
 	if selectedID != "" {
 		for index, li := range m.listView.list.Items() {
 			if i, ok := li.(item); ok && i.notification.GitHubID == selectedID {
@@ -432,4 +342,15 @@ func (m *Model) applyFilters() {
 			}
 		}
 	}
+}
+
+func (m *Model) toggleResourceFilter(resType, label string) {
+	if m.listView.resourceFilter == resType {
+		m.listView.resourceFilter = ""
+		m.ui.SetResourceFilter("")
+	} else {
+		m.listView.resourceFilter = resType
+		m.ui.SetResourceFilter(label)
+	}
+	m.applyFilters()
 }

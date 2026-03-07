@@ -146,7 +146,7 @@ func (m *Model) renderMarkdown(content string) string {
 	if content == "" {
 		return ""
 	}
-	
+
 	out, err := m.markdownRenderer.Render(content)
 	if err != nil {
 		return content

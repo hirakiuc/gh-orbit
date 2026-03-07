@@ -264,7 +264,7 @@ func initResources(ctx context.Context, logger *slog.Logger) (*appResources, err
 	}
 
 	// 5. Get Current User
-	user, err := client.CurrentUser()
+	user, err := client.CurrentUser(ctx)
 	if err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("error fetching current user: %w", err)
@@ -285,10 +285,14 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	
+	// Two-Phase Shutdown: Use WithoutCancel for final flushes
+	cleanupCtx := context.WithoutCancel(ctx)
 	defer env.span.End()
 	defer func() {
 		if env.otelCleanup != nil { env.otelCleanup() }
 		_ = env.logCleanup()
+		env.logger.DebugContext(cleanupCtx, "environment cleanup complete")
 	}()
 
 	// 2. Init Resources (Config, DB, Client)
@@ -296,7 +300,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = res.database.Close() }()
+	defer func() { 
+		_ = res.database.Close() 
+		env.logger.DebugContext(cleanupCtx, "resource cleanup complete")
+	}()
 	
 	env.span.SetAttributes(attribute.String("user_id", res.userID))
 

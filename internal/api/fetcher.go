@@ -13,7 +13,7 @@ import (
 	gh "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -66,9 +66,10 @@ func NewClient() (*Client, error) {
 }
 
 // CurrentUser retrieves the authenticated user's information.
-func (c *Client) CurrentUser() (*GHUser, error) {
+func (c *Client) CurrentUser(ctx context.Context) (*GHUser, error) {
 	var user GHUser
-	err := c.rest.Get("user", &user)
+	// Best Practice: Use DoWithContext for context propagation in go-gh
+	err := c.rest.DoWithContext(ctx, http.MethodGet, "user", nil, &user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch current user: %w", err)
 	}
@@ -76,9 +77,10 @@ func (c *Client) CurrentUser() (*GHUser, error) {
 }
 
 // MarkThreadAsRead marks a single notification thread as read.
-func (c *Client) MarkThreadAsRead(threadID string) error {
+func (c *Client) MarkThreadAsRead(ctx context.Context, threadID string) error {
 	path := fmt.Sprintf("notifications/threads/%s", threadID)
-	return c.rest.Patch(path, nil, nil)
+	// Best Practice: Use DoWithContext for context propagation in go-gh
+	return c.rest.DoWithContext(ctx, http.MethodPatch, path, nil, nil)
 }
 
 // REST returns the underlying REST client configured by go-gh.
@@ -114,7 +116,7 @@ func NewNotificationFetcher(client GitHubClient, logger *slog.Logger) *Notificat
 	}
 }
 
-func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
+func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *types.SyncMeta, force bool) ([]GHNotification, *types.SyncMeta, int, error) {
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "api.fetch_notifications",
 		trace.WithAttributes(
