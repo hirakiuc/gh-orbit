@@ -241,7 +241,7 @@ func computeDirHash(root string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-func userHome() (string, error) {
+var userHome = func() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to determine user home directory: %w", err)
