@@ -141,10 +141,14 @@ func runDoctor() error {
 	}
 	defer func() { _ = database.Close() }()
 
-	alerts := api.NewAlertService(ctx, config.DefaultConfig(), database, logger)
+	native := api.NewPlatformNotifier(ctx, logger)
+	fallback := api.NewBeeepNotifier(logger)
+	
+	activeCfg := config.DefaultConfig()
 	if cfg != nil {
-		alerts = api.NewAlertService(ctx, cfg, database, logger)
+		activeCfg = cfg
 	}
+	alerts := api.NewAlertService(activeCfg, database, native, fallback, logger)
 	defer alerts.Shutdown(ctx)
 
 	if runtime.GOOS == "darwin" {
@@ -383,7 +387,9 @@ func run(ctx context.Context) error {
 
 func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	// Instantiate services via interfaces (Dependency Injection)
-	alerts := api.NewAlertService(ctx, res.config, res.database, env.logger)
+	native := api.NewPlatformNotifier(ctx, env.logger)
+	fallback := api.NewBeeepNotifier(env.logger)
+	alerts := api.NewAlertService(res.config, res.database, native, fallback, env.logger)
 	fetcher := api.NewNotificationFetcher(res.client, env.logger)
 	syncer := api.NewSyncEngine(fetcher, res.database, alerts, env.logger)
 	enricher := api.NewEnrichmentEngine(ctx, res.client, res.database, env.logger)

@@ -4,75 +4,161 @@ import (
 	"context"
 	"log/slog"
 	"testing"
-	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAlertService_Throttling(t *testing.T) {
+func TestAlertService_Notify(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.Default()
 	cfg := &config.Config{
 		Notifications: config.NotificationsConfig{
 			Enabled: true,
 		},
 	}
-	logger := slog.Default()
+	
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockNative := mocks.NewMockNotifier(t)
+	mockFallback := mocks.NewMockNotifier(t)
+	
+	s := NewAlertService(cfg, mockRepo, mockNative, mockFallback, logger)
+	
+	n := types.GHNotification{
+		ID: "1",
+		Reason: "mention",
+		Subject: struct {
+			Title  string `json:"title"`
+			URL    string `json:"url"`
+			Type   string `json:"type"`
+			NodeID string `json:"node_id"`
+		}{Title: "Mention", URL: "url", Type: "Issue"},
+	}
+
+	// 1. Initial Sync: Empty DB -> isInitializing = true
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{}, nil).Once()
+	s.SyncStart(ctx)
+
+	// 2. Notify during first sync: Always silent
+	// Importance is calculated, but no notifier call
+	err := s.Notify(ctx, n)
+	require.NoError(t, err)
+
+	// 3. Second Sync: DB not empty -> isInitializing = false
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{
+		{Notification: types.Notification{GitHubID: "1"}},
+	}, nil).Once()
+	s.SyncStart(ctx)
+
+	// 4. Notify during second sync: Should trigger notifier
+	n2 := n
+	n2.ID = "2"
+	
+	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
+	mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	
+	err = s.Notify(ctx, n2)
+	require.NoError(t, err)
+}
+
+func TestAlertService_SyncStart(t *testing.T) {
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{}, nil).Maybe()
+	
+	mockNative := mocks.NewMockNotifier(t)
+	mockFallback := mocks.NewMockNotifier(t)
+	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, slog.Default())
+
+	s.SyncStart(context.Background())
+}
+
+func TestAlertService_Metadata(t *testing.T) {
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockNative := mocks.NewMockNotifier(t)
+	mockFallback := mocks.NewMockNotifier(t)
+	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, slog.Default())
+
+	// 1. ActiveTierInfo
+	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
+	mockFallback.EXPECT().Status().Return(StatusHealthy).Maybe()
+	tier, status := s.ActiveTierInfo()
+	assert.NotEmpty(t, tier)
+	assert.Equal(t, StatusHealthy, status)
+
+	// 2. BridgeStatus
+	assert.Equal(t, StatusHealthy, s.BridgeStatus())
+
+	// 3. Shutdown
+	mockNative.EXPECT().Shutdown(mock.Anything).Return().Maybe()
+	mockFallback.EXPECT().Shutdown(mock.Anything).Return().Maybe()
+	s.Shutdown(context.Background())
+}
+
+func TestAlertService_Throttling(t *testing.T) {
 	ctx := context.Background()
+	cfg := &config.Config{Notifications: config.NotificationsConfig{Enabled: true}}
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockNative := mocks.NewMockNotifier(t)
+	s := NewAlertService(cfg, mockRepo, mockNative, nil, slog.Default())
 
-	t.Run("Silent Initial Baseline", func(t *testing.T) {
-		mockRepo := mocks.NewMockAlertRepository(t)
-		// Empty DB means isInitializing will be true
-		mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Once()
+	// Move out of initialization
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
+	s.SyncStart(ctx)
 
-		service := NewAlertService(ctx, cfg, mockRepo, logger)
-		service.SyncStart(ctx)
+	n := types.GHNotification{ID: "1", Reason: "mention"}
+	
+	// Mock Status for getNotifier
+	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
 
-		err := service.Notify(ctx, GHNotification{ID: "1"})
+	// 1-5: Individual alerts
+	mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Times(5)
+	
+	for i := 0; i < 5; i++ {
+		err := s.Notify(ctx, n)
 		require.NoError(t, err)
-		// No notifier calls should happen because isInitializing is true
-	})
+	}
 
-	t.Run("Throttling Logic", func(t *testing.T) {
-		// 1. Setup real in-memory DB to handle ListNotifications logic
-		database, err := db.OpenInMemory(ctx, logger)
-		require.NoError(t, err)
-		defer func() { _ = database.Close() }()
+	// 6: Summary alert
+	mockNative.EXPECT().Notify(mock.Anything, "New Notifications", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	err := s.Notify(ctx, n)
+	require.NoError(t, err)
 
-		// Pre-populate one notification so isInitializing becomes false
-		err = database.UpsertNotification(ctx, db.Notification{GitHubID: "0", UpdatedAt: time.Now()})
-		require.NoError(t, err)
+	// 7+: Silent
+	err = s.Notify(ctx, n)
+	require.NoError(t, err)
+}
 
-		mockNative := mocks.NewMockNotifier(t)
-		// Expect Status() calls during tiered notifier selection
-		mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
+func TestAlertService_SpecificReasons(t *testing.T) {
+	ctx := context.Background()
+	cfg := &config.Config{
+		Notifications: config.NotificationsConfig{
+			Enabled: true,
+			Reasons: []string{"mention"},
+		},
+	}
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockNative := mocks.NewMockNotifier(t)
+	s := NewAlertService(cfg, mockRepo, mockNative, nil, slog.Default())
 
-		service := NewAlertService(ctx, cfg, database, logger)
-		service.native = mockNative
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
+	s.SyncStart(ctx)
 
-		service.SyncStart(ctx)
+	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
 
-		// Expect 5 individual alerts
-		mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(5)
-		// Expect 1 summary alert on the 6th notification
-		mockNative.EXPECT().Notify(mock.Anything, "New Notifications", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	// 1. Matched reason: notify
+	n1 := types.GHNotification{ID: "1", Reason: "mention"}
+	mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	require.NoError(t, s.Notify(ctx, n1))
 
-		for i := 1; i <= 10; i++ {
-			_ = service.Notify(ctx, GHNotification{
-				ID:     "id",
-				Reason: "mention",
-				Repository: struct {
-					FullName string `json:"full_name"`
-				}{FullName: "owner/repo"},
-				Subject: struct {
-					Title  string `json:"title"`
-					URL    string `json:"url"`
-					Type   string `json:"type"`
-					NodeID string `json:"node_id"`
-				}{Title: "PR Title"},
-			})
-		}
-	})
+	// 2. Unmatched reason: skip
+	n2 := types.GHNotification{ID: "2", Reason: "other"}
+	require.NoError(t, s.Notify(ctx, n2))
 }
