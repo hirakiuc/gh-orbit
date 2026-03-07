@@ -198,7 +198,12 @@ func runDoctor() error {
 	fmt.Printf("  Config: %s\n", report.Persistence.ConfigPath)
 	fmt.Printf("  Data:   %s\n", report.Persistence.DataPath)
 	fmt.Printf("  State:  %s\n", report.Persistence.StatePath)
-	fmt.Printf("  Usage:  %s\n", report.Persistence.CacheSize)
+	
+	usageColor := "" // Default
+	if totalSize > 100*1024*1024 { // > 100MB
+		usageColor = "\033[33m" // Yellow ANSI
+	}
+	fmt.Printf("  Usage:  %s%s\033[0m\n", usageColor, report.Persistence.CacheSize)
 
 	fmt.Println("\nChecks:")
 	for _, c := range report.Checks {
