@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,4 +98,52 @@ notifications:
 		// Verify default was preserved for missing field
 		assert.Equal(t, 60, cfg.Notifications.SyncInterval)
 	})
+}
+
+func TestConfig_Persistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_STATE_HOME", tmpDir)
+
+	cfg := DefaultConfig()
+	
+	// Test Save (Must ensure parent exists first)
+	path, _ := ResolveConfigPath()
+	require.NoError(t, EnsurePrivateDir(filepath.Dir(path)))
+	require.NoError(t, cfg.Save())
+	
+	assert.FileExists(t, path)
+
+	// Test Resolve helpers
+	d, _ := ResolveDataDir()
+	assert.Contains(t, d, tmpDir)
+	
+	s, _ := ResolveStateDir()
+	assert.Contains(t, s, tmpDir)
+	
+	tp, _ := ResolveTracePath()
+	assert.Contains(t, tp, tmpDir)
+}
+
+func TestConfig_AuditPermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+	
+	// Create dir with loose permissions
+	subDir := filepath.Join(tmpDir, "loose")
+	require.NoError(t, os.MkdirAll(subDir, 0o777))
+	
+	fPath := filepath.Join(subDir, "file.txt")
+	require.NoError(t, os.WriteFile(fPath, []byte("data"), 0o666))
+
+	// Audit
+	require.NoError(t, AuditPermissions(ctx, slog.Default(), tmpDir))
+
+	// Verify hardening
+	info, _ := os.Stat(subDir)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+	fInfo, _ := os.Stat(fPath)
+	assert.Equal(t, os.FileMode(0o600), fInfo.Mode().Perm())
 }
