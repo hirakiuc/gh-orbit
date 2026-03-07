@@ -42,14 +42,13 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		// Expectations
 		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(nil, nil).Once()
-		// Use mock.Anything for context because OTel starts a span, changing the context value
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, initialMeta, true).Return(notifs, initialMeta, 5000, nil).Once()
 		mockRepo.EXPECT().UpsertNotification(mock.Anything).Return(nil).Once()
 		mockRepo.EXPECT().GetNotification("1").Return(&db.NotificationWithState{}, nil).Once()
 		mockRepo.EXPECT().MarkNotifiedBatch([]string{"1"}).Return(nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
 
-		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		remaining, err := engine.Sync(ctx, userID, true)
 
 		require.NoError(t, err)
@@ -69,11 +68,10 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(recentMeta, nil).Once()
 
-		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		_, err := engine.Sync(ctx, userID, false)
 
 		require.NoError(t, err)
-		// mockFetcher.FetchNotifications should NOT be called
 	})
 
 	t.Run("Forces Sync Even if Interval Not Reached", func(t *testing.T) {
@@ -91,7 +89,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, 4999, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
 
-		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		remaining, err := engine.Sync(ctx, userID, true)
 
 		require.NoError(t, err)
@@ -161,7 +159,7 @@ func TestETagSanitization(t *testing.T) {
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, &healedMeta, true).Return(nil, &healedMeta, 5000, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
 
-		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, slog.Default())
+		engine := NewSyncEngine(mockFetcher, mockRepo, nil, slog.Default())
 		_, err := engine.Sync(ctx, "user-1", true)
 		
 		require.NoError(t, err)

@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	db "github.com/hirakiuc/gh-orbit/internal/db"
+	types "github.com/hirakiuc/gh-orbit/internal/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -21,23 +21,23 @@ func (_m *MockAlertRepository) EXPECT() *MockAlertRepository_Expecter {
 }
 
 // GetBridgeHealth provides a mock function with no fields
-func (_m *MockAlertRepository) GetBridgeHealth() (*db.BridgeHealth, error) {
+func (_m *MockAlertRepository) GetBridgeHealth() (*types.BridgeHealth, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBridgeHealth")
 	}
 
-	var r0 *db.BridgeHealth
+	var r0 *types.BridgeHealth
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*db.BridgeHealth, error)); ok {
+	if rf, ok := ret.Get(0).(func() (*types.BridgeHealth, error)); ok {
 		return rf()
 	}
-	if rf, ok := ret.Get(0).(func() *db.BridgeHealth); ok {
+	if rf, ok := ret.Get(0).(func() *types.BridgeHealth); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*db.BridgeHealth)
+			r0 = ret.Get(0).(*types.BridgeHealth)
 		}
 	}
 
@@ -67,34 +67,34 @@ func (_c *MockAlertRepository_GetBridgeHealth_Call) Run(run func()) *MockAlertRe
 	return _c
 }
 
-func (_c *MockAlertRepository_GetBridgeHealth_Call) Return(_a0 *db.BridgeHealth, _a1 error) *MockAlertRepository_GetBridgeHealth_Call {
+func (_c *MockAlertRepository_GetBridgeHealth_Call) Return(_a0 *types.BridgeHealth, _a1 error) *MockAlertRepository_GetBridgeHealth_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockAlertRepository_GetBridgeHealth_Call) RunAndReturn(run func() (*db.BridgeHealth, error)) *MockAlertRepository_GetBridgeHealth_Call {
+func (_c *MockAlertRepository_GetBridgeHealth_Call) RunAndReturn(run func() (*types.BridgeHealth, error)) *MockAlertRepository_GetBridgeHealth_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetNotification provides a mock function with given fields: id
-func (_m *MockAlertRepository) GetNotification(id string) (*db.NotificationWithState, error) {
+func (_m *MockAlertRepository) GetNotification(id string) (*types.NotificationWithState, error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetNotification")
 	}
 
-	var r0 *db.NotificationWithState
+	var r0 *types.NotificationWithState
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*db.NotificationWithState, error)); ok {
+	if rf, ok := ret.Get(0).(func(string) (*types.NotificationWithState, error)); ok {
 		return rf(id)
 	}
-	if rf, ok := ret.Get(0).(func(string) *db.NotificationWithState); ok {
+	if rf, ok := ret.Get(0).(func(string) *types.NotificationWithState); ok {
 		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*db.NotificationWithState)
+			r0 = ret.Get(0).(*types.NotificationWithState)
 		}
 	}
 
@@ -125,34 +125,34 @@ func (_c *MockAlertRepository_GetNotification_Call) Run(run func(id string)) *Mo
 	return _c
 }
 
-func (_c *MockAlertRepository_GetNotification_Call) Return(_a0 *db.NotificationWithState, _a1 error) *MockAlertRepository_GetNotification_Call {
+func (_c *MockAlertRepository_GetNotification_Call) Return(_a0 *types.NotificationWithState, _a1 error) *MockAlertRepository_GetNotification_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockAlertRepository_GetNotification_Call) RunAndReturn(run func(string) (*db.NotificationWithState, error)) *MockAlertRepository_GetNotification_Call {
+func (_c *MockAlertRepository_GetNotification_Call) RunAndReturn(run func(string) (*types.NotificationWithState, error)) *MockAlertRepository_GetNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListNotifications provides a mock function with no fields
-func (_m *MockAlertRepository) ListNotifications() ([]db.NotificationWithState, error) {
+func (_m *MockAlertRepository) ListNotifications() ([]types.NotificationWithState, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListNotifications")
 	}
 
-	var r0 []db.NotificationWithState
+	var r0 []types.NotificationWithState
 	var r1 error
-	if rf, ok := ret.Get(0).(func() ([]db.NotificationWithState, error)); ok {
+	if rf, ok := ret.Get(0).(func() ([]types.NotificationWithState, error)); ok {
 		return rf()
 	}
-	if rf, ok := ret.Get(0).(func() []db.NotificationWithState); ok {
+	if rf, ok := ret.Get(0).(func() []types.NotificationWithState); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]db.NotificationWithState)
+			r0 = ret.Get(0).([]types.NotificationWithState)
 		}
 	}
 
@@ -182,18 +182,18 @@ func (_c *MockAlertRepository_ListNotifications_Call) Run(run func()) *MockAlert
 	return _c
 }
 
-func (_c *MockAlertRepository_ListNotifications_Call) Return(_a0 []db.NotificationWithState, _a1 error) *MockAlertRepository_ListNotifications_Call {
+func (_c *MockAlertRepository_ListNotifications_Call) Return(_a0 []types.NotificationWithState, _a1 error) *MockAlertRepository_ListNotifications_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockAlertRepository_ListNotifications_Call) RunAndReturn(run func() ([]db.NotificationWithState, error)) *MockAlertRepository_ListNotifications_Call {
+func (_c *MockAlertRepository_ListNotifications_Call) RunAndReturn(run func() ([]types.NotificationWithState, error)) *MockAlertRepository_ListNotifications_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateBridgeHealth provides a mock function with given fields: h
-func (_m *MockAlertRepository) UpdateBridgeHealth(h db.BridgeHealth) error {
+func (_m *MockAlertRepository) UpdateBridgeHealth(h types.BridgeHealth) error {
 	ret := _m.Called(h)
 
 	if len(ret) == 0 {
@@ -201,7 +201,7 @@ func (_m *MockAlertRepository) UpdateBridgeHealth(h db.BridgeHealth) error {
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(db.BridgeHealth) error); ok {
+	if rf, ok := ret.Get(0).(func(types.BridgeHealth) error); ok {
 		r0 = rf(h)
 	} else {
 		r0 = ret.Error(0)
@@ -216,14 +216,14 @@ type MockAlertRepository_UpdateBridgeHealth_Call struct {
 }
 
 // UpdateBridgeHealth is a helper method to define mock.On call
-//   - h db.BridgeHealth
+//   - h types.BridgeHealth
 func (_e *MockAlertRepository_Expecter) UpdateBridgeHealth(h interface{}) *MockAlertRepository_UpdateBridgeHealth_Call {
 	return &MockAlertRepository_UpdateBridgeHealth_Call{Call: _e.mock.On("UpdateBridgeHealth", h)}
 }
 
-func (_c *MockAlertRepository_UpdateBridgeHealth_Call) Run(run func(h db.BridgeHealth)) *MockAlertRepository_UpdateBridgeHealth_Call {
+func (_c *MockAlertRepository_UpdateBridgeHealth_Call) Run(run func(h types.BridgeHealth)) *MockAlertRepository_UpdateBridgeHealth_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.BridgeHealth))
+		run(args[0].(types.BridgeHealth))
 	})
 	return _c
 }
@@ -233,7 +233,7 @@ func (_c *MockAlertRepository_UpdateBridgeHealth_Call) Return(_a0 error) *MockAl
 	return _c
 }
 
-func (_c *MockAlertRepository_UpdateBridgeHealth_Call) RunAndReturn(run func(db.BridgeHealth) error) *MockAlertRepository_UpdateBridgeHealth_Call {
+func (_c *MockAlertRepository_UpdateBridgeHealth_Call) RunAndReturn(run func(types.BridgeHealth) error) *MockAlertRepository_UpdateBridgeHealth_Call {
 	_c.Call.Return(run)
 	return _c
 }

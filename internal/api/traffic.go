@@ -25,12 +25,10 @@ type apiTask struct {
 	priority int
 	fn       func(ctx context.Context) tea.Msg
 	resp     chan tea.Msg
-	ctx      context.Context // Trace-aware context
 }
 
 // APITrafficController ensures serialized, prioritized access to the GitHub API.
 type APITrafficController struct {
-	ctx    context.Context // Application root context
 	logger *slog.Logger
 	mu     sync.Mutex
 	wg     sync.WaitGroup
@@ -49,7 +47,6 @@ type APITrafficController struct {
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	tc := &APITrafficController{
-		ctx:                ctx,
 		logger:             logger,
 		high:               make(chan *apiTask),
 		med:                make(chan *apiTask),
@@ -93,13 +90,13 @@ func (c *APITrafficController) worker(ctx context.Context) {
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.DebugContext(ctx, "traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
 		}
-		c.executeTask(task)
+		c.executeTask(ctx, task)
 	}
 }
 
-func (c *APITrafficController) executeTask(t *apiTask) {
+func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 	tracer := config.GetTracer()
-	ctx, span := tracer.Start(t.ctx, "traffic_controller.execute",
+	ctx, span := tracer.Start(ctx, "traffic_controller.execute",
 		trace.WithAttributes(
 			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
 			attribute.Int("priority", t.priority),
@@ -129,12 +126,12 @@ func (c *APITrafficController) executeTask(t *apiTask) {
 }
 
 // UpdateRateLimit updates the internal tracking of the GitHub quota.
-func (c *APITrafficController) UpdateRateLimit(remaining int) {
+func (c *APITrafficController) UpdateRateLimit(ctx context.Context, remaining int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.remainingRateLimit = remaining
-	if c.logger.Enabled(c.ctx, slog.LevelDebug) {
-		c.logger.DebugContext(c.ctx, "traffic controller: updated rate limit", "remaining", remaining)
+	if c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", "remaining", remaining)
 	}
 }
 
@@ -146,7 +143,7 @@ func (c *APITrafficController) Remaining() int {
 }
 
 // Shutdown waits for the worker to finish processing.
-func (c *APITrafficController) Shutdown() {
+func (c *APITrafficController) Shutdown(ctx context.Context) {
 	c.wg.Wait()
 }
 
@@ -163,12 +160,11 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
-			ctx:      c.ctx, // Use root context for trace linkage and cancellation
 		}
 
-		if c.logger.Enabled(task.ctx, slog.LevelDebug) {
-			c.logger.DebugContext(task.ctx, "traffic controller: task submitted", "task_id", id, "priority", priority)
-		}
+		// We don't have access to the context here because tea.Cmd doesn't provide it.
+		// However, the worker loop uses the root application context passed to it during initialization.
+		// If we need trace-aware submission, we'd need to pass context here, but Bubble Tea Cmds are context-less.
 
 		switch priority {
 		case PriorityUser:

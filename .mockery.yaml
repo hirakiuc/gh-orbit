@@ -20,5 +20,18 @@ packages:
       AlertRepository:
       EnrichmentRepository:
       SyncRepository:
+      Repository:
       Fetcher:
       Notifier:
+      Syncer:
+      Enricher:
+      Alerter:
+      TrafficController:
+
+  github.com/hirakiuc/gh-orbit/internal/api:
+    config:
+      dir: internal/mocks
+      outpkg: mocks
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+    interfaces:
+      GitHubClient:

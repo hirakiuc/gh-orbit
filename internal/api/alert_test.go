@@ -35,10 +35,10 @@ func TestAlertService_Throttling(t *testing.T) {
 		service.native = mockNative // Inject mock
 
 		// 1. Initial state (empty DB)
-		service.SyncStart()
+		service.SyncStart(ctx)
 		assert.True(t, service.isInitializing)
 
-		err := service.Notify(types.GHNotification{
+		err := service.Notify(ctx, types.GHNotification{
 			ID: "1",
 			Repository: struct {
 				FullName string `json:"full_name"`
@@ -67,16 +67,16 @@ func TestAlertService_Throttling(t *testing.T) {
 		mockNative.EXPECT().Status().Return(types.StatusHealthy).Maybe()
 		
 		// Expect 5 individual alerts
-		mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(5)
+		mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(5)
 		// Expect 1 summary alert
-		mockNative.EXPECT().Notify("New Notifications", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+		mockNative.EXPECT().Notify(mock.Anything, "New Notifications", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-		service.SyncStart()
+		service.SyncStart(ctx)
 		assert.False(t, service.isInitializing)
 
 		// Send 10 notifications
 		for i := 1; i <= 10; i++ {
-			_ = service.Notify(types.GHNotification{
+			_ = service.Notify(ctx, types.GHNotification{
 				ID: "id",
 				Repository: struct {
 					FullName string `json:"full_name"`

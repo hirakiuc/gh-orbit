@@ -2,10 +2,92 @@ package types
 
 import (
 	"context"
+	"database/sql"
+	"log/slog"
+	"net/http"
 	"time"
 
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	gh "github.com/cli/go-gh/v2/pkg/api"
+	tea "charm.land/bubbletea/v2"
 )
+
+// GHUser represents the GitHub API response for a user.
+type GHUser struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+}
+
+// LogValue implements slog.LogValuer to redact sensitive user data.
+func (u GHUser) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int64("id", u.ID),
+		slog.String("login", "<REDACTED>"),
+	)
+}
+
+// GitHubClient defines the operations required from the GitHub API client.
+type GitHubClient interface {
+	CurrentUser() (*GHUser, error)
+	MarkThreadAsRead(threadID string) error
+	REST() *gh.RESTClient
+	GQL() *gh.GraphQLClient
+	HTTP() *http.Client
+	BaseURL() string
+}
+
+// Notification represents the core notification entity.
+type Notification struct {
+	GitHubID           string    `json:"github_id"`
+	SubjectTitle       string    `json:"subject_title"`
+	SubjectURL         string    `json:"subject_url"`
+	SubjectType        string    `json:"subject_type"`
+	Reason             string    `json:"reason"`
+	RepositoryFullName string    `json:"repository_full_name"`
+	HTMLURL            string    `json:"html_url"`
+	Body               string    `json:"body"`
+	AuthorLogin        string    `json:"author_login"`
+	ResourceState      string    `json:"resource_state"`
+	SubjectNodeID      string    `json:"subject_node_id"`
+	IsEnriched         bool      `json:"is_enriched"`
+	EnrichedAt         sql.NullTime `json:"enriched_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// OrbitState represents the local triage state for a notification.
+type OrbitState struct {
+	NotificationID string `json:"notification_id"`
+	Priority       int    `json:"priority"`
+	Status         string `json:"status"`
+	IsReadLocally  bool   `json:"is_read_locally"`
+	IsNotified     bool   `json:"is_notified"`
+}
+
+// NotificationWithState is a flattened view of a notification and its local state.
+type NotificationWithState struct {
+	Notification
+	OrbitState
+}
+
+// SyncMeta tracks the synchronization state for a specific user and endpoint.
+type SyncMeta struct {
+	UserID       string    `json:"user_id"`
+	Key          string    `json:"key"`
+	LastModified string    `json:"last_modified"`
+	ETag         string    `json:"etag"`
+	PollInterval int       `json:"poll_interval"`
+	LastSyncAt   time.Time `json:"last_sync_at"`
+	LastError    string    `json:"last_error"`
+	LastErrorAt  time.Time `json:"last_error_at"`
+}
+
+// BridgeHealth caches the functional state of the system bridge.
+type BridgeHealth struct {
+	Status        string    `json:"status"`
+	OSVersion     string    `json:"os_version"`
+	BinaryPath    string    `json:"binary_path"`
+	BinaryVersion string    `json:"binary_version"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
 
 // GHNotification represents the GitHub API response for a notification.
 type GHNotification struct {
@@ -57,24 +139,67 @@ type DoctorReport struct {
 
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
-	FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error)
+	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]GHNotification, *SyncMeta, int, error)
 }
 
 // Notifier defines the interface for delivering system notifications.
 type Notifier interface {
-	Notify(title, subtitle, body, url string, priority int) error
-	Shutdown()
+	Notify(ctx context.Context, title, subtitle, body, url string, priority int) error
+	Shutdown(ctx context.Context)
 	Status() BridgeStatus
 	Warmup() // Proactive health check
 	Ready() <-chan struct{}
 }
 
+// Syncer defines the interface for the synchronization engine.
+type Syncer interface {
+	Sync(ctx context.Context, userID string, force bool) (int, error)
+	Shutdown(ctx context.Context)
+	BridgeStatus() BridgeStatus
+}
+
+// Enricher defines the interface for fetching notification details.
+type Enricher interface {
+	FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error)
+	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]EnrichmentResult
+	GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd
+}
+
+// EnrichmentResult holds the fetched details for a notification.
+type EnrichmentResult struct {
+	Body          string
+	HTMLURL       string
+	Author        string
+	ResourceState string
+	FetchedAt     time.Time
+}
+
+// Alerter defines the interface for the high-level alerting service.
+type Alerter interface {
+	Notify(ctx context.Context, n GHNotification) error
+	SyncStart(ctx context.Context)
+	Shutdown(ctx context.Context)
+	Ready() <-chan struct{}
+	Warmup()
+	ActiveTierInfo() (string, BridgeStatus)
+	TestNotify(ctx context.Context, title, subtitle, body string) error
+	BridgeStatus() BridgeStatus
+}
+
+// TrafficController defines the interface for serialized API access.
+type TrafficController interface {
+	Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd
+	UpdateRateLimit(ctx context.Context, remaining int)
+	Remaining() int
+	Shutdown(ctx context.Context)
+}
+
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {
-	GetSyncMeta(userID, key string) (*db.SyncMeta, error)
-	UpdateSyncMeta(s db.SyncMeta) error
-	UpsertNotification(n db.Notification) error
-	GetNotification(id string) (*db.NotificationWithState, error)
+	GetSyncMeta(userID, key string) (*SyncMeta, error)
+	UpdateSyncMeta(s SyncMeta) error
+	UpsertNotification(n Notification) error
+	GetNotification(id string) (*NotificationWithState, error)
 	MarkNotifiedBatch(ids []string) error
 }
 
@@ -86,8 +211,23 @@ type EnrichmentRepository interface {
 
 // AlertRepository defines the database interactions required by the AlertService.
 type AlertRepository interface {
-	ListNotifications() ([]db.NotificationWithState, error)
-	GetNotification(id string) (*db.NotificationWithState, error)
-	GetBridgeHealth() (*db.BridgeHealth, error)
-	UpdateBridgeHealth(h db.BridgeHealth) error
+	ListNotifications() ([]NotificationWithState, error)
+	GetNotification(id string) (*NotificationWithState, error)
+	GetBridgeHealth() (*BridgeHealth, error)
+	UpdateBridgeHealth(h BridgeHealth) error
+}
+
+// Repository defines the full database capabilities required by the TUI and Services.
+type Repository interface {
+	SyncRepository
+	EnrichmentRepository
+	AlertRepository
+	
+	// Triage specific
+	MarkReadLocally(id string, isRead bool) error
+	ArchiveThread(id string) error
+	UnarchiveThread(id string) error
+	MuteThread(id string) error
+	UnmuteThread(id string) error
+	SetPriority(id string, priority int) error
 }

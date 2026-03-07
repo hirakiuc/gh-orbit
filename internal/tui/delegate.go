@@ -8,11 +8,11 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/dustin/go-humanize"
-	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 type item struct {
-	notification db.NotificationWithState
+	notification types.NotificationWithState
 }
 
 func (i item) Title() string       { return i.notification.SubjectTitle }

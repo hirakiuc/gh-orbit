@@ -15,11 +15,11 @@ func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 
 type stubNotifier struct{}
 
-func (s *stubNotifier) Notify(title, subtitle, body, url string, priority int) error {
+func (s *stubNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
 	return nil
 }
 
-func (s *stubNotifier) Shutdown() {}
+func (s *stubNotifier) Shutdown(ctx context.Context) {}
 
 func (s *stubNotifier) Warmup() {}
 

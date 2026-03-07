@@ -60,7 +60,7 @@ func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
 	return n
 }
 
-func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) error {
+func (m *macosNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
 	req := alertRequest{
 		title:    title,
 		subtitle: subtitle,
@@ -84,7 +84,7 @@ func (m *macosNotifier) Notify(title, subtitle, body, url string, priority int) 
 	return nil
 }
 
-func (m *macosNotifier) Shutdown() {
+func (m *macosNotifier) Shutdown(ctx context.Context) {
 	m.cancel()
 	m.wg.Wait()
 }
@@ -278,7 +278,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		
 		if err := cmd.Run(); err != nil {
-			m.logger.WarnContext(ctx, "osascript fallback failed", "error", err)
+			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
 		}
 	}()
 }

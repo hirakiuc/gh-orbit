@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	db "github.com/hirakiuc/gh-orbit/internal/db"
+	types "github.com/hirakiuc/gh-orbit/internal/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -21,23 +21,23 @@ func (_m *MockSyncRepository) EXPECT() *MockSyncRepository_Expecter {
 }
 
 // GetNotification provides a mock function with given fields: id
-func (_m *MockSyncRepository) GetNotification(id string) (*db.NotificationWithState, error) {
+func (_m *MockSyncRepository) GetNotification(id string) (*types.NotificationWithState, error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetNotification")
 	}
 
-	var r0 *db.NotificationWithState
+	var r0 *types.NotificationWithState
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*db.NotificationWithState, error)); ok {
+	if rf, ok := ret.Get(0).(func(string) (*types.NotificationWithState, error)); ok {
 		return rf(id)
 	}
-	if rf, ok := ret.Get(0).(func(string) *db.NotificationWithState); ok {
+	if rf, ok := ret.Get(0).(func(string) *types.NotificationWithState); ok {
 		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*db.NotificationWithState)
+			r0 = ret.Get(0).(*types.NotificationWithState)
 		}
 	}
 
@@ -68,34 +68,34 @@ func (_c *MockSyncRepository_GetNotification_Call) Run(run func(id string)) *Moc
 	return _c
 }
 
-func (_c *MockSyncRepository_GetNotification_Call) Return(_a0 *db.NotificationWithState, _a1 error) *MockSyncRepository_GetNotification_Call {
+func (_c *MockSyncRepository_GetNotification_Call) Return(_a0 *types.NotificationWithState, _a1 error) *MockSyncRepository_GetNotification_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSyncRepository_GetNotification_Call) RunAndReturn(run func(string) (*db.NotificationWithState, error)) *MockSyncRepository_GetNotification_Call {
+func (_c *MockSyncRepository_GetNotification_Call) RunAndReturn(run func(string) (*types.NotificationWithState, error)) *MockSyncRepository_GetNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetSyncMeta provides a mock function with given fields: userID, key
-func (_m *MockSyncRepository) GetSyncMeta(userID string, key string) (*db.SyncMeta, error) {
+func (_m *MockSyncRepository) GetSyncMeta(userID string, key string) (*types.SyncMeta, error) {
 	ret := _m.Called(userID, key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetSyncMeta")
 	}
 
-	var r0 *db.SyncMeta
+	var r0 *types.SyncMeta
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string) (*db.SyncMeta, error)); ok {
+	if rf, ok := ret.Get(0).(func(string, string) (*types.SyncMeta, error)); ok {
 		return rf(userID, key)
 	}
-	if rf, ok := ret.Get(0).(func(string, string) *db.SyncMeta); ok {
+	if rf, ok := ret.Get(0).(func(string, string) *types.SyncMeta); ok {
 		r0 = rf(userID, key)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*db.SyncMeta)
+			r0 = ret.Get(0).(*types.SyncMeta)
 		}
 	}
 
@@ -127,12 +127,12 @@ func (_c *MockSyncRepository_GetSyncMeta_Call) Run(run func(userID string, key s
 	return _c
 }
 
-func (_c *MockSyncRepository_GetSyncMeta_Call) Return(_a0 *db.SyncMeta, _a1 error) *MockSyncRepository_GetSyncMeta_Call {
+func (_c *MockSyncRepository_GetSyncMeta_Call) Return(_a0 *types.SyncMeta, _a1 error) *MockSyncRepository_GetSyncMeta_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSyncRepository_GetSyncMeta_Call) RunAndReturn(run func(string, string) (*db.SyncMeta, error)) *MockSyncRepository_GetSyncMeta_Call {
+func (_c *MockSyncRepository_GetSyncMeta_Call) RunAndReturn(run func(string, string) (*types.SyncMeta, error)) *MockSyncRepository_GetSyncMeta_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -184,7 +184,7 @@ func (_c *MockSyncRepository_MarkNotifiedBatch_Call) RunAndReturn(run func([]str
 }
 
 // UpdateSyncMeta provides a mock function with given fields: s
-func (_m *MockSyncRepository) UpdateSyncMeta(s db.SyncMeta) error {
+func (_m *MockSyncRepository) UpdateSyncMeta(s types.SyncMeta) error {
 	ret := _m.Called(s)
 
 	if len(ret) == 0 {
@@ -192,7 +192,7 @@ func (_m *MockSyncRepository) UpdateSyncMeta(s db.SyncMeta) error {
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(db.SyncMeta) error); ok {
+	if rf, ok := ret.Get(0).(func(types.SyncMeta) error); ok {
 		r0 = rf(s)
 	} else {
 		r0 = ret.Error(0)
@@ -207,14 +207,14 @@ type MockSyncRepository_UpdateSyncMeta_Call struct {
 }
 
 // UpdateSyncMeta is a helper method to define mock.On call
-//   - s db.SyncMeta
+//   - s types.SyncMeta
 func (_e *MockSyncRepository_Expecter) UpdateSyncMeta(s interface{}) *MockSyncRepository_UpdateSyncMeta_Call {
 	return &MockSyncRepository_UpdateSyncMeta_Call{Call: _e.mock.On("UpdateSyncMeta", s)}
 }
 
-func (_c *MockSyncRepository_UpdateSyncMeta_Call) Run(run func(s db.SyncMeta)) *MockSyncRepository_UpdateSyncMeta_Call {
+func (_c *MockSyncRepository_UpdateSyncMeta_Call) Run(run func(s types.SyncMeta)) *MockSyncRepository_UpdateSyncMeta_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.SyncMeta))
+		run(args[0].(types.SyncMeta))
 	})
 	return _c
 }
@@ -224,13 +224,13 @@ func (_c *MockSyncRepository_UpdateSyncMeta_Call) Return(_a0 error) *MockSyncRep
 	return _c
 }
 
-func (_c *MockSyncRepository_UpdateSyncMeta_Call) RunAndReturn(run func(db.SyncMeta) error) *MockSyncRepository_UpdateSyncMeta_Call {
+func (_c *MockSyncRepository_UpdateSyncMeta_Call) RunAndReturn(run func(types.SyncMeta) error) *MockSyncRepository_UpdateSyncMeta_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpsertNotification provides a mock function with given fields: n
-func (_m *MockSyncRepository) UpsertNotification(n db.Notification) error {
+func (_m *MockSyncRepository) UpsertNotification(n types.Notification) error {
 	ret := _m.Called(n)
 
 	if len(ret) == 0 {
@@ -238,7 +238,7 @@ func (_m *MockSyncRepository) UpsertNotification(n db.Notification) error {
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(db.Notification) error); ok {
+	if rf, ok := ret.Get(0).(func(types.Notification) error); ok {
 		r0 = rf(n)
 	} else {
 		r0 = ret.Error(0)
@@ -253,14 +253,14 @@ type MockSyncRepository_UpsertNotification_Call struct {
 }
 
 // UpsertNotification is a helper method to define mock.On call
-//   - n db.Notification
+//   - n types.Notification
 func (_e *MockSyncRepository_Expecter) UpsertNotification(n interface{}) *MockSyncRepository_UpsertNotification_Call {
 	return &MockSyncRepository_UpsertNotification_Call{Call: _e.mock.On("UpsertNotification", n)}
 }
 
-func (_c *MockSyncRepository_UpsertNotification_Call) Run(run func(n db.Notification)) *MockSyncRepository_UpsertNotification_Call {
+func (_c *MockSyncRepository_UpsertNotification_Call) Run(run func(n types.Notification)) *MockSyncRepository_UpsertNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.Notification))
+		run(args[0].(types.Notification))
 	})
 	return _c
 }
@@ -270,7 +270,7 @@ func (_c *MockSyncRepository_UpsertNotification_Call) Return(_a0 error) *MockSyn
 	return _c
 }
 
-func (_c *MockSyncRepository_UpsertNotification_Call) RunAndReturn(run func(db.Notification) error) *MockSyncRepository_UpsertNotification_Call {
+func (_c *MockSyncRepository_UpsertNotification_Call) RunAndReturn(run func(types.Notification) error) *MockSyncRepository_UpsertNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }

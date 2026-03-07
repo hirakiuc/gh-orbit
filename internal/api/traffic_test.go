@@ -60,7 +60,7 @@ func TestTrafficController_RateLimitGuard(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tc := NewAPITrafficController(ctx, logger)
-	tc.UpdateRateLimit(100) // Below default threshold (500)
+	tc.UpdateRateLimit(ctx, 100) // Below default threshold (500)
 
 	var enriched bool
 	cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
