@@ -3,33 +3,37 @@
 ## 1. Core Principles & Tech Stack
 
 - **Local-First**: Prioritize local SQLite (`modernc.org/sqlite`, CGO-free) over API polling.
-- **TUI-Centric**: Use `bubbletea`, `bubbles`, and `lipgloss` for all UI.
-- **Zero-Config**: Use `go-gh/v2` for auth; no manual PATs.
-- **Platform Native**: Follow XDG spec for persistence:
-    - **Config**: `~/.config/gh/extensions/gh-orbit/`
-    - **Data/DB/Logs**: `~/.local/state/gh-orbit/`
-- **Secure**: NEVER commit secrets/tokens. Redact sensitive data from logs.
+- **TUI-Centric**: Use `bubbletea`, `bubbles`, and `lipgloss` for all user interactions.
+- **Observability**: Every action must be traced via `go.opentelemetry.io/otel`.
+- **Zero-Config**: Credentials should be inherited from the `gh` host environment.
 
-## 2. Development Workflow
+## 2. Standard Operating Procedures (SOPs)
 
 ### 2.1 Task Cycle
-1. **Sync**: `git pull origin main`.
-2. **Plan**: Mandatory [Strategy Review](.agent/workflows/strategy-review/WORKFLOW.md). **SIGN-OFF** required before `internal/` or `cmd/` changes.
-3. **Branch**: `feat/` or `fix/`.
-4. **Code**: Conventional commits. Include appropriate co-author attribution for the AI tool being used.
-5. **Validate**: MANDATORY local check: `make fmt lint build test`. Run `go mod tidy` on dependency changes.
-6. **PR**: `gh pr create --base main`. Address feedback.
+
+1. **Sync**: `git pull origin main` before starting any task.
+2. **Verify**: Run `make build test lint` to establish a baseline.
+3. **Implement**: Follow the Roadmap in `.agent/implementation_plan.md`.
+4. **Validate**: Run `make generate test lint` after every major change.
+5. **Audit**: Run `gh orbit doctor` to verify environment health.
 
 ### 2.2 Proactiveness & Agreements
-- **Approvals**: Mandatory user agreement before any merge or destructive action.
-- **Roadmap**: Refer to `.agent/implementation_plan.md`. Suggest next task on completion.
-- **Clarity**: Explain intent before executing critical shell commands.
 
-## 3. Testing Strategy
+- **Approvals**: Mandatory use of `ask_user` for:
+    - Destructive operations (e.g., clearing local database).
+    - Strategic changes that deviate from the Implementation Plan.
+    - Adding new external dependencies.
+- **Attribution**: All commits must include:
+    `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
 
-- Use the testify for asserting in test cases.
-  - For assertions of prerequisites in test cases, use `require` so that the test fails if the prerequisite is not met immediately.
-  - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
+## 3. Implementation Patterns
+
+- **Dependency Injection**: Always use interface-based DI for service orchestration.
+- **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
+- **Hardened SQLite**: Use WAL mode and foreign keys for all local storage.
+- **Testing**: Use the `testify` for asserting in test cases.
+    - For assertions of prerequisites in test cases, use `require` so that the test stops if the prerequisite is not met.
+    - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
 - Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
 
 ## 4. Reliability & Precision Rules
