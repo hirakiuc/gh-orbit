@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"log/slog"
+	"os"
 	"testing"
 
 	"charm.land/lipgloss/v2"
@@ -20,7 +21,7 @@ import (
 
 func newTestModel(t testing.TB) *Model {
 	cfg := &config.Config{}
-	logger := slog.Default()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	userID := "test-user"
 
 	// Mock engines via the new centralized interfaces
@@ -156,11 +157,11 @@ func TestModel_MarkRead(t *testing.T) {
 	mockClient := m.client.(*mocks.MockGitHubClient)
 	mockTraffic := m.traffic.(*mocks.MockTrafficController)
 	
-	// TUI actions now route through Traffic Controller
-	mockTraffic.EXPECT().Submit(mock.Anything, mock.Anything).RunAndReturn(func(priority int, fn func(context.Context) tea.Msg) tea.Cmd {
+	mockTraffic.EXPECT().Submit(mock.Anything, mock.MatchedBy(func(fn interface{}) bool { return true })).RunAndReturn(func(priority int, fn interface{}) tea.Cmd {
 		return func() tea.Msg {
-			// Actually execute the function to trigger expectations
-			_ = fn(context.Background())
+			if f, ok := fn.(func(context.Context) tea.Msg); ok {
+				return f(context.Background())
+			}
 			return nil
 		}
 	}).Once()

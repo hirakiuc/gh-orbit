@@ -217,11 +217,13 @@ type Alerter interface {
 
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
-	Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd
+	Submit(priority int, fn interface{}) tea.Cmd
 	UpdateRateLimit(ctx context.Context, remaining int)
 	Remaining() int
 	Shutdown(ctx context.Context)
 }
+
+
 
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {

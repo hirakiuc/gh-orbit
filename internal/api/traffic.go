@@ -160,8 +160,18 @@ func (c *APITrafficController) Shutdown(ctx context.Context) {
 }
 
 // Submit wraps an API operation in a serialized, prioritized command.
-func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context) tea.Msg) tea.Cmd {
+func (c *APITrafficController) Submit(priority int, fn interface{}) tea.Cmd {
 	return func() tea.Msg {
+		var taskFn func(context.Context) tea.Msg
+		if f, ok := fn.(func(context.Context) tea.Msg); ok {
+			taskFn = f
+		} else if f, ok := fn.(func(ctx context.Context) tea.Msg); ok {
+			taskFn = f
+		} else {
+			c.logger.Warn("traffic controller: incompatible task signature", "type", fmt.Sprintf("%T", fn))
+			return nil
+		}
+
 		c.mu.Lock()
 		c.taskCounter++
 		id := c.taskCounter
@@ -170,7 +180,7 @@ func (c *APITrafficController) Submit(priority int, fn func(ctx context.Context)
 		task := &apiTask{
 			id:       id,
 			priority: priority,
-			fn:       fn,
+			fn:       taskFn,
 			resp:     make(chan tea.Msg, 1),
 			ctx:      c.ctx, // Carry root application context for trace linkage
 		}

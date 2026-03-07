@@ -32,13 +32,13 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(ctx context.Context, cfg *config.Config, database AlertRepository, logger *slog.Logger) *AlertService {
+func NewAlertService(cfg *config.Config, database AlertRepository, native Notifier, fallback Notifier, logger *slog.Logger) *AlertService {
 	return &AlertService{
 		config:         cfg,
 		db:             database,
 		logger:         logger,
-		native:         NewPlatformNotifier(ctx, logger),
-		fallback:       NewBeeepNotifier(logger),
+		native:         native,
+		fallback:       fallback,
 		syncRepoCounts: make(map[string]int),
 	}
 }

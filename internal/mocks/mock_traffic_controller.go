@@ -101,7 +101,7 @@ func (_c *MockTrafficController_Shutdown_Call) RunAndReturn(run func(context.Con
 }
 
 // Submit provides a mock function with given fields: priority, fn
-func (_m *MockTrafficController) Submit(priority int, fn func(context.Context) tea.Msg) tea.Cmd {
+func (_m *MockTrafficController) Submit(priority int, fn interface{}) tea.Cmd {
 	ret := _m.Called(priority, fn)
 
 	if len(ret) == 0 {
@@ -109,7 +109,7 @@ func (_m *MockTrafficController) Submit(priority int, fn func(context.Context) t
 	}
 
 	var r0 tea.Cmd
-	if rf, ok := ret.Get(0).(func(int, func(context.Context) tea.Msg) tea.Cmd); ok {
+	if rf, ok := ret.Get(0).(func(int, interface{}) tea.Cmd); ok {
 		r0 = rf(priority, fn)
 	} else {
 		if ret.Get(0) != nil {
@@ -127,14 +127,14 @@ type MockTrafficController_Submit_Call struct {
 
 // Submit is a helper method to define mock.On call
 //   - priority int
-//   - fn func(context.Context) tea.Msg
+//   - fn interface{}
 func (_e *MockTrafficController_Expecter) Submit(priority interface{}, fn interface{}) *MockTrafficController_Submit_Call {
 	return &MockTrafficController_Submit_Call{Call: _e.mock.On("Submit", priority, fn)}
 }
 
-func (_c *MockTrafficController_Submit_Call) Run(run func(priority int, fn func(context.Context) tea.Msg)) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) Run(run func(priority int, fn interface{})) *MockTrafficController_Submit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int), args[1].(func(context.Context) tea.Msg))
+		run(args[0].(int), args[1].(interface{}))
 	})
 	return _c
 }
@@ -144,7 +144,7 @@ func (_c *MockTrafficController_Submit_Call) Return(_a0 tea.Cmd) *MockTrafficCon
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, func(context.Context) tea.Msg) tea.Cmd) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, interface{}) tea.Cmd) *MockTrafficController_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }
