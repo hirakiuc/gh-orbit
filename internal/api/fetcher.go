@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,15 @@ type Client struct {
 
 // NewClient initializes a new GitHub API client using go-gh.
 func NewClient() (*Client, error) {
+	// Bypass auth for E2E testing
+	if os.Getenv("GH_ORBIT_SKIP_AUTH") == "1" {
+		return &Client{
+			host:    "localhost",
+			baseURL: os.Getenv("GH_ORBIT_API_URL"),
+			http:    &http.Client{},
+		}, nil
+	}
+
 	host, _ := auth.DefaultHost()
 
 	opts := gh.ClientOptions{
@@ -56,6 +66,11 @@ func NewClient() (*Client, error) {
 		baseURL = fmt.Sprintf("https://%s/api/v3/", host)
 	}
 
+	// Override for E2E testing
+	if mockURL := os.Getenv("GH_ORBIT_API_URL"); mockURL != "" {
+		baseURL = mockURL
+	}
+
 	return &Client{
 		rest:    rest,
 		gql:     gql,
@@ -67,6 +82,20 @@ func NewClient() (*Client, error) {
 
 // CurrentUser retrieves the authenticated user's information.
 func (c *Client) CurrentUser(ctx context.Context) (*GHUser, error) {
+	if os.Getenv("GH_ORBIT_SKIP_AUTH") == "1" {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"user", nil)
+		resp, err := c.http.Do(req) // #nosec G704: Trusted E2E mock URL
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var user GHUser
+		if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+			return nil, err
+		}
+		return &user, nil
+	}
+
 	var user GHUser
 	// Best Practice: Use DoWithContext for context propagation in go-gh
 	err := c.rest.DoWithContext(ctx, http.MethodGet, "user", nil, &user)
@@ -78,6 +107,17 @@ func (c *Client) CurrentUser(ctx context.Context) (*GHUser, error) {
 
 // MarkThreadAsRead marks a single notification thread as read.
 func (c *Client) MarkThreadAsRead(ctx context.Context, threadID string) error {
+	if os.Getenv("GH_ORBIT_SKIP_AUTH") == "1" {
+		path := fmt.Sprintf("%snotifications/threads/%s", c.baseURL, threadID)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPatch, path, nil)
+		resp, err := c.http.Do(req) // #nosec G704: Trusted E2E mock URL
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		return nil
+	}
+
 	path := fmt.Sprintf("notifications/threads/%s", threadID)
 	// Best Practice: Use DoWithContext for context propagation in go-gh
 	return c.rest.DoWithContext(ctx, http.MethodPatch, path, nil, nil)

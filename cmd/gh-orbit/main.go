@@ -36,6 +36,7 @@ var (
 var (
 	doctorJSON bool
 	doctorTest bool
+	testMode   bool
 )
 
 var rootCmd = &cobra.Command{
@@ -66,6 +67,7 @@ var doctorCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")
+	rootCmd.PersistentFlags().BoolVar(&testMode, "gh-orbit-test-mode", false, "enable headless test mode")
 	
 	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "output report in JSON format")
 	doctorCmd.Flags().BoolVar(&doctorTest, "test", false, "trigger a test notification")
@@ -104,6 +106,10 @@ func runDoctor() error {
 	dataPath, _ := config.ResolveDataDir()
 	statePath, _ := config.ResolveStateDir()
 	tracePath, _ := config.ResolveTracePath()
+	
+	// Proactively ensure data directory exists for persistence reports
+	_ = config.EnsurePrivateDir(dataPath)
+	_ = config.EnsurePrivateDir(statePath)
 	
 	totalSize := getDirSize(dataPath) + getDirSize(statePath)
 	if totalSize < 0 { totalSize = 0 }
@@ -396,7 +402,20 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 		tui.WithVersion(version),
 	)
 
-	p := tea.NewProgram(m)
+	var opts []tea.ProgramOption
+	if testMode {
+		opts = append(opts, tea.WithInput(nil), tea.WithOutput(os.Stderr))
+	}
+
+	p := tea.NewProgram(m, opts...)
+
+	// Headless Test Mode: Quit immediately after starting
+	if testMode {
+		go func() {
+			time.Sleep(1 * time.Second) // Give it a moment to run initial commands
+			p.Quit()
+		}()
+	}
 
 	// Context Handling
 	go func() {

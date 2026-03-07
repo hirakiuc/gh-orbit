@@ -89,4 +89,7 @@ bin/
 # Logs
 *.log
 logs/
-gh-orbit
+coverage.out
+coverage.html
+artifacts/
+/bin/gh-orbit
