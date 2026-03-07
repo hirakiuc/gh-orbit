@@ -131,6 +131,13 @@ type PersistenceReport struct {
 	CacheSize  string `json:"cache_size"`
 }
 
+// ConfigReport represents the health of the application configuration.
+type ConfigReport struct {
+	Version int    `json:"version"`
+	Status  string `json:"status"` // Valid, Invalid, Missing
+	Error   string `json:"error,omitempty"`
+}
+
 // DoctorReport represents the full environment diagnostic report.
 type DoctorReport struct {
 	SchemaVersion int               `json:"schema_version"`
@@ -143,6 +150,7 @@ type DoctorReport struct {
 	FocusMode     string            `json:"focus_mode"`
 	BridgeStatus  BridgeStatus      `json:"bridge_status"`
 	Persistence   PersistenceReport `json:"persistence"`
+	Config        ConfigReport      `json:"config"`
 	Checks        []BridgeCheck     `json:"checks"`
 }
 

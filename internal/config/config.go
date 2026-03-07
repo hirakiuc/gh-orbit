@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 
 // Config represents the application configuration.
 type Config struct {
+	Version       int                 `yaml:"version"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Enrichment    EnrichmentConfig    `yaml:"enrichment"`
 }
@@ -36,6 +38,7 @@ type NotificationsConfig struct {
 // DefaultConfig returns the default configuration values.
 func DefaultConfig() *Config {
 	return &Config{
+		Version: 1,
 		Notifications: NotificationsConfig{
 			Enabled:      true,
 			Mute:         false,
@@ -49,6 +52,30 @@ func DefaultConfig() *Config {
 			BatchSize:   20,
 		},
 	}
+}
+
+// Validate ensures the configuration values are within safe logical boundaries.
+func (c *Config) Validate() error {
+	// 1. Version Check
+	if c.Version < 1 {
+		return fmt.Errorf("config version must be >= 1, got %d", c.Version)
+	}
+
+	// 2. Notifications Validation
+	if c.Notifications.SyncInterval < 10 || c.Notifications.SyncInterval > 3600 {
+		return fmt.Errorf("notifications.sync_interval must be between 10 and 3600 seconds, got %d", c.Notifications.SyncInterval)
+	}
+
+	// 3. Enrichment Validation
+	if c.Enrichment.DebounceMS < 50 || c.Enrichment.DebounceMS > 5000 {
+		return fmt.Errorf("enrichment.debounce_ms must be between 50 and 5000ms, got %d", c.Enrichment.DebounceMS)
+	}
+
+	if c.Enrichment.Concurrency < 1 || c.Enrichment.Concurrency > 10 {
+		return fmt.Errorf("enrichment.concurrency must be between 1 and 10, got %d", c.Enrichment.Concurrency)
+	}
+
+	return nil
 }
 
 // Load loads the configuration from the XDG config directory.
@@ -76,12 +103,24 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	// Strict Schema Enforcement:
+	// 1. Initialize with defaults to handle missing fields
+	cfg := DefaultConfig()
+	
+	// 2. Use Decoder with KnownFields(true) to catch typos
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+
+	if err := dec.Decode(cfg); err != nil {
+		return nil, fmt.Errorf("invalid config.yml (check for typos): %w", err)
 	}
 
-	return &cfg, nil
+	// 3. Semantic Validation
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return cfg, nil
 }
 
 // Save saves the current configuration to disk.
