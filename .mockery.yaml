@@ -9,11 +9,11 @@ resolve-type-alias: false
 disable-version-string: true
 
 packages:
-  github.com/hirakiuc/gh-orbit/internal/api:
+  github.com/hirakiuc/gh-orbit/internal/types:
     config:
-      dir: internal/api/mocks
+      # Generate mocks in internal/mocks from the neutral types package
+      dir: internal/mocks
       outpkg: mocks
-      # Use template with snakecase function per v2.53 docs
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     
     interfaces:

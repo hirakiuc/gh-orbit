@@ -10,6 +10,11 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -17,86 +22,81 @@ func TestParseLinkHeader(t *testing.T) {
 	header := `<https://api.github.com/resource?page=2>; rel="next", <https://api.github.com/resource?page=5>; rel="last"`
 	links := parseLinkHeader(header)
 
-	if links["next"] != "https://api.github.com/resource?page=2" {
-		t.Errorf("Expected next link, got %s", links["next"])
-	}
-	if links["last"] != "https://api.github.com/resource?page=5" {
-		t.Errorf("Expected last link, got %s", links["last"])
-	}
-}
-
-type mockFetcher struct {
-	notifs []GHNotification
-	meta   *db.SyncMeta
-	err    error
-	called bool
-}
-
-func (m *mockFetcher) FetchNotifications(ctx context.Context, meta *db.SyncMeta, force bool) ([]GHNotification, *db.SyncMeta, int, error) {
-	m.called = true
-	return m.notifs, m.meta, 5000, m.err
+	assert.Equal(t, "https://api.github.com/resource?page=2", links["next"])
+	assert.Equal(t, "https://api.github.com/resource?page=5", links["last"])
 }
 
 func TestSyncEngine_Sync(t *testing.T) {
-	logger := slog.Default()
 	ctx := context.Background()
-	database, err := db.OpenInMemory(ctx, logger)
-	if err != nil {
-		t.Fatalf("Failed to open test db: %v", err)
-	}
-	defer func() { _ = database.Close() }()
-
+	logger := slog.Default()
 	userID := "user-1"
-	notifs := []GHNotification{
-		{ID: "1", Subject: struct {
-			Title  string `json:"title"`
-			URL    string `json:"url"`
-			Type   string `json:"type"`
-			NodeID string `json:"node_id"`
-		}{Title: "T1", URL: "U1", Type: "PullRequest", NodeID: "N1"}, Reason: "mention", Repository: struct {
-			FullName string `json:"full_name"`
-		}{FullName: "R1"}, UpdatedAt: time.Now()},
-	}
 
-	fetcher := &mockFetcher{
-		notifs: notifs,
-		meta: &db.SyncMeta{
+	t.Run("Successful Initial Sync", func(t *testing.T) {
+		mockFetcher := mocks.NewMockFetcher(t)
+		mockRepo := mocks.NewMockSyncRepository(t)
+
+		initialMeta := &db.SyncMeta{UserID: userID, Key: "notifications", PollInterval: 60}
+		notifs := []types.GHNotification{
+			{ID: "1", UpdatedAt: time.Now()},
+		}
+
+		// Expectations
+		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(nil, nil).Once()
+		// Use mock.Anything for context because OTel starts a span, changing the context value
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, initialMeta, true).Return(notifs, initialMeta, 5000, nil).Once()
+		mockRepo.EXPECT().UpsertNotification(mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().GetNotification("1").Return(&db.NotificationWithState{}, nil).Once()
+		mockRepo.EXPECT().MarkNotifiedBatch([]string{"1"}).Return(nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+
+		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		remaining, err := engine.Sync(ctx, userID, true)
+
+		require.NoError(t, err)
+		assert.Equal(t, 5000, remaining)
+	})
+
+	t.Run("Skips Sync When Interval Not Reached", func(t *testing.T) {
+		mockFetcher := mocks.NewMockFetcher(t)
+		mockRepo := mocks.NewMockSyncRepository(t)
+
+		recentMeta := &db.SyncMeta{
 			UserID:       userID,
 			Key:          "notifications",
 			PollInterval: 60,
-		},
-	}
+			LastSyncAt:   time.Now(),
+		}
 
-	engine := NewSyncEngine(context.Background(), fetcher, database, nil, logger)
+		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(recentMeta, nil).Once()
 
-	// 1. Initial Sync (Force=true)
-	if _, err := engine.Sync(context.Background(), userID, true); err != nil {
-		t.Fatalf("Initial sync failed: %v", err)
-	}
+		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		_, err := engine.Sync(ctx, userID, false)
 
-	// Verify persistence
-	list, _ := database.ListNotifications()
-	if len(list) != 1 {
-		t.Errorf("Expected 1 notification, got %d", len(list))
-	}
+		require.NoError(t, err)
+		// mockFetcher.FetchNotifications should NOT be called
+	})
 
-	// 2. Automated Sync too soon (Force=false)
-	fetcher.called = false
-	if _, err := engine.Sync(context.Background(), userID, false); err != nil {
-		t.Fatalf("Second sync failed: %v", err)
-	}
-	if fetcher.called {
-		t.Error("Expected automated sync to be skipped due to interval")
-	}
+	t.Run("Forces Sync Even if Interval Not Reached", func(t *testing.T) {
+		mockFetcher := mocks.NewMockFetcher(t)
+		mockRepo := mocks.NewMockSyncRepository(t)
 
-	// 3. Forced Sync (Force=true)
-	fetcher.called = false
-	if _, err := engine.Sync(context.Background(), userID, true); err != nil {
-		t.Fatalf("Forced sync failed: %v", err)
-	}
-	if !fetcher.called {
-		t.Error("Expected forced sync to bypass interval check")
-	}
+		recentMeta := &db.SyncMeta{
+			UserID:       userID,
+			Key:          "notifications",
+			PollInterval: 60,
+			LastSyncAt:   time.Now(),
+		}
+
+		mockRepo.EXPECT().GetSyncMeta(userID, "notifications").Return(recentMeta, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, 4999, nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+
+		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, logger)
+		remaining, err := engine.Sync(ctx, userID, true)
+
+		require.NoError(t, err)
+		assert.Equal(t, 4999, remaining)
+	})
 }
 
 func TestConditionalRequest(t *testing.T) {
@@ -106,7 +106,7 @@ func TestConditionalRequest(t *testing.T) {
 			return
 		}
 		w.Header().Set("ETag", "etag-123")
-		_ = json.NewEncoder(w).Encode([]GHNotification{})
+		_ = json.NewEncoder(w).Encode([]types.GHNotification{})
 	}))
 	defer ts.Close()
 
@@ -119,50 +119,51 @@ func TestConditionalRequest(t *testing.T) {
 	meta := &db.SyncMeta{ETag: "etag-123"}
 	
 	_, _, _, err := fetcher.FetchNotifications(context.Background(), meta, false)
-	if err != nil {
-		t.Fatalf("Fetch failed: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestETagSanitization(t *testing.T) {
-	// 1. Verify Fetcher ignores invalid ETags
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("ETag", `W/""`) // Corrupted header
-		_ = json.NewEncoder(w).Encode([]GHNotification{})
-	}))
-	defer ts.Close()
+	t.Run("Fetcher Ignores Invalid ETags", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("ETag", `W/""`) // Corrupted header
+			_ = json.NewEncoder(w).Encode([]types.GHNotification{})
+		}))
+		defer ts.Close()
 
-	client := &Client{http: ts.Client(), baseURL: ts.URL + "/"}
-	fetcher := NewNotificationFetcher(client, slog.Default())
-	
-	meta := &db.SyncMeta{ETag: "old-etag"}
-	_, newMeta, _, _ := fetcher.FetchNotifications(context.Background(), meta, false)
-	
-	if newMeta.ETag == `W/""` {
-		t.Error("Fetcher should have ignored the invalid W/\"\" ETag")
-	}
-	if newMeta.ETag != "old-etag" {
-		t.Errorf("Fetcher should have preserved the old ETag, got %s", newMeta.ETag)
-	}
-
-	// 2. Verify SyncEngine self-heals
-	logger := slog.Default()
-	ctx := context.Background()
-	database, _ := db.OpenInMemory(ctx, logger)
-	defer func() { _ = database.Close() }()
-
-	userID := "user-1"
-	_ = database.UpdateSyncMeta(db.SyncMeta{
-		UserID: userID,
-		Key:    "notifications",
-		ETag:   `W/""`, // Seed with corrupted data
+		client := &Client{http: ts.Client(), baseURL: ts.URL + "/"}
+		fetcher := NewNotificationFetcher(client, slog.Default())
+		
+		meta := &db.SyncMeta{ETag: "old-etag"}
+		_, newMeta, _, _ := fetcher.FetchNotifications(context.Background(), meta, false)
+		
+		assert.NotEqual(t, `W/""`, newMeta.ETag)
+		assert.Equal(t, "old-etag", newMeta.ETag)
 	})
 
-	engine := NewSyncEngine(context.Background(), fetcher, database, nil, logger)
-	_, _ = engine.Sync(context.Background(), userID, true)
+	t.Run("SyncEngine Self-Heals Corrupted ETag", func(t *testing.T) {
+		ctx := context.Background()
+		mockFetcher := mocks.NewMockFetcher(t)
+		mockRepo := mocks.NewMockSyncRepository(t)
 
-	finalMeta, _ := database.GetSyncMeta(userID, "notifications")
-	if finalMeta.ETag == `W/""` {
-		t.Error("SyncEngine failed to self-heal the corrupted ETag in database")
-	}
+		corruptedMeta := &db.SyncMeta{
+			UserID: "user-1",
+			Key:    "notifications",
+			ETag:   `W/""`,
+		}
+
+		// Initial expectation: returns corrupted meta
+		mockRepo.EXPECT().GetSyncMeta("user-1", "notifications").Return(corruptedMeta, nil).Once()
+		
+		// The engine should clear the ETag before passing it to Fetcher
+		healedMeta := *corruptedMeta
+		healedMeta.ETag = ""
+		
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, &healedMeta, true).Return(nil, &healedMeta, 5000, nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything).Return(nil).Once()
+
+		engine := NewSyncEngine(ctx, mockFetcher, mockRepo, nil, slog.Default())
+		_, err := engine.Sync(ctx, "user-1", true)
+		
+		require.NoError(t, err)
+	})
 }

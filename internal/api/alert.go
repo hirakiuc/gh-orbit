@@ -15,15 +15,6 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
-// Notifier defines the interface for delivering system notifications.
-type Notifier interface {
-	Notify(title, subtitle, body, url string, priority int) error
-	Shutdown()
-	Status() BridgeStatus
-	Warmup() // Proactive health check
-	Ready() <-chan struct{}
-}
-
 // AlertService coordinates the logic for when and how to send system alerts.
 type AlertService struct {
 	ctx      context.Context

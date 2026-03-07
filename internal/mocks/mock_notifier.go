@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	api "github.com/hirakiuc/gh-orbit/internal/api"
+	types "github.com/hirakiuc/gh-orbit/internal/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -150,18 +150,18 @@ func (_c *MockNotifier_Shutdown_Call) RunAndReturn(run func()) *MockNotifier_Shu
 }
 
 // Status provides a mock function with no fields
-func (_m *MockNotifier) Status() api.BridgeStatus {
+func (_m *MockNotifier) Status() types.BridgeStatus {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for Status")
 	}
 
-	var r0 api.BridgeStatus
-	if rf, ok := ret.Get(0).(func() api.BridgeStatus); ok {
+	var r0 types.BridgeStatus
+	if rf, ok := ret.Get(0).(func() types.BridgeStatus); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(api.BridgeStatus)
+		r0 = ret.Get(0).(types.BridgeStatus)
 	}
 
 	return r0
@@ -184,12 +184,12 @@ func (_c *MockNotifier_Status_Call) Run(run func()) *MockNotifier_Status_Call {
 	return _c
 }
 
-func (_c *MockNotifier_Status_Call) Return(_a0 api.BridgeStatus) *MockNotifier_Status_Call {
+func (_c *MockNotifier_Status_Call) Return(_a0 types.BridgeStatus) *MockNotifier_Status_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockNotifier_Status_Call) RunAndReturn(run func() api.BridgeStatus) *MockNotifier_Status_Call {
+func (_c *MockNotifier_Status_Call) RunAndReturn(run func() types.BridgeStatus) *MockNotifier_Status_Call {
 	_c.Call.Return(run)
 	return _c
 }
