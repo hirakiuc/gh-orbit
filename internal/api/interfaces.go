@@ -18,6 +18,7 @@ const (
 )
 
 type BridgeCheck = types.BridgeCheck
+type PersistenceReport = types.PersistenceReport
 type DoctorReport = types.DoctorReport
 type EnrichmentResult = types.EnrichmentResult
 
