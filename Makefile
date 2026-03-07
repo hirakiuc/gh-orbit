@@ -16,8 +16,9 @@ build:
 
 coverage:
 	go test -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated at coverage.html"
+	grep -vE "mock_|types/|cmd/gh-orbit" coverage.out > coverage.filtered.out
+	go tool cover -html=coverage.filtered.out -o coverage.html
+	@echo "Coverage report generated at coverage.html (filtered)"
 
 artifacts:
 	@mkdir -p artifacts
