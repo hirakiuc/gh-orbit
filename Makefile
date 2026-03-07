@@ -36,8 +36,8 @@ fmt:
 	gofumpt -l -w .
 
 generate:
-	@echo "Generating mocks..."
-	@go run github.com/vektra/mockery/v2 --all --dir internal/api --output internal/api/mocks --case underscore
+	@echo "Generating mocks using packages configuration..."
+	@go run github.com/vektra/mockery/v2
 
 serena:
 	@echo "Starting Serena MCP server..."
