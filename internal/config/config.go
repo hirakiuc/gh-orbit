@@ -201,6 +201,15 @@ func ResolveStateDir() (string, error) {
 	return filepath.Join(dir, "gh-orbit"), nil
 }
 
+// ResolveTracePath returns the path to orbit.traces.json (XDG_STATE_HOME/gh-orbit/orbit.traces.json).
+func ResolveTracePath() (string, error) {
+	dir, err := ResolveStateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "orbit.traces.json"), nil
+}
+
 func resolveXDG(env, fallbackRel string) (string, error) {
 	val := os.Getenv(env)
 	if val != "" {

@@ -128,6 +128,7 @@ type PersistenceReport struct {
 	ConfigPath string `json:"config_path"`
 	DataPath   string `json:"data_path"`
 	StatePath  string `json:"state_path"`
+	TracePath  string `json:"trace_path"`
 	CacheSize  string `json:"cache_size"`
 }
 

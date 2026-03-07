@@ -103,6 +103,7 @@ func runDoctor() error {
 	confPath, _ := config.ResolveConfigPath()
 	dataPath, _ := config.ResolveDataDir()
 	statePath, _ := config.ResolveStateDir()
+	tracePath, _ := config.ResolveTracePath()
 	
 	totalSize := getDirSize(dataPath) + getDirSize(statePath)
 	if totalSize < 0 { totalSize = 0 }
@@ -111,6 +112,7 @@ func runDoctor() error {
 		ConfigPath: confPath,
 		DataPath:   dataPath,
 		StatePath:  statePath,
+		TracePath:  tracePath,
 		CacheSize:  humanize.Bytes(uint64(totalSize)), // #nosec G115: conversion checked above
 	}
 
@@ -219,6 +221,7 @@ func runDoctor() error {
 	fmt.Printf("  Config: %s\n", report.Persistence.ConfigPath)
 	fmt.Printf("  Data:   %s\n", report.Persistence.DataPath)
 	fmt.Printf("  State:  %s\n", report.Persistence.StatePath)
+	fmt.Printf("  Traces: %s\n", report.Persistence.TracePath)
 	
 	usageColor := "" // Default
 	if totalSize > 100*1024*1024 { // > 100MB
