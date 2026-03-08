@@ -59,9 +59,27 @@ We employ a **Hybrid Testing Model** to balance speed with fidelity:
 - **Data Persistence**: Tested against a **Real In-Memory SQLite** database (`modernc.org/sqlite`) to ensure SQL query accuracy without disk side-effects.
 - **TUI Visuals**: Unit tests for the `Model.Update` loop and rendering components using `testify/assert`.
 
+## 5. Testing & Mocking Standards
+
+### 5.1 Bubble Tea v2 Type Aliasing (The "Ghost Type" Problem)
+
+In Bubble Tea v2, `tea.Msg` is an alias for `uv.Event` (from the `ultraviolet` package). Because `mockery` and Go reflection often resolve aliases to their underlying types, this can create mismatches in generated mocks where a method expecting `tea.Msg` is generated as expecting `uv.Event`.
+
+To resolve this without polluting the codebase with framework-internal types, we use **Mockery Customization**:
+
+1.  **Stable Aliases**: Define a stable alias in `internal/types` (e.g., `type TaskFunc func(context.Context) tea.Msg`).
+2.  **Type Mapping**: Use the `replace-type` feature in `.mockery.yaml` to force the generator to use the public `tea.Msg` name:
+    ```yaml
+    replace-type:
+      - "charm.land/bubbletea/v2/internal/uv.Event=tea:charm.land/bubbletea/v2.Msg"
+    ```
+3.  **Alias Resolution**: Set `resolve-type-alias: true` in `.mockery.yaml` to ensure the generator respects named aliases like `TaskFunc`.
+
+This pattern ensures that our interfaces remain clean and that tests can use standard Bubble Tea types while maintaining full mock compatibility.
+
 ---
 
-## 5. Development Principles
+## 6. Development Principles
 
 - **Doc-First**: Run `go doc` before implementing external library calls.
 - **Fail-Fast**: Configuration errors and permission failures are reported immediately on startup.
