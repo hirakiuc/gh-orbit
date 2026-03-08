@@ -9,6 +9,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestRenderFooter(t *testing.T) {
@@ -27,6 +28,13 @@ func TestRenderFooter(t *testing.T) {
 	f2 := stripANSI(view.Content)
 	assert.Contains(t, f2, "Error: api error")
 	
+	// 3. Filter info
+	m.err = nil
+	m.ui.SetSyncing(false)
+	m.ui.SetResourceFilter("PRs")
+	f3 := stripANSI(m.renderFooter())
+	assert.Contains(t, f3, "PRs")
+
 	// 4. Other bridge states
 	states := []struct {
 		status   api.BridgeStatus
@@ -46,16 +54,8 @@ func TestRenderFooter(t *testing.T) {
 }
 
 func TestRenderHeader(t *testing.T) {
-	styles := DefaultStyles(true)
-	mockTraffic := mocks.NewMockTrafficController(t)
-	mockTraffic.EXPECT().Remaining().Return(4999).Maybe()
-
-	m := Model{
-		styles:  styles,
-		ui:      NewUIController(styles),
-		traffic: mockTraffic,
-		width:   80,
-	}
+	m := newTestModel(t)
+	m.width = 80
 
 	out := m.renderHeader()
 	stripped := stripANSI(out)
@@ -63,7 +63,7 @@ func TestRenderHeader(t *testing.T) {
 	// Verify tabs are present
 	assert.Contains(t, stripped, "Inbox")
 	assert.Contains(t, stripped, "Unread")
-	assert.Contains(t, stripped, "Rate: 4999")
+	assert.Contains(t, stripped, "Rate: 5000")
 }
 
 func TestRenderMarkdown(t *testing.T) {
@@ -81,6 +81,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 func TestRenderDetailView(t *testing.T) {
 	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 	m.width = 100
 	m.height = 50
 	
@@ -105,4 +106,33 @@ func TestRenderDetailView(t *testing.T) {
 	m.detailView.activeDetail = "Some description"
 	v3 := stripANSI(m.renderDetailView())
 	assert.Contains(t, v3, "Some description")
+}
+
+func TestRenderTargetHeader_States(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+	
+	notif := types.NotificationWithState{
+		Notification: types.Notification{
+			SubjectType: "PullRequest",
+			SubjectTitle: "Title",
+			GitHubID: "123",
+			ResourceState: "MERGED",
+		},
+	}
+	
+	// Test normal
+	out := RenderTargetHeader(ctx, notif, "", false)
+	assert.Contains(t, stripANSI(out), "Title")
+	assert.Contains(t, stripANSI(out), "MERGED")
+	
+	// Test with filter match
+	out2 := RenderTargetHeader(ctx, notif, "Title", false)
+	assert.NotEmpty(t, out2)
+	
+	// Test selected
+	out3 := RenderTargetHeader(ctx, notif, "", true)
+	assert.NotEmpty(t, out3)
 }

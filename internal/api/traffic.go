@@ -59,6 +59,7 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		remainingRateLimit: 5000,
 	}
 	tc.wg.Add(1)
+	// #nosec G118: Background worker intended to outlive request context
 	go tc.worker(ctx)
 	return tc
 }

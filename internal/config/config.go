@@ -162,11 +162,14 @@ func AuditPermissions(ctx context.Context, logger *slog.Logger, root string) err
 		if info.IsDir() {
 			if info.Mode().Perm() != 0o700 {
 				logger.DebugContext(ctx, "hardening directory permissions", "path", path, "mode", "0700")
-				return os.Chmod(path, 0o700) // #nosec G302: Intentional directory hardening
+				// #nosec G302: Intentional directory hardening
+				// #nosec G122: Known risk, standard directory permission enforcement
+				return os.Chmod(path, 0o700)
 			}
 		} else {
 			if info.Mode().Perm() != 0o600 {
 				logger.DebugContext(ctx, "hardening file permissions", "path", path, "mode", "0600")
+				// #nosec G122: Known risk, standard file permission enforcement
 				return os.Chmod(path, 0o600) // #nosec G302: Intentional file hardening
 			}
 		}

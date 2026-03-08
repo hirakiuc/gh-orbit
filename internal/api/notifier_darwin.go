@@ -276,6 +276,7 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 	)
 
 	// Execute asynchronously with worker's context
+	// #nosec G118: Deliver function runs in background on purpose
 	go func() {
 		cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
