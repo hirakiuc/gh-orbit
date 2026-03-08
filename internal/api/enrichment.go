@@ -44,6 +44,7 @@ func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database Enri
 	}
 	
 	// Start background pruning worker with application context
+	// #nosec G118: Background worker intended to outlive request context
 	go e.pruningWorker(ctx)
 	
 	return e

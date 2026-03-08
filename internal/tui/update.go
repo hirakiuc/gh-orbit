@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -150,10 +151,7 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 
 	// Debounced enrichment logic
 	if m.state == StateList && m.listView.list.Index() != oldIndex {
-		actions = append(actions, ActionScheduleTick{TickType: TickToast, Interval: 250 * time.Millisecond})
-		// We reuse TickToast for debounced enrichment message generation 
-		// Actually let's just trigger ActionEnrichItems if we want it immediate or 
-		// use a specific tick for it. For now, let's stick to the current behavior.
+		actions = append(actions, ActionScheduleTick{TickType: TickEnrich, Interval: 250 * time.Millisecond})
 	}
 
 	return actions
@@ -297,7 +295,18 @@ func (m *Model) getVisibleNotifications() []types.NotificationWithState {
 	var items []types.NotificationWithState
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
-			items = append(items, i.notification)
+			var isExpired bool
+			if i.notification.IsEnriched {
+				if i.notification.EnrichedAt.Valid {
+					isExpired = time.Since(i.notification.EnrichedAt.Time) > api.StatusTTL
+				} else {
+					isExpired = true
+				}
+			}
+
+			if !i.notification.IsEnriched || isExpired {
+				items = append(items, i.notification)
+			}
 		}
 	}
 	return items

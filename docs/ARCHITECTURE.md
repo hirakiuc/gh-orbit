@@ -67,13 +67,15 @@ In Bubble Tea v2, `tea.Msg` is an alias for `uv.Event` (from the `ultraviolet` p
 
 To resolve this without polluting the codebase with framework-internal types, we use **Mockery Customization**:
 
-1.  **Stable Aliases**: Define a stable alias in `internal/types` (e.g., `type TaskFunc func(context.Context) tea.Msg`).
-2.  **Type Mapping**: Use the `replace-type` feature in `.mockery.yaml` to force the generator to use the public `tea.Msg` name:
-    ```yaml
-    replace-type:
-      - "charm.land/bubbletea/v2/internal/uv.Event=tea:charm.land/bubbletea/v2.Msg"
-    ```
-3.  **Alias Resolution**: Set `resolve-type-alias: true` in `.mockery.yaml` to ensure the generator respects named aliases like `TaskFunc`.
+1. **Stable Aliases**: Define a stable alias in `internal/types` (e.g., `type TaskFunc func(context.Context) tea.Msg`).
+2. **Type Mapping**: Use the `replace-type` feature in `.mockery.yaml` to force the generator to use the public `tea.Msg` name:
+
+   ```yaml
+   replace-type:
+     - "charm.land/bubbletea/v2/internal/uv.Event=tea:charm.land/bubbletea/v2.Msg"
+   ```
+
+3. **Alias Resolution**: Set `resolve-type-alias: true` in `.mockery.yaml` to ensure the generator respects named aliases like `TaskFunc`.
 
 This pattern ensures that our interfaces remain clean and that tests can use standard Bubble Tea types while maintaining full mock compatibility.
 

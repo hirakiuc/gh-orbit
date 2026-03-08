@@ -57,6 +57,10 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 			return tea.Tick(a.Interval, func(_ time.Time) tea.Msg {
 				return clearStatusMsg{}
 			})
+		case TickEnrich:
+			return tea.Tick(a.Interval, func(_ time.Time) tea.Msg {
+				return viewportEnrichMsg{}
+			})
 		}
 	}
 

@@ -92,6 +92,7 @@ const (
 	TickHeartbeat TickType = "HEARTBEAT"
 	TickClock     TickType = "CLOCK"
 	TickToast     TickType = "TOAST"
+	TickEnrich    TickType = "ENRICH"
 )
 
 // ActionScheduleTick schedules a future message delivery (timer).

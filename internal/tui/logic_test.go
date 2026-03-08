@@ -313,7 +313,7 @@ func TestModel_Transition_Debounce(t *testing.T) {
 	
 	found := false
 	for _, a := range actions {
-		if ta, ok := a.(ActionScheduleTick); ok && ta.TickType == TickToast {
+		if ta, ok := a.(ActionScheduleTick); ok && ta.TickType == TickEnrich {
 			found = true
 		}
 	}
