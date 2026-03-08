@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
@@ -26,16 +28,24 @@ func newTestModel(t testing.TB) *Model {
 
 	// Mock engines via the new centralized interfaces
 	mockSyncer := mocks.NewMockSyncer(t)
-	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+	var m *Model
+	mockSyncer.EXPECT().BridgeStatus().RunAndReturn(func() api.BridgeStatus {
+		if m == nil {
+			return api.StatusHealthy
+		}
+		return m.bridgeStatus
+	}).Maybe()
 	mockEnricher := mocks.NewMockEnricher(t)
+	mockEnricher.EXPECT().FetchHybridBatch(mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockTraffic := mocks.NewMockTrafficController(t)
 	mockTraffic.EXPECT().Remaining().Return(5000).Maybe()
 	mockAlerter := mocks.NewMockAlerter(t)
-	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+	mockAlerter.EXPECT().BridgeStatus().Return(api.StatusHealthy).Maybe()
 	mockRepo := mocks.NewMockRepository(t)
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 	mockClient := mocks.NewMockGitHubClient(t)
 
-	m := NewModel(
+	m = NewModel(
 		userID,
 		cfg,
 		logger,
@@ -46,6 +56,11 @@ func newTestModel(t testing.TB) *Model {
 		mockTraffic,
 		mockAlerter,
 	)
+	
+	m.heartbeatInterval = time.Millisecond
+	m.clockInterval = time.Millisecond
+	m.ui.toastTimeout = time.Millisecond
+	m.bridgeStatus = api.StatusHealthy
 	
 	m.ui.SetSize(80, 24)
 	return m
@@ -110,6 +125,73 @@ func TestModel_Update_TableDriven(t *testing.T) {
 			msg: actionCompleteMsg{},
 			verify: func(t *testing.T, m *Model) { /* just verify no crash */ },
 		},
+		"Window Size": {
+			msg: tea.WindowSizeMsg{Width: 100, Height: 50},
+			verify: func(t *testing.T, m *Model) {
+				assert.Equal(t, 100, m.width)
+				assert.Equal(t, 50, m.height)
+			},
+		},
+		"Sync Complete": {
+			msg: syncCompleteMsg{remainingRateLimit: 1234},
+			setup: func(m *Model) {
+				m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, 1234).Return().Once()
+			},
+			verify: func(t *testing.T, m *Model) {
+				assert.False(t, m.ui.syncing)
+			},
+		},
+		"View Port Enrich": {
+			msg: viewportEnrichMsg{},
+			verify: func(t *testing.T, m *Model) { /* verify no crash */ },
+		},
+		"Clear Status": {
+			msg: clearStatusMsg{},
+			verify: func(t *testing.T, m *Model) {
+				assert.Empty(t, m.ui.toastMessage)
+			},
+		},
+		"Key: q (Quit)": {
+			msg: tea.KeyPressMsg{Code: 'q', Text: "q"},
+			verify: func(t *testing.T, m *Model) { /* command checked separately in Navigation test */ },
+		},
+		"Key: 1 (Tab 1)": {
+			msg: tea.KeyPressMsg{Code: '1', Text: "1"},
+			verify: func(t *testing.T, m *Model) { /* matches setPriority(1) instead of tab change due to conflict */ },
+		},
+		"Key: 4 (Tab 4)": {
+			msg: tea.KeyPressMsg{Code: '4', Text: "4"},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, TabAll, m.listView.activeTab) },
+		},
+		"Key: p (Filter PR)": {
+			msg: tea.KeyPressMsg{Code: 'p', Text: "p"},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, "PullRequest", m.listView.resourceFilter) },
+		},
+		"Key: i (Filter Issue)": {
+			msg: tea.KeyPressMsg{Code: 'i', Text: "i"},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, "Issue", m.listView.resourceFilter) },
+		},
+		"Key: d (Filter Discussion)": {
+			msg: tea.KeyPressMsg{Code: 'd', Text: "d"},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, "Discussion", m.listView.resourceFilter) },
+		},
+		"Key: ] (Next Tab)": {
+			msg: tea.KeyPressMsg{Code: ']', Text: "]"},
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, TabUnread, m.listView.activeTab) },
+		},
+		"Key: [ (Prev Tab)": {
+			msg: tea.KeyPressMsg{Code: '[', Text: "["},
+			setup: func(m *Model) { m.listView.activeTab = TabAll },
+			verify: func(t *testing.T, m *Model) { assert.Equal(t, TabTriaged, m.listView.activeTab) },
+		},
+		"Key: r (Sync)": {
+			msg: tea.KeyPressMsg{Code: 'r', Text: "r"},
+			setup: func(m *Model) {
+				mockTraffic := m.traffic.(*mocks.MockTrafficController)
+				mockTraffic.EXPECT().Submit(1, mock.Anything).Return(func() tea.Msg { return nil }).Once()
+			},
+			verify: func(t *testing.T, m *Model) { assert.True(t, m.ui.syncing) },
+		},
 	}
 
 	for name, tc := range tests {
@@ -157,14 +239,15 @@ func TestModel_MarkRead(t *testing.T) {
 	mockClient := m.client.(*mocks.MockGitHubClient)
 	mockTraffic := m.traffic.(*mocks.MockTrafficController)
 	
-	mockTraffic.EXPECT().Submit(mock.Anything, mock.MatchedBy(func(fn interface{}) bool { return true })).RunAndReturn(func(priority int, fn interface{}) tea.Cmd {
+	mockTraffic.EXPECT().Submit(mock.Anything, mock.Anything).RunAndReturn(func(priority int, fn types.TaskFunc) tea.Cmd {
 		return func() tea.Msg {
-			if f, ok := fn.(func(context.Context) tea.Msg); ok {
-				return f(context.Background())
-			}
-			return nil
+			return fn(context.Background())
 		}
 	}).Once()
+	// Noise handler
+	mockTraffic.EXPECT().Submit(0, mock.Anything).RunAndReturn(func(priority int, fn types.TaskFunc) tea.Cmd {
+		return func() tea.Msg { return fn(context.Background()) }
+	}).Maybe()
 
 	// The functions are executed INSIDE the Submit callback, so we expect them on the mocks
 	mockRepo.EXPECT().MarkReadLocally(mock.Anything, "test-id", true).Return(nil).Once()
@@ -219,6 +302,43 @@ func TestModel_Navigation(t *testing.T) {
 	assert.NotNil(t, cmd, "expected quit command, got nil")
 }
 
+func TestModel_Init(t *testing.T) {
+	m := newTestModel(t)
+	mockAlerter := m.alerter.(*mocks.MockAlerter)
+	mockAlerter.EXPECT().Warmup().Return().Once()
+	
+	cmd := m.Init()
+	require.NotNil(t, cmd)
+	_ = executeCmd(cmd)
+}
+
+func TestModel_Shutdown(t *testing.T) {
+	m := newTestModel(t)
+	
+	mockSyncer := m.sync.(*mocks.MockSyncer)
+	mockSyncer.EXPECT().Shutdown(mock.Anything).Return().Once()
+	
+	mockTraffic := m.traffic.(*mocks.MockTrafficController)
+	mockTraffic.EXPECT().Shutdown(mock.Anything).Return().Once()
+	
+	mockAlerter := m.alerter.(*mocks.MockAlerter)
+	mockAlerter.EXPECT().Shutdown(mock.Anything).Return().Once()
+	
+	m.Shutdown()
+}
+
+func TestModel_Options(t *testing.T) {
+	cfg := &config.Config{}
+	m := NewModel(
+		"u", cfg, nil, nil, nil, nil, nil, nil, nil,
+		WithTheme(false),
+		WithVersion("1.2.3"),
+	)
+	
+	assert.False(t, m.isDark)
+	assert.Equal(t, "1.2.3", m.version)
+}
+
 func TestRenderTargetHeader_Geometry(t *testing.T) {
 	styles := DefaultStyles(true)
 	ctx := RenderContext{
@@ -248,4 +368,33 @@ func TestRenderTargetHeader_Geometry(t *testing.T) {
 	h3 := RenderTargetHeader(ctx, notif, "", false)
 	assert.Contains(t, stripANSI(h3), "MERGED")
 	assert.LessOrEqual(t, lipgloss.Width(h3), ctx.Width, "Header (Merged) should not exceed width")
+}
+
+func TestRenderTargetHeader_States(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+	
+	notif := types.NotificationWithState{
+		Notification: types.Notification{
+			SubjectType: "PullRequest",
+			SubjectTitle: "Title",
+			GitHubID: "123",
+			ResourceState: "MERGED",
+		},
+	}
+	
+	// Test normal
+	out := RenderTargetHeader(ctx, notif, "", false)
+	assert.Contains(t, stripANSI(out), "Title")
+	assert.Contains(t, stripANSI(out), "MERGED")
+	
+	// Test with filter match
+	out2 := RenderTargetHeader(ctx, notif, "Title", false)
+	assert.NotEmpty(t, out2)
+	
+	// Test selected
+	out3 := RenderTargetHeader(ctx, notif, "", true)
+	assert.NotEmpty(t, out3)
 }

@@ -87,8 +87,7 @@ func (m *Model) renderFooter() string {
 	bridge := "[NATIVE]"
 	bridgeStyle := m.styles.StatusNormal
 	
-	status := m.sync.BridgeStatus()
-	switch status {
+	switch m.bridgeStatus {
 	case api.StatusUnsupported:
 		bridge = "[FALLBACK]"
 		bridgeStyle = m.styles.PriorityMed

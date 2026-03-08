@@ -17,6 +17,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	// Global bridge status refresh
+	m.bridgeStatus = m.sync.BridgeStatus()
+
 	// 1. Handle state-independent messages
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -138,15 +141,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(msg, m.keys.ToggleDetail) || msg.String() == "esc" || msg.String() == "q" {
+		switch {
+		case key.Matches(msg, m.keys.ToggleDetail), msg.String() == "esc", msg.String() == "q":
 			m.state = StateList
 			return m, nil
+		case key.Matches(msg, m.keys.OpenBrowser):
+			if i, ok := m.listView.list.SelectedItem().(item); ok {
+				cmds = append(cmds, m.ViewItem(i))
+			}
+		case key.Matches(msg, m.keys.CheckoutPR):
+			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+				number := extractNumberFromURL(i.notification.SubjectURL)
+				if number != "" {
+					cmds = append(cmds, m.CheckoutPR(i.notification.RepositoryFullName, number))
+				}
+			}
 		}
 	}
 	var cmd tea.Cmd
 	m.detailView.viewport, cmd = m.detailView.viewport.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
