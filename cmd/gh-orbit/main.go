@@ -386,6 +386,9 @@ func run(ctx context.Context) error {
 }
 
 func launchTUI(ctx context.Context, env *environment, res *appResources) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// Instantiate services via interfaces (Dependency Injection)
 	native := api.NewPlatformNotifier(ctx, env.logger)
 	fallback := api.NewBeeepNotifier(env.logger)
@@ -418,7 +421,7 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	// Headless Test Mode: Quit immediately after starting
 	if testMode {
 		go func() {
-			time.Sleep(1 * time.Second) // Give it a moment to run initial commands
+			time.Sleep(100 * time.Millisecond) // Give it a moment to run initial commands
 			p.Quit()
 		}()
 	}
@@ -432,6 +435,9 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
+
+	// Stop all background workers tied to this context before entering shutdown block
+	cancel()
 
 	// Graceful Shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
