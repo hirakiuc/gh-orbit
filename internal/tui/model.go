@@ -71,12 +71,15 @@ type Model struct {
 	height           int
 	headerHeight     int
 	footerHeight     int
+	bridgeStatus     api.BridgeStatus
 
 	// Background Sync State
-	LastSyncAt   time.Time
-	PollInterval int
-	heartbeatID  uint64
-	clockID      uint64
+	LastSyncAt        time.Time
+	PollInterval      int
+	heartbeatID       uint64
+	clockID           uint64
+	heartbeatInterval time.Duration
+	clockInterval     time.Duration
 }
 
 // Option defines a functional option for Model configuration.
@@ -140,9 +143,11 @@ func NewModel(
 		styles:       styles,
 		keys:         keys,
 		isDark:       true,
-		state:        StateList,
-		PollInterval: cfg.Notifications.SyncInterval,
-		LastSyncAt:   time.Now(),
+		state:             StateList,
+		PollInterval:      cfg.Notifications.SyncInterval,
+		LastSyncAt:        time.Now(),
+		heartbeatInterval: time.Second,
+		clockInterval:     time.Minute,
 	}
 
 	for _, opt := range opts {
@@ -191,7 +196,7 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 func (m *Model) tickHeartbeat() tea.Cmd {
 	m.heartbeatID++
 	id := m.heartbeatID
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(m.heartbeatInterval, func(t time.Time) tea.Msg {
 		return pollTickMsg{ID: id}
 	})
 }
@@ -199,7 +204,7 @@ func (m *Model) tickHeartbeat() tea.Cmd {
 func (m *Model) tickClock() tea.Cmd {
 	m.clockID++
 	id := m.clockID
-	return tea.Tick(time.Minute, func(t time.Time) tea.Msg {
+	return tea.Tick(m.clockInterval, func(t time.Time) tea.Msg {
 		return clockTickMsg{ID: id}
 	})
 }

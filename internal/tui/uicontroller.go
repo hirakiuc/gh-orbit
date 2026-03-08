@@ -20,6 +20,7 @@ type UIController struct {
 	styles         Styles
 	width          int
 	height         int
+	toastTimeout   time.Duration
 }
 
 func NewUIController(styles Styles) UIController {
@@ -29,8 +30,9 @@ func NewUIController(styles Styles) UIController {
 	)
 
 	return UIController{
-		spinner: s,
-		styles:  styles,
+		spinner:      s,
+		styles:       styles,
+		toastTimeout: 3 * time.Second,
 	}
 }
 
@@ -59,7 +61,7 @@ func (c *UIController) Update(msg tea.Msg) (UIController, tea.Cmd) {
 
 func (c *UIController) SetToast(msg string) tea.Cmd {
 	c.toastMessage = msg
-	return tea.Tick(3*time.Second, func(_ time.Time) tea.Msg {
+	return tea.Tick(c.toastTimeout, func(_ time.Time) tea.Msg {
 		return clearStatusMsg{}
 	})
 }

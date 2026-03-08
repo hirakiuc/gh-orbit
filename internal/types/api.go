@@ -215,9 +215,12 @@ type Alerter interface {
 	BridgeStatus() BridgeStatus
 }
 
+// TaskFunc represents an API operation that returns a message.
+type TaskFunc func(context.Context) tea.Msg
+
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
-	Submit(priority int, fn interface{}) tea.Cmd
+	Submit(priority int, fn TaskFunc) tea.Cmd
 	UpdateRateLimit(ctx context.Context, remaining int)
 	Remaining() int
 	Shutdown(ctx context.Context)

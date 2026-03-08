@@ -34,6 +34,7 @@ type AlertRepository = types.AlertRepository
 type Syncer = types.Syncer
 type Enricher = types.Enricher
 type Alerter = types.Alerter
+type TaskFunc = types.TaskFunc
 type TrafficController = types.TrafficController
 type RESTClient = types.RESTClient
 type GraphQLClient = types.GraphQLClient

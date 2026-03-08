@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -23,7 +24,7 @@ const (
 type apiTask struct {
 	id       uint64
 	priority int
-	fn       func(ctx context.Context) tea.Msg
+	fn       types.TaskFunc
 	resp     chan tea.Msg
 	ctx      context.Context
 }
@@ -160,18 +161,8 @@ func (c *APITrafficController) Shutdown(ctx context.Context) {
 }
 
 // Submit wraps an API operation in a serialized, prioritized command.
-func (c *APITrafficController) Submit(priority int, fn interface{}) tea.Cmd {
+func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
 	return func() tea.Msg {
-		var taskFn func(context.Context) tea.Msg
-		if f, ok := fn.(func(context.Context) tea.Msg); ok {
-			taskFn = f
-		} else if f, ok := fn.(func(ctx context.Context) tea.Msg); ok {
-			taskFn = f
-		} else {
-			c.logger.Warn("traffic controller: incompatible task signature", "type", fmt.Sprintf("%T", fn))
-			return nil
-		}
-
 		c.mu.Lock()
 		c.taskCounter++
 		id := c.taskCounter
@@ -180,7 +171,7 @@ func (c *APITrafficController) Submit(priority int, fn interface{}) tea.Cmd {
 		task := &apiTask{
 			id:       id,
 			priority: priority,
-			fn:       taskFn,
+			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
 			ctx:      c.ctx, // Carry root application context for trace linkage
 		}
