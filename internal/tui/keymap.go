@@ -4,22 +4,26 @@ import "charm.land/bubbles/v2/key"
 
 // KeyMap defines the custom keybindings for the gh-orbit TUI.
 type KeyMap struct {
-	Sync            key.Binding
-	SetPriorityLow  key.Binding
-	SetPriorityMed  key.Binding
-	SetPriorityHigh key.Binding
-	ClearPriority   key.Binding
-	CopyURL         key.Binding
-	ToggleRead      key.Binding
-	NextTab         key.Binding
-	PrevTab         key.Binding
-	CheckoutPR      key.Binding
-	ViewContextual  key.Binding
-	OpenBrowser     key.Binding
-	ToggleDetail    key.Binding
-	Back            key.Binding
-	FilterPR        key.Binding
-	FilterIssue     key.Binding
+	Sync             key.Binding
+	PriorityUp       key.Binding
+	PriorityDown     key.Binding
+	PriorityNone     key.Binding
+	Tab1             key.Binding
+	Tab2             key.Binding
+	Tab3             key.Binding
+	Tab4             key.Binding
+	CopyURL          key.Binding
+	ToggleRead       key.Binding
+	NextTab          key.Binding
+	PrevTab          key.Binding
+	CheckoutPR       key.Binding
+	ViewContextual   key.Binding
+	OpenBrowser      key.Binding
+	ToggleDetail     key.Binding
+	Back             key.Binding
+	Quit             key.Binding
+	FilterPR         key.Binding
+	FilterIssue      key.Binding
 	FilterDiscussion key.Binding
 }
 
@@ -30,21 +34,33 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("r"),
 			key.WithHelp("r", "sync"),
 		),
-		SetPriorityLow: key.NewBinding(
-			key.WithKeys("1"),
-			key.WithHelp("1", "priority low"),
+		PriorityUp: key.NewBinding(
+			key.WithKeys("shift+up", "K"),
+			key.WithHelp("shift+up", "priority up"),
 		),
-		SetPriorityMed: key.NewBinding(
-			key.WithKeys("2"),
-			key.WithHelp("2", "priority med"),
+		PriorityDown: key.NewBinding(
+			key.WithKeys("shift+down", "J"),
+			key.WithHelp("shift+down", "priority down"),
 		),
-		SetPriorityHigh: key.NewBinding(
-			key.WithKeys("3"),
-			key.WithHelp("3", "priority high"),
-		),
-		ClearPriority: key.NewBinding(
+		PriorityNone: key.NewBinding(
 			key.WithKeys("0"),
 			key.WithHelp("0", "clear priority"),
+		),
+		Tab1: key.NewBinding(
+			key.WithKeys("1"),
+			key.WithHelp("1", "inbox"),
+		),
+		Tab2: key.NewBinding(
+			key.WithKeys("2"),
+			key.WithHelp("2", "unread"),
+		),
+		Tab3: key.NewBinding(
+			key.WithKeys("3"),
+			key.WithHelp("3", "triaged"),
+		),
+		Tab4: key.NewBinding(
+			key.WithKeys("4"),
+			key.WithHelp("4", "all"),
 		),
 		CopyURL: key.NewBinding(
 			key.WithKeys("y"),
@@ -79,8 +95,12 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("space", "peek detail"),
 		),
 		Back: key.NewBinding(
-			key.WithKeys("q", "esc"),
-			key.WithHelp("q/esc", "back/close"),
+			key.WithKeys("esc", "backspace"),
+			key.WithHelp("esc", "back"),
+		),
+		Quit: key.NewBinding(
+			key.WithKeys("q"),
+			key.WithHelp("q", "quit"),
 		),
 		FilterPR: key.NewBinding(
 			key.WithKeys("p"),
@@ -104,6 +124,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 		k.ToggleRead,
 		k.ToggleDetail,
 		k.Back,
+		k.Quit,
 	}
 }
 
@@ -112,7 +133,8 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
 		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
-		{k.SetPriorityLow, k.SetPriorityMed, k.SetPriorityHigh, k.ClearPriority},
-		{k.ToggleRead, k.NextTab, k.PrevTab, k.CheckoutPR},
+		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
+		{k.Tab1, k.Tab2, k.Tab3, k.Tab4},
+		{k.NextTab, k.PrevTab, k.CheckoutPR, k.Quit},
 	}
 }
