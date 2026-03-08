@@ -72,6 +72,7 @@ type Model struct {
 	headerHeight     int
 	footerHeight     int
 	bridgeStatus     api.BridgeStatus
+	interpreter      *Interpreter
 
 	// Background Sync State
 	LastSyncAt        time.Time
@@ -149,6 +150,8 @@ func NewModel(
 		heartbeatInterval: time.Second,
 		clockInterval:     time.Minute,
 	}
+
+	m.interpreter = NewInterpreter(m)
 
 	for _, opt := range opts {
 		opt(m)

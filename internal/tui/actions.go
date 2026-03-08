@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 var _ = slog.LevelInfo
@@ -59,18 +60,21 @@ func (m *Model) ViewItem(i item) tea.Cmd {
 	return tea.Batch(cmd, m.ui.SetToast(toast), m.MarkRead(i))
 }
 
-// OpenBrowser opens the given URL in the default browser.
-func (m *Model) OpenBrowser(url string) tea.Cmd {
-	if !isValidGitHubURL(url) {
+// OpenBrowser opens the given URL in the default system browser.
+func (m *Model) OpenBrowser(u string) tea.Cmd {
+	if u == "" {
+		return nil
+	}
+	if !isValidGitHubURL(u) {
 		return func() tea.Msg {
-			return errMsg{err: fmt.Errorf("refusing to open untrusted URL: %s", url)}
+			return errMsg{err: fmt.Errorf("refusing to open untrusted URL: %s", u)}
 		}
 	}
 
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		m.logger.InfoContext(ctx, "opening browser", "url", url)
+		m.logger.InfoContext(ctx, "opening browser", "url", u)
 		b := browser.New("", nil, nil)
-		if err := b.Browse(url); err != nil {
+		if err := b.Browse(u); err != nil {
 			m.logger.ErrorContext(ctx, "failed to open browser", "error", err)
 			return errMsg{err: err}
 		}
@@ -117,80 +121,98 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 	return checkoutCmd
 }
 
-// MarkRead marks a notification as read locally and remotely.
-func (m *Model) MarkRead(i item) tea.Cmd {
-	if i.notification.IsReadLocally {
-		return nil
-	}
-
+// MarkReadByID marks a notification as read using only its ID.
+func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	// 1. Update master copy
 	for idx, n := range m.allNotifications {
-		if n.GitHubID == i.notification.GitHubID {
-			m.allNotifications[idx].IsReadLocally = true
+		if n.GitHubID == id {
+			m.allNotifications[idx].IsReadLocally = read
 			break
 		}
 	}
 
-	// 2. Optimistic UI update
-	i.notification.IsReadLocally = true
-	m.listView.list.SetItem(m.listView.list.Index(), i)
-
 	m.applyFilters()
 
-	// 3. Persistent Local & Remote Update via Traffic Controller
+	// 2. Persistent Local & Remote Update via Traffic Controller
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		err := m.db.MarkReadLocally(ctx, i.notification.GitHubID, true)
+		err := m.db.MarkReadLocally(ctx, id, read)
 		if err != nil {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
 		}
 
-		err = m.client.MarkThreadAsRead(ctx, i.notification.GitHubID)
-		if err != nil {
-			m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)
+		if read {
+			err = m.client.MarkThreadAsRead(ctx, id)
+			if err != nil {
+				m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)
+			}
 		}
-		return nil
+		return actionCompleteMsg{}
 	})
 }
 
-// ToggleRead manually toggles the read status.
+// setPriorityByID updates the priority of a notification using only its ID.
+func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
+	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+		err := m.db.SetPriority(ctx, id, priority)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		// Reload to reflect state
+		notifs, err := m.db.ListNotifications(ctx)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		toast := "Priority cleared"
+		switch priority {
+		case 1:
+			toast = "Priority set to Low"
+		case 2:
+			toast = "Priority set to Medium"
+		case 3:
+			toast = "Priority set to High"
+		}
+
+		return priorityUpdatedMsg{notifications: notifs, toast: toast}
+	})
+}
+
+// enrichItems triggers background enrichment for a specific set of notifications.
+func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
+	if len(toEnrich) == 0 {
+		return nil
+	}
+
+	// For a single item enrichment (Detail View), we use FetchDetail
+	if len(toEnrich) == 1 {
+		n := toEnrich[0]
+		return m.FetchDetailCmd(n.GitHubID, n.SubjectURL, n.SubjectType)
+	}
+
+	// For multiple items (Viewport), we use FetchHybridBatch
+	return m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+		results := m.enrich.FetchHybridBatch(ctx, toEnrich)
+		if len(results) == 0 {
+			return nil
+		}
+
+		notifs, err := m.db.ListNotifications(ctx)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return notificationsLoadedMsg{notifications: notifs}
+	})
+}
+
+func (m *Model) MarkRead(i item) tea.Cmd {
+	return m.MarkReadByID(i.notification.GitHubID, true)
+}
+
 func (m *Model) ToggleRead(i item) tea.Cmd {
-	newState := !i.notification.IsReadLocally
-
-	// 1. Update master copy
-	for idx, n := range m.allNotifications {
-		if n.GitHubID == i.notification.GitHubID {
-			m.allNotifications[idx].IsReadLocally = newState
-			break
-		}
-	}
-
-	// 2. Update UI
-	i.notification.IsReadLocally = newState
-	m.listView.list.SetItem(m.listView.list.Index(), i)
-
-	// 3. Status Feedback
-	toast := "Marked as unread"
-	if newState {
-		toast = "Marked as read"
-	}
-
-	m.applyFilters()
-
-	// 4. Update via Traffic Controller
-	updateCmd := m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		err := m.db.MarkReadLocally(ctx, i.notification.GitHubID, newState)
-		if err != nil {
-			m.logger.ErrorContext(ctx, "failed to toggle local read state", "error", err)
-		}
-
-		if newState {
-			_ = m.client.MarkThreadAsRead(ctx, i.notification.GitHubID)
-		}
-		return nil
-	})
-
-	return tea.Batch(m.ui.SetToast(toast), updateCmd)
+	return m.MarkReadByID(i.notification.GitHubID, !i.notification.IsReadLocally)
 }
+
 
 // ViewPRWeb executes 'gh pr view --web' for the given repo and PR number.
 func (m *Model) ViewPRWeb(repo, number string) tea.Cmd {
