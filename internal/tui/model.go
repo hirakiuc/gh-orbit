@@ -81,6 +81,7 @@ type Model struct {
 	clockID           uint64
 	heartbeatInterval time.Duration
 	clockInterval     time.Duration
+	lastQuitPress     time.Time
 }
 
 // Option defines a functional option for Model configuration.

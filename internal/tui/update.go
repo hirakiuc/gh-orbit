@@ -161,7 +161,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 	var actions []Action
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case key.Matches(msg, m.keys.ToggleDetail), msg.String() == "esc", msg.String() == "q":
+		case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.ToggleDetail):
 			m.state = StateList
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
@@ -174,9 +174,19 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 					actions = append(actions, ActionCheckoutPR{Repository: i.notification.RepositoryFullName, Number: number})
 				}
 			}
+		case key.Matches(msg, m.keys.Quit):
+			return m.handleQuitTransition()
 		}
 	}
 	return actions
+}
+
+func (m *Model) handleQuitTransition() []Action {
+	if time.Since(m.lastQuitPress) < 500*time.Millisecond {
+		return []Action{ActionQuit{}}
+	}
+	m.lastQuitPress = time.Now()
+	return []Action{ActionShowToast{Message: "Press q again to quit"}}
 }
 
 func (m *Model) transitionList(msg tea.Msg) []Action {
@@ -191,9 +201,9 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 		switch {
 		case msg.String() == "ctrl+c":
 			actions = append(actions, ActionQuit{})
-		case msg.String() == "q":
+		case key.Matches(msg, m.keys.Quit):
 			if !m.listView.list.Help.ShowAll {
-				actions = append(actions, ActionQuit{})
+				return m.handleQuitTransition()
 			}
 		case key.Matches(msg, m.keys.Sync):
 			if !m.ui.syncing {
@@ -205,7 +215,6 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 				m.state = StateDetail
 				if !i.notification.IsEnriched {
 					m.ui.fetchingDetail = true
-					// FetchDetail is an action
 					actions = append(actions, ActionEnrichItems{Notifications: []types.NotificationWithState{i.notification}})
 				} else {
 					m.detailView.viewport.SetContent(m.detailView.activeDetail)
@@ -227,6 +236,18 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 		case key.Matches(msg, m.keys.PrevTab):
 			m.listView.activeTab = (m.listView.activeTab - 1 + 4) % 4
 			m.applyFilters()
+		case key.Matches(msg, m.keys.Tab1):
+			m.listView.activeTab = TabInbox
+			m.applyFilters()
+		case key.Matches(msg, m.keys.Tab2):
+			m.listView.activeTab = TabUnread
+			m.applyFilters()
+		case key.Matches(msg, m.keys.Tab3):
+			m.listView.activeTab = TabTriaged
+			m.applyFilters()
+		case key.Matches(msg, m.keys.Tab4):
+			m.listView.activeTab = TabAll
+			m.applyFilters()
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				actions = append(actions, ActionViewWeb{Notification: i.notification})
@@ -244,45 +265,40 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 			m.toggleResourceFilter("Issue", "Issues")
 		case key.Matches(msg, m.keys.FilterDiscussion):
 			m.toggleResourceFilter("Discussion", "Discussions")
-		case msg.String() == "1":
+		case key.Matches(msg, m.keys.PriorityUp):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				p := 1
-				if i.notification.Priority == 1 { p = 0 }
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: p})
-				toast := "Priority cleared"
-				if p == 1 { toast = "Priority set to Low" }
-				actions = append(actions, ActionShowToast{Message: toast})
+				newP := (i.notification.Priority + 1) % 4
+				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: newP})
+				actions = append(actions, ActionShowToast{Message: m.getPriorityToast(newP)})
 			}
-		case msg.String() == "2":
+		case key.Matches(msg, m.keys.PriorityDown):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				p := 2
-				if i.notification.Priority == 2 { p = 0 }
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: p})
-				toast := "Priority cleared"
-				if p == 2 { toast = "Priority set to Medium" }
-				actions = append(actions, ActionShowToast{Message: toast})
+				newP := (i.notification.Priority - 1 + 4) % 4
+				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: newP})
+				actions = append(actions, ActionShowToast{Message: m.getPriorityToast(newP)})
 			}
-		case msg.String() == "3":
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				p := 3
-				if i.notification.Priority == 3 { p = 0 }
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: p})
-				toast := "Priority cleared"
-				if p == 3 { toast = "Priority set to High" }
-				actions = append(actions, ActionShowToast{Message: toast})
-			}
-		case key.Matches(msg, m.keys.ClearPriority):
+		case key.Matches(msg, m.keys.PriorityNone):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: 0})
 				actions = append(actions, ActionShowToast{Message: "Priority cleared"})
 			}
-		case msg.String() == "4":
-			m.listView.activeTab = int(msg.String()[0]-'1')
-			m.applyFilters()
 		}
 	}
 
 	return actions
+}
+
+func (m *Model) getPriorityToast(p int) string {
+	switch p {
+	case 1:
+		return "Priority set to Low"
+	case 2:
+		return "Priority set to Medium"
+	case 3:
+		return "Priority set to High"
+	default:
+		return "Priority cleared"
+	}
 }
 
 func (m *Model) getVisibleNotifications() []types.NotificationWithState {

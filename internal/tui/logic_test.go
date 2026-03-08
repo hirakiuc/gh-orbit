@@ -47,6 +47,18 @@ func TestModel_Transition_Core(t *testing.T) {
 	require.Len(t, actions, 2)
 	assert.IsType(t, ActionUpdateRateLimit{}, actions[0])
 	assert.IsType(t, ActionLoadNotifications{}, actions[1])
+
+	// 5. Double-Q Quit
+	// First Q -> Toast
+	actions = m.Transition(tea.KeyPressMsg{Code: 'q', Text: "q"}, 0)
+	require.Len(t, actions, 1)
+	assert.IsType(t, ActionShowToast{}, actions[0])
+	assert.Equal(t, "Press q again to quit", actions[0].(ActionShowToast).Message)
+
+	// Second Q (within 500ms) -> Quit
+	actions = m.Transition(tea.KeyPressMsg{Code: 'q', Text: "q"}, 0)
+	require.Len(t, actions, 1)
+	assert.IsType(t, ActionQuit{}, actions[0])
 }
 
 func TestModel_Transition_Navigation(t *testing.T) {
@@ -71,34 +83,26 @@ func TestModel_Transition_Navigation(t *testing.T) {
 func TestModel_Transition_Priorities(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	m.allNotifications = []types.NotificationWithState{{Notification: types.Notification{GitHubID: "1"}}}
+	m.allNotifications = []types.NotificationWithState{{
+		Notification: types.Notification{GitHubID: "1"},
+		OrbitState:   types.OrbitState{Priority: 0},
+	}}
 	m.applyFilters()
 	m.listView.list.Select(0)
 
-	tests := []struct {
-		name     string
-		key      string
-		expected int
-	}{
-		{"Low", "1", 1},
-		{"Medium", "2", 2},
-		{"High", "3", 3},
-		{"Clear", "0", 0},
-	}
+	// Shift+Up (Priority Up)
+	actions := m.Transition(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModShift}, 0)
+	require.Len(t, actions, 2)
+	assert.IsType(t, ActionSetPriority{}, actions[0])
+	assert.Equal(t, 1, actions[0].(ActionSetPriority).Priority)
+	assert.Equal(t, "Priority set to Low", actions[1].(ActionShowToast).Message)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actions := m.Transition(tea.KeyPressMsg{Text: tt.key}, 0)
-			found := false
-			for _, a := range actions {
-				if pa, ok := a.(ActionSetPriority); ok {
-					assert.Equal(t, tt.expected, pa.Priority)
-					found = true
-				}
-			}
-			assert.True(t, found)
-		})
-	}
+	// '0' (Clear Priority)
+	actions = m.Transition(tea.KeyPressMsg{Code: '0', Text: "0"}, 0)
+	require.Len(t, actions, 2)
+	assert.IsType(t, ActionSetPriority{}, actions[0])
+	assert.Equal(t, 0, actions[0].(ActionSetPriority).Priority)
+	assert.Equal(t, "Priority cleared", actions[1].(ActionShowToast).Message)
 }
 
 func TestModel_Transition_Filtering(t *testing.T) {
@@ -129,9 +133,13 @@ func TestModel_Transition_Tabs(t *testing.T) {
 	m.Transition(tea.KeyPressMsg{Code: '4', Text: "4"}, 0)
 	assert.Equal(t, TabAll, m.listView.activeTab)
 
-	// Next Tab
-	m.Transition(tea.KeyPressMsg{Code: ']', Text: "]"}, 0)
+	// Tab 1 (Inbox)
+	m.Transition(tea.KeyPressMsg{Code: '1', Text: "1"}, 0)
 	assert.Equal(t, TabInbox, m.listView.activeTab)
+
+	// Next Tab (])
+	m.Transition(tea.KeyPressMsg{Code: ']', Text: "]"}, 0)
+	assert.Equal(t, TabUnread, m.listView.activeTab)
 }
 
 func TestInterpreter_FullFlow(t *testing.T) {
