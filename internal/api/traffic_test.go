@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -98,7 +99,7 @@ func TestTrafficController_RateLimitAtomic(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
-			tc.UpdateRateLimit(ctx, i)
+			tc.UpdateRateLimit(ctx, types.RateLimitInfo{Remaining: i})
 		}
 	}()
 
@@ -142,11 +143,11 @@ func TestTrafficController_ScalingStress(t *testing.T) {
 	// 2. Rapidly fluctuate rate limit to trigger scaling
 	for i := 0; i < 10; i++ {
 		// Scale down
-		tc.UpdateRateLimit(ctx, 100) 
+		tc.UpdateRateLimit(ctx, types.RateLimitInfo{Limit: 5000, Remaining: 100}) 
 		time.Sleep(20 * time.Millisecond)
 		
 		// Scale up
-		tc.UpdateRateLimit(ctx, 1000)
+		tc.UpdateRateLimit(ctx, types.RateLimitInfo{Limit: 5000, Remaining: 1000})
 		time.Sleep(20 * time.Millisecond)
 	}
 

@@ -77,6 +77,7 @@ type Model struct {
 	// Background Sync State
 	LastSyncAt        time.Time
 	PollInterval      int
+	RateLimit         types.RateLimitInfo
 	heartbeatID       uint64
 	clockID           uint64
 	heartbeatInterval time.Duration
@@ -193,7 +194,7 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return syncCompleteMsg{remainingRateLimit: remaining}
+		return syncCompleteMsg{rateLimit: remaining}
 	})
 }
 
@@ -235,7 +236,7 @@ type priorityUpdatedMsg struct {
 }
 
 type syncCompleteMsg struct {
-	remainingRateLimit int
+	rateLimit types.RateLimitInfo
 }
 
 type detailLoadedMsg struct {

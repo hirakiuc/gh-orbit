@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
@@ -104,12 +105,33 @@ func (m *Model) renderFooter() string {
 	
 	health := bridgeStyle.Render(bridge)
 
+	// 4. Rate Limit Status
+	rlStatus := ""
+	if m.RateLimit.Limit > 0 {
+		threshold := int64(m.RateLimit.Limit) / 10
+		if threshold > 1000 {
+			threshold = 1000
+		}
+
+		if int64(m.RateLimit.Remaining) < threshold {
+			diff := time.Until(m.RateLimit.Reset)
+			mins := int(diff.Minutes()) + 1
+			if mins <= 1 {
+				rlStatus = m.styles.PriorityMed.Render(" [!] QUOTA LOW (<1m) ")
+			} else {
+				rlStatus = m.styles.PriorityMed.Render(fmt.Sprintf(" [!] QUOTA LOW (~%dm) ", mins))
+			}
+		}
+	}
+
 	footer := lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		statusMsg,
 		" ",
 		filters,
-		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(bridge)-2, lipgloss.Right, health),
+		" ",
+		rlStatus,
+		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-4, lipgloss.Right, health),
 	)
 
 	return footer

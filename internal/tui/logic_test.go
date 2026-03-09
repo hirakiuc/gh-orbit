@@ -43,7 +43,7 @@ func TestModel_Transition_Core(t *testing.T) {
 	assert.IsType(t, ActionShowToast{}, actions[1])
 
 	// 4. Sync Complete
-	actions = m.Transition(syncCompleteMsg{remainingRateLimit: 100}, 0)
+	actions = m.Transition(syncCompleteMsg{rateLimit: types.RateLimitInfo{Remaining: 100}}, 0)
 	require.Len(t, actions, 2)
 	assert.IsType(t, ActionUpdateRateLimit{}, actions[0])
 	assert.IsType(t, ActionLoadNotifications{}, actions[1])
@@ -169,7 +169,7 @@ func TestInterpreter_FullFlow(t *testing.T) {
 		ActionCheckoutPR{Repository: "o/r", Number: "1"},
 		ActionEnrichItems{Notifications: []types.NotificationWithState{notif}},
 		ActionLoadNotifications{},
-		ActionUpdateRateLimit{Remaining: 100},
+		ActionUpdateRateLimit{Info: types.RateLimitInfo{Remaining: 100}},
 		ActionScheduleTick{TickType: TickHeartbeat, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickClock, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickToast, Interval: time.Millisecond},
@@ -365,8 +365,8 @@ func TestModel_SyncNotifications(t *testing.T) {
 	m := newTestModel(t)
 	
 	mockSyncer := m.sync.(*mocks.MockSyncer)
-	mockSyncer.EXPECT().Sync(mock.Anything, "test-user", true).Return(100, nil).Once()
-	mockSyncer.EXPECT().Sync(mock.Anything, "test-user", false).Return(200, nil).Once()
+	mockSyncer.EXPECT().Sync(mock.Anything, "test-user", true).Return(types.RateLimitInfo{Remaining: 100}, nil).Once()
+	mockSyncer.EXPECT().Sync(mock.Anything, "test-user", false).Return(types.RateLimitInfo{Remaining: 200}, nil).Once()
 	
 	mockTraffic := m.traffic.(*mocks.MockTrafficController)
 	mockTraffic.EXPECT().Submit(mock.Anything, mock.Anything).RunAndReturn(func(priority int, fn types.TaskFunc) tea.Cmd {
@@ -377,13 +377,13 @@ func TestModel_SyncNotifications(t *testing.T) {
 	cmd1 := m.syncNotificationsWithForce(true)
 	msg1 := executeCmd(cmd1)
 	assert.IsType(t, syncCompleteMsg{}, msg1)
-	assert.Equal(t, 100, msg1.(syncCompleteMsg).remainingRateLimit)
+	assert.Equal(t, 100, msg1.(syncCompleteMsg).rateLimit.Remaining)
 	
 	// Test background sync
 	cmd2 := m.syncNotificationsWithForce(false)
 	msg2 := executeCmd(cmd2)
 	assert.IsType(t, syncCompleteMsg{}, msg2)
-	assert.Equal(t, 200, msg2.(syncCompleteMsg).remainingRateLimit)
+	assert.Equal(t, 200, msg2.(syncCompleteMsg).rateLimit.Remaining)
 }
 
 func TestModel_GHViewCmd_Validation(t *testing.T) {

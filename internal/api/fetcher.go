@@ -156,7 +156,7 @@ func NewNotificationFetcher(client GitHubClient, logger *slog.Logger) *Notificat
 	}
 }
 
-func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *types.SyncMeta, force bool) ([]GHNotification, *types.SyncMeta, int, error) {
+func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *types.SyncMeta, force bool) ([]GHNotification, *types.SyncMeta, types.RateLimitInfo, error) {
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "api.fetch_notifications",
 		trace.WithAttributes(
@@ -168,7 +168,7 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 
 	var allNotifications []GHNotification
 	newMeta := *meta
-	remainingRateLimit := 5000 // Default assume healthy
+	rlInfo := types.RateLimitInfo{Limit: 5000, Remaining: 5000}
 
 	// True Cold Refresh: If force is true, we ignore all caching headers
 	useConditional := !force && (meta.LastModified != "" || meta.ETag != "")
@@ -192,7 +192,7 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
-			return nil, nil, remainingRateLimit, err
+			return nil, nil, rlInfo, err
 		}
 
 		// Only apply conditional headers if NOT forcing a cold refresh
@@ -207,7 +207,7 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 
 		resp, err := f.client.HTTP().Do(req) // #nosec G704: Trusted GitHub API URLs
 		if err != nil {
-			return nil, nil, remainingRateLimit, err
+			return nil, nil, rlInfo, err
 		}
 		defer func() { _ = resp.Body.Close() }()
 
@@ -217,19 +217,15 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 			"force", force)
 
 		// Update rate limit info if available
-		if rl := resp.Header.Get("X-RateLimit-Remaining"); rl != "" {
-			if remaining, err := strconv.Atoi(rl); err == nil {
-				remainingRateLimit = remaining
-			}
-		}
+		rlInfo = parseRateLimitInfo(resp.Header)
 
 		if resp.StatusCode == http.StatusNotModified {
 			f.logger.DebugContext(ctx, "sync: 304 Not Modified received", "url", url)
-			return nil, &newMeta, remainingRateLimit, nil
+			return nil, &newMeta, rlInfo, nil
 		}
 
 		if resp.StatusCode >= 400 {
-			return nil, nil, remainingRateLimit, fmt.Errorf("API error: %s", resp.Status)
+			return nil, nil, rlInfo, fmt.Errorf("API error: %s", resp.Status)
 		}
 
 		var page []struct {
@@ -247,7 +243,7 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 			} `json:"subject"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			return nil, nil, remainingRateLimit, err
+			return nil, nil, rlInfo, err
 		}
 
 		for _, p := range page {
@@ -300,7 +296,48 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 	}
 
 	span.SetAttributes(attribute.Int("notification_count", len(allNotifications)))
-	return allNotifications, &newMeta, remainingRateLimit, nil
+	return allNotifications, &newMeta, rlInfo, nil
+}
+
+func parseRateLimitInfo(h http.Header) types.RateLimitInfo {
+	info := types.RateLimitInfo{
+		Limit:     5000, // Default assume healthy
+		Remaining: 5000,
+		Resource:  h.Get("X-RateLimit-Resource"),
+	}
+
+	if val := h.Get("X-RateLimit-Limit"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			info.Limit = i
+		}
+	}
+	if val := h.Get("X-RateLimit-Remaining"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			info.Remaining = i
+		}
+	}
+	if val := h.Get("X-RateLimit-Used"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			info.Used = i
+		}
+	}
+	if val := h.Get("X-RateLimit-Reset"); val != "" {
+		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+			info.Reset = time.Unix(i, 0)
+		}
+	}
+	if val := h.Get("Retry-After"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			info.RetryAfter = time.Duration(i) * time.Second
+		} else if t, err := http.ParseTime(val); err == nil {
+			info.RetryAfter = time.Until(t)
+			if info.RetryAfter < 0 {
+				info.RetryAfter = 0
+			}
+		}
+	}
+
+	return info
 }
 
 func parseLinkHeader(header string) map[string]string {

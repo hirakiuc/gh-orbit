@@ -98,7 +98,8 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 		m.ui.SetSyncing(false)
 		// Rate limit update is an imperative effect, but tracked in model
 		m.LastSyncAt = time.Now()
-		actions = append(actions, ActionUpdateRateLimit{Remaining: msg.remainingRateLimit})
+		m.RateLimit = msg.rateLimit
+		actions = append(actions, ActionUpdateRateLimit{Info: msg.rateLimit})
 		actions = append(actions, ActionLoadNotifications{}) // Reload after sync
 
 	case detailLoadedMsg:

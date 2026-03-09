@@ -64,7 +64,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		// Expectations
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(nil, nil).Once()
-		mockFetcher.EXPECT().FetchNotifications(mock.Anything, initialMeta, true).Return(notifs, initialMeta, 5000, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, initialMeta, true).Return(notifs, initialMeta, types.RateLimitInfo{Limit: 5000, Remaining: 5000}, nil).Once()
 		mockRepo.EXPECT().UpsertNotification(mock.Anything, mock.Anything).Return(nil).Once()
 		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&types.NotificationWithState{}, nil).Once()
 		mockRepo.EXPECT().MarkNotifiedBatch(mock.Anything, []string{"1"}).Return(nil).Once()
@@ -74,7 +74,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		remaining, err := engine.Sync(ctx, userID, true)
 
 		require.NoError(t, err)
-		assert.Equal(t, 5000, remaining)
+		assert.Equal(t, 5000, remaining.Remaining)
 	})
 
 	t.Run("Skips Sync When Interval Not Reached", func(t *testing.T) {
@@ -108,14 +108,14 @@ func TestSyncEngine_Sync(t *testing.T) {
 		}
 
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(recentMeta, nil).Once()
-		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, 4999, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, types.RateLimitInfo{Limit: 5000, Remaining: 4999}, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
 		remaining, err := engine.Sync(ctx, userID, true)
 
 		require.NoError(t, err)
-		assert.Equal(t, 4999, remaining)
+		assert.Equal(t, 4999, remaining.Remaining)
 	})
 }
 
@@ -178,7 +178,7 @@ func TestETagSanitization(t *testing.T) {
 		healedMeta := *corruptedMeta
 		healedMeta.ETag = ""
 		
-		mockFetcher.EXPECT().FetchNotifications(mock.Anything, &healedMeta, true).Return(nil, &healedMeta, 5000, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, &healedMeta, true).Return(nil, &healedMeta, types.RateLimitInfo{Limit: 5000, Remaining: 5000}, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, slog.Default())

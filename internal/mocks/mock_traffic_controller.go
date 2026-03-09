@@ -151,9 +151,9 @@ func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.Ta
 	return _c
 }
 
-// UpdateRateLimit provides a mock function with given fields: ctx, remaining
-func (_m *MockTrafficController) UpdateRateLimit(ctx context.Context, remaining int) {
-	_m.Called(ctx, remaining)
+// UpdateRateLimit provides a mock function with given fields: ctx, info
+func (_m *MockTrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
+	_m.Called(ctx, info)
 }
 
 // MockTrafficController_UpdateRateLimit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateRateLimit'
@@ -163,14 +163,14 @@ type MockTrafficController_UpdateRateLimit_Call struct {
 
 // UpdateRateLimit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - remaining int
-func (_e *MockTrafficController_Expecter) UpdateRateLimit(ctx interface{}, remaining interface{}) *MockTrafficController_UpdateRateLimit_Call {
-	return &MockTrafficController_UpdateRateLimit_Call{Call: _e.mock.On("UpdateRateLimit", ctx, remaining)}
+//   - info types.RateLimitInfo
+func (_e *MockTrafficController_Expecter) UpdateRateLimit(ctx interface{}, info interface{}) *MockTrafficController_UpdateRateLimit_Call {
+	return &MockTrafficController_UpdateRateLimit_Call{Call: _e.mock.On("UpdateRateLimit", ctx, info)}
 }
 
-func (_c *MockTrafficController_UpdateRateLimit_Call) Run(run func(ctx context.Context, remaining int)) *MockTrafficController_UpdateRateLimit_Call {
+func (_c *MockTrafficController_UpdateRateLimit_Call) Run(run func(ctx context.Context, info types.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int))
+		run(args[0].(context.Context), args[1].(types.RateLimitInfo))
 	})
 	return _c
 }
@@ -180,7 +180,7 @@ func (_c *MockTrafficController_UpdateRateLimit_Call) Return() *MockTrafficContr
 	return _c
 }
 
-func (_c *MockTrafficController_UpdateRateLimit_Call) RunAndReturn(run func(context.Context, int)) *MockTrafficController_UpdateRateLimit_Call {
+func (_c *MockTrafficController_UpdateRateLimit_Call) RunAndReturn(run func(context.Context, types.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
 	_c.Run(run)
 	return _c
 }

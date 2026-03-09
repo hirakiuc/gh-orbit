@@ -45,9 +45,9 @@ type APITrafficController struct {
 	med  chan *apiTask
 	low  chan *apiTask
 
-	// Threshold for pausing background tasks (Enrichment)
-	rateLimitThreshold int64
-	remainingRateLimit int64
+	// Rate Limit State
+	rlInfo       atomic.Pointer[types.RateLimitInfo]
+	lockoutUntil atomic.Pointer[time.Time]
 
 	// Concurrency scaling
 	workerLimit int32
@@ -58,18 +58,18 @@ type APITrafficController struct {
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	const maxConcurrency = 3
+	initialRL := &types.RateLimitInfo{Limit: 5000, Remaining: 5000}
 	tc := &APITrafficController{
-		ctx:                ctx,
-		logger:             logger,
-		high:               make(chan *apiTask, 10),
-		med:                make(chan *apiTask, 10),
-		low:                make(chan *apiTask, 100),
-		rateLimitThreshold: 500,
-		remainingRateLimit: 5000,
-		workerLimit:        maxConcurrency,
-		sem:                make(chan struct{}, maxConcurrency),
-		adj:                make(chan int32, 1),
+		ctx:         ctx,
+		logger:      logger,
+		high:        make(chan *apiTask, 10),
+		med:         make(chan *apiTask, 10),
+		low:         make(chan *apiTask, 100),
+		workerLimit: maxConcurrency,
+		sem:         make(chan struct{}, maxConcurrency),
+		adj:         make(chan int32, 1),
 	}
+	tc.rlInfo.Store(initialRL)
 
 	// Fill semaphore initially
 	for i := 0; i < maxConcurrency; i++ {
@@ -189,23 +189,47 @@ func (c *APITrafficController) worker(ctx context.Context, id int) {
 }
 
 func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
-	// 1. Serialization for User Actions
+	// 1. Lockout Check (Secondary Rate Limits)
+	if until := c.lockoutUntil.Load(); until != nil {
+		if time.Now().Before(*until) {
+			if t.priority != PriorityUser {
+				c.logger.WarnContext(ctx, "traffic controller: task skipped due to active lockout", "task_id", t.id, "until", *until)
+				t.resp <- nil
+				return
+			}
+			// For user actions, we might wait? or just fail. 
+			// Best practice says STOP ALL. 
+			t.resp <- nil
+			return
+		}
+	}
+
+	// 2. Serialization for User Actions
 	if t.priority == PriorityUser {
 		c.userMu.Lock()
 		defer c.userMu.Unlock()
 	}
 
-	// 2. Rate Limit Guard (using atomic)
-	remaining := atomic.LoadInt64(&c.remainingRateLimit)
-	threshold := atomic.LoadInt64(&c.rateLimitThreshold)
+	// 3. Rate Limit Guard
+	rl := c.rlInfo.Load()
+	threshold := int64(rl.Limit) / 10
+	if threshold > 1000 {
+		threshold = 1000
+	}
 
-	if t.priority == PriorityEnrich && remaining < threshold {
-		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
+	if t.priority == PriorityEnrich && int64(rl.Remaining) < threshold {
+		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", rl.Remaining, "threshold", threshold)
 		t.resp <- nil
 		return
 	}
 
-	// 3. Execution
+	if int64(rl.Remaining) < 100 && t.priority != PriorityUser {
+		c.logger.WarnContext(ctx, "traffic controller: skipping non-user task due to critical quota", "task_id", t.id, "remaining", rl.Remaining)
+		t.resp <- nil
+		return
+	}
+
+	// 4. Execution
 	taskCtx := t.ctx
 	if taskCtx == nil {
 		taskCtx = ctx
@@ -216,7 +240,7 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 		trace.WithAttributes(
 			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
 			attribute.Int("priority", t.priority),
-			attribute.Int64("github.remaining_quota", remaining),
+			attribute.Int64("github.remaining_quota", int64(rl.Remaining)),
 		),
 	)
 	defer span.End()
@@ -229,14 +253,23 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 }
 
 // UpdateRateLimit updates the internal tracking of the GitHub quota and adjusts concurrency.
-func (c *APITrafficController) UpdateRateLimit(ctx context.Context, remaining int) {
-	atomic.StoreInt64(&c.remainingRateLimit, int64(remaining))
+func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
+	c.rlInfo.Store(&info)
+
+	if info.RetryAfter > 0 {
+		until := time.Now().Add(info.RetryAfter)
+		c.lockoutUntil.Store(&until)
+		c.logger.WarnContext(ctx, "traffic controller: secondary rate limit hit, locking out", "retry_after", info.RetryAfter)
+	}
+
 	if c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", "remaining", remaining)
+		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", 
+			"remaining", info.Remaining, 
+			"reset", info.Reset)
 	}
 
 	// Dynamic Scaling Logic
-	c.adjustConcurrency(remaining)
+	c.adjustConcurrency(info.Remaining)
 }
 
 func (c *APITrafficController) adjustConcurrency(remaining int) {
@@ -255,7 +288,7 @@ func (c *APITrafficController) adjustConcurrency(remaining int) {
 
 // Remaining returns the last known remaining rate limit.
 func (c *APITrafficController) Remaining() int {
-	return int(atomic.LoadInt64(&c.remainingRateLimit))
+	return c.rlInfo.Load().Remaining
 }
 
 // Shutdown waits for the worker to finish processing.
