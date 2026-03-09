@@ -329,6 +329,11 @@ func parseRateLimitInfo(h http.Header) types.RateLimitInfo {
 	if val := h.Get("Retry-After"); val != "" {
 		if i, err := strconv.Atoi(val); err == nil {
 			info.RetryAfter = time.Duration(i) * time.Second
+		} else if t, err := http.ParseTime(val); err == nil {
+			info.RetryAfter = time.Until(t)
+			if info.RetryAfter < 0 {
+				info.RetryAfter = 0
+			}
 		}
 	}
 
