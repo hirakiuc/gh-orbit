@@ -40,3 +40,4 @@ packages:
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
       GitHubClient:
+      CommandExecutor:

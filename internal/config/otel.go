@@ -36,7 +36,7 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 		return nil, nil, fmt.Errorf("failed to secure trace directory: %w", err)
 	}
 
-	file, err := os.OpenFile(path, flags, 0o600) // #nosec G304: Path is internally resolved following XDG specs
+	file, err := os.OpenFile(path, flags, 0o600) // #nosec G304: Internal XDG path
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open trace file: %w", err)
 	}

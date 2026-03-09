@@ -82,9 +82,9 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 	// Launch worker pool
 	for i := 0; i < maxConcurrency; i++ {
 		tc.wg.Add(1)
-		// #nosec G118: Background worker intended to outlive request context
 		go tc.worker(ctx, i)
 	}
+
 	return tc
 }
 

@@ -151,6 +151,10 @@ func TestInterpreter_FullFlow(t *testing.T) {
 	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(func() tea.Msg { return nil }).Maybe()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
 	
+	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
+	mockExecutor.EXPECT().InteractiveGH(mock.Anything, "pr", "checkout", "1", "-R", "o/r").Return(func() tea.Msg { return nil }).Maybe()
+	mockExecutor.EXPECT().Run(mock.Anything, "gh", "pr", "view", "1", "-R", "o/r", "--web").Return(nil).Maybe()
+	
 	notif := types.NotificationWithState{
 		Notification: types.Notification{
 			GitHubID: "1",
@@ -207,7 +211,7 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 	assert.IsType(t, ActionScheduleTick{}, actions[1])
 
 	// 3. Error Msg
-	actions = m.Transition(errMsg{err: fmt.Errorf("fail")}, 0)
+	actions = m.Transition(types.ErrMsg{Err: fmt.Errorf("fail")}, 0)
 	assert.NotNil(t, m.err)
 	assert.Empty(t, actions)
 }
@@ -393,17 +397,17 @@ func TestModel_GHViewCmd_Validation(t *testing.T) {
 	// Invalid repo
 	cmd := m.ghViewCmd("pr", "invalid-repo", "1")
 	msg := executeCmd(cmd)
-	require.IsType(t, errMsg{}, msg)
+	require.IsType(t, types.ErrMsg{}, msg)
 	
 	// Invalid release tag
 	cmd2 := m.ghViewCmd("release", "o/r", "invalid tag!")
 	msg2 := executeCmd(cmd2)
-	require.IsType(t, errMsg{}, msg2)
+	require.IsType(t, types.ErrMsg{}, msg2)
 	
 	// Invalid number
 	cmd3 := m.ghViewCmd("pr", "o/r", "abc")
 	msg3 := executeCmd(cmd3)
-	require.IsType(t, errMsg{}, msg3)
+	require.IsType(t, types.ErrMsg{}, msg3)
 }
 
 func TestModel_DetailView_ContentSync(t *testing.T) {
@@ -500,7 +504,7 @@ func TestModel_Actions_EdgeCases(t *testing.T) {
 	// 2. OpenBrowser with invalid URL
 	cmd2 := m.OpenBrowser("http://google.com") // not github.com
 	msg := executeCmd(cmd2)
-	assert.IsType(t, errMsg{}, msg)
+	assert.IsType(t, types.ErrMsg{}, msg)
 	
 	// 3. ViewItem with unknown type
 	notif := types.NotificationWithState{
@@ -519,6 +523,7 @@ func TestModel_Options(t *testing.T) {
 		"u", cfg, nil, nil, nil, nil, nil, nil, nil,
 		WithTheme(false),
 		WithVersion("1.2.3"),
+		WithExecutor(mocks.NewMockCommandExecutor(t)),
 	)
 	
 	assert.False(t, m.isDark)
@@ -618,7 +623,7 @@ func TestModel_LoadNotifications(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, fmt.Errorf("db error")).Once()
 	cmdErr := m.loadNotifications()
 	msgErr := executeCmd(cmdErr)
-	assert.IsType(t, errMsg{}, msgErr)
+	assert.IsType(t, types.ErrMsg{}, msgErr)
 }
 func TestUIController_Comprehensive(t *testing.T) {
 	styles := DefaultStyles(true)

@@ -8,6 +8,7 @@ import (
 type GHUser = types.GHUser
 type GHNotification = types.GHNotification
 type BridgeStatus = types.BridgeStatus
+type BridgeHealth = types.BridgeHealth
 
 const (
 	StatusHealthy           = types.StatusHealthy
@@ -38,6 +39,9 @@ type TaskFunc = types.TaskFunc
 type TrafficController = types.TrafficController
 type RESTClient = types.RESTClient
 type GraphQLClient = types.GraphQLClient
+
+type CommandExecutor = types.CommandExecutor
+type ErrMsg = types.ErrMsg
 
 // Repository defines the full database capabilities required by the TUI and Services.
 type Repository = types.Repository

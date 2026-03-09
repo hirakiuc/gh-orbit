@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ebitengine/purego"
@@ -34,6 +32,7 @@ type alertRequest struct {
 
 type macosNotifier struct {
 	logger    *slog.Logger
+	executor  CommandExecutor
 	queue     chan alertRequest
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -44,12 +43,13 @@ type macosNotifier struct {
 }
 
 // NewPlatformNotifier returns the macOS native notifier with a background worker.
-func NewPlatformNotifier(ctx context.Context, logger *slog.Logger) Notifier {
+func NewPlatformNotifier(ctx context.Context, executor CommandExecutor, logger *slog.Logger) Notifier {
 	n := &macosNotifier{
-		logger: logger,
-		queue:  make(chan alertRequest, 100),
-		status: StatusUnknown,
-		ready:  make(chan struct{}),
+		logger:   logger,
+		executor: executor,
+		queue:    make(chan alertRequest, 100),
+		status:   StatusUnknown,
+		ready:    make(chan struct{}),
 	}
 
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -275,22 +275,17 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 		escapeAppleScript(req.subtitle),
 	)
 
-	// Execute asynchronously with worker's context
-	// #nosec G118: Deliver function runs in background on purpose
+	// Execute asynchronously with worker's lifecycle-managed context
+	// #nosec G118: Supervisor context used for background worker longevity
 	go func() {
 		cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 
-		// #nosec G204 -- script is sanitized via escapeAppleScript
-		cmd := exec.CommandContext(cmdCtx, "osascript", "-e", script)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		
-		if err := cmd.Run(); err != nil {
+		if err := m.executor.Run(cmdCtx, "osascript", "-e", script); err != nil {
 			// We use a fresh background context for final best-effort logs if parent is canceled
 			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
 		}
-	}()
-}
+	}()}
 
 func (m *macosNotifier) swizzleBundleID() {
 	bundleCls := objc_getClass("NSBundle")
@@ -333,10 +328,9 @@ func (m *macosNotifier) requestAuth() {
 }
 
 // CheckFocusMode performs a soft-failure probe for active macOS Focus modes.
-func CheckFocusMode() string {
+func CheckFocusMode(executor CommandExecutor) string {
 	// NSStatusItem Visible FocusModes is a reliable indicator in modern macOS
-	cmd := exec.Command("defaults", "read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes")
-	out, err := cmd.Output()
+	out, err := executor.Execute(context.Background(), "defaults", "read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes")
 	if err != nil {
 		return "Unknown (Permissions restricted)"
 	}

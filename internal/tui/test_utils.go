@@ -34,6 +34,7 @@ func newTestModel(t TestingT) *Model {
 	mockAlerter := mocks.NewMockAlerter(t)
 	mockRepo := mocks.NewMockRepository(t)
 	mockClient := mocks.NewMockGitHubClient(t)
+	mockExecutor := mocks.NewMockCommandExecutor(t)
 
 	// Basic bridge status mock (used in NewModel or Transition)
 	mockSyncer.EXPECT().BridgeStatus().Return(api.StatusHealthy).Maybe()
@@ -49,6 +50,7 @@ func newTestModel(t TestingT) *Model {
 		mockEnricher,
 		mockTraffic,
 		mockAlerter,
+		WithExecutor(mockExecutor),
 	)
 	
 	m.heartbeatInterval = time.Millisecond

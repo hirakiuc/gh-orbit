@@ -2,17 +2,13 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
 )
 
 // AlertService coordinates the logic for when and how to send system alerts.
@@ -24,6 +20,7 @@ type AlertService struct {
 	// Tiered Notifiers
 	native   Notifier // Tier 1: Direct macOS bridge
 	fallback Notifier // Tier 2: Cross-platform fallback (beeep)
+	executor CommandExecutor
 
 	// Per-sync state for throttling
 	mu             sync.Mutex
@@ -32,39 +29,34 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(cfg *config.Config, database AlertRepository, native Notifier, fallback Notifier, logger *slog.Logger) *AlertService {
+func NewAlertService(cfg *config.Config, database AlertRepository, native Notifier, fallback Notifier, executor CommandExecutor, logger *slog.Logger) *AlertService {
 	return &AlertService{
 		config:         cfg,
 		db:             database,
 		logger:         logger,
 		native:         native,
 		fallback:       fallback,
+		executor:       executor,
 		syncRepoCounts: make(map[string]int),
 	}
 }
 
 // Warmup proactively assesses the bridge health without firing an alert.
 func (a *AlertService) Warmup() {
-	if a.native != nil {
-		a.native.Warmup()
-	}
-	if a.fallback != nil {
-		a.fallback.Warmup()
-	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Proactively probe native tier
+	a.native.Warmup()
+	// Fallback tier is typically lazy or does not require warmup
 }
 
-// Ready returns a channel that closes when the primary notification tier is ready.
+// Ready returns a channel that is closed when the service is fully initialized.
 func (a *AlertService) Ready() <-chan struct{} {
-	if a.native != nil {
-		return a.native.Ready()
-	}
-	// If no native bridge, fallback is usually instant
-	ch := make(chan struct{})
-	close(ch)
-	return ch
+	return a.native.Ready()
 }
 
-// SyncStart prepares the service for a new synchronization cycle.
+// SyncStart signals the beginning of a new sync cycle, resetting throttles.
 func (a *AlertService) SyncStart(ctx context.Context) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -72,112 +64,93 @@ func (a *AlertService) SyncStart(ctx context.Context) {
 	a.syncAlertCount = 0
 	a.syncRepoCounts = make(map[string]int)
 
+	// Check if this is the first run (empty database)
+	// If it is, we stay silent to avoid a deluge of historic alerts.
 	notifs, err := a.db.ListNotifications(ctx)
-	a.isInitializing = (err == nil && len(notifs) == 0)
-
-	if a.isInitializing {
+	if err == nil && len(notifs) == 0 {
+		a.isInitializing = true
 		a.logger.InfoContext(ctx, "alert service: silent initialization baseline active")
+	} else {
+		a.isInitializing = false
 	}
 }
 
-// Notify sends a system alert using the best available notifier.
+// Notify processes a new notification and sends an alert if appropriate.
 func (a *AlertService) Notify(ctx context.Context, n GHNotification) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if !a.config.Notifications.Enabled || a.config.Notifications.Mute || a.isInitializing {
+	if !a.config.Notifications.Enabled || a.isInitializing {
 		return nil
 	}
 
+	// 1. Filter by Reason (if configured)
 	if !a.shouldNotifyReason(n.Reason) {
 		return nil
 	}
 
-	for _, repo := range a.config.Notifications.IgnoreRepos {
-		if repo == n.Repository.FullName {
-			return nil
-		}
-	}
-
-	// Throttling
-	a.syncAlertCount++
-	if a.syncAlertCount > 5 {
-		if a.syncAlertCount == 6 {
-			return a.getNotifier().Notify(ctx, "New Notifications", "gh-orbit", "Multiple new notifications received.", "", 1)
+	// 2. Global Sync Limit: Max 5 alerts per sync session
+	if a.syncAlertCount >= 5 {
+		if a.syncAlertCount == 5 {
+			a.logger.InfoContext(ctx, "alert throttle reached: sending summary")
+			a.syncAlertCount++
+			return a.getNotifier().Notify(ctx, "New Notifications", "Summary", "Additional notifications are available in the TUI", "https://github.com/notifications", 1)
 		}
 		return nil
 	}
 
-	title := n.Subject.Title
-	subtitle := n.Repository.FullName
-	body := fmt.Sprintf("Reason: %s", n.Reason)
-	importance := a.calculateImportance(ctx, n)
-
-	a.logger.DebugContext(ctx, "sending system alert",
-		"title", title,
-		"importance", importance,
+	// 3. Calculate Importance & Send
+	importance := a.calculateImportance(n)
+	err := a.getNotifier().Notify(
+		ctx,
+		n.Repository.FullName,
+		n.Subject.Title,
+		n.Reason,
+		n.Subject.URL,
+		importance,
 	)
 
-	return a.getNotifier().Notify(ctx, title, subtitle, body, "", importance)
+	if err == nil {
+		a.syncAlertCount++
+	}
+
+	return err
 }
 
-// TestNotify sends a diagnostic alert bypassing the silent startup baseline.
+// TestNotify triggers a guaranteed notification for diagnostic purposes.
 func (a *AlertService) TestNotify(ctx context.Context, title, subtitle, body string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// Bypass isInitializing and config checks for diagnostics
-	a.logger.InfoContext(ctx, "sending diagnostic system alert", "tier", a.getTierName())
-	return a.getNotifier().Notify(ctx, title, subtitle, body, "", 1)
+	return a.getNotifier().Notify(ctx, title, subtitle, body, "https://github.com/notifications", 2)
 }
 
-// ActiveTierInfo returns the name and status of the current active notification tier.
+// ActiveTierInfo returns the name and health of the current primary notifier.
 func (a *AlertService) ActiveTierInfo() (string, BridgeStatus) {
-	n := a.getNotifier()
-	name := a.getTierName()
-	return name, n.Status()
-}
-
-func (a *AlertService) getTierName() string {
-	if a.native != nil && a.native.Status() == StatusHealthy {
-		return "Native Bridge"
+	if a.native.Status() == StatusHealthy {
+		return "macOS Native (Tier 1)", StatusHealthy
 	}
-	// On macOS, if native fails, we use AppleScript fallback via the macosNotifier's internal logic.
-	if runtime.GOOS == "darwin" && a.native != nil {
-		if a.native.Status() == StatusUnsupported || a.native.Status() == StatusBroken {
-			return "AppleScript Fallback"
-		}
-	}
-	return "Beeep (Cross-Platform)"
+	return "Beeep Fallback (Tier 2)", a.fallback.Status()
 }
 
 func (a *AlertService) getNotifier() Notifier {
-	// If native is healthy, use it. Otherwise, use fallback.
-	if a.native != nil && a.native.Status() == StatusHealthy {
-		return a.native
-	}
-	// macosNotifier also has its own internal AppleScript fallback if it's not healthy.
-	if runtime.GOOS == "darwin" && a.native != nil {
+	if a.native.Status() == StatusHealthy {
 		return a.native
 	}
 	return a.fallback
 }
 
-func (a *AlertService) calculateImportance(ctx context.Context, n GHNotification) int {
+func (a *AlertService) calculateImportance(n GHNotification) int {
 	switch n.Reason {
-	case "mention", "review_requested", "security_alert":
-		return 2
+	case "mention":
+		return 3 // High
+	case "review_requested", "assign":
+		return 2 // Medium
+	default:
+		return 1 // Low
 	}
-	state, err := a.db.GetNotification(ctx, n.ID)
-	if err == nil && state != nil && state.Priority >= 2 {
-		return 2
-	}
-	return 1
 }
 
 func (a *AlertService) shouldNotifyReason(reason string) bool {
 	if len(a.config.Notifications.Reasons) == 0 {
-		return true
+		return true // Allow all if not configured
 	}
 	for _, r := range a.config.Notifications.Reasons {
 		if r == reason {
@@ -187,74 +160,36 @@ func (a *AlertService) shouldNotifyReason(reason string) bool {
 	return false
 }
 
-// Shutdown ensures all notification workers are stopped.
+// Shutdown gracefully terminates all notifier tiers.
 func (a *AlertService) Shutdown(ctx context.Context) {
-	if a.native != nil {
-		a.native.Shutdown(ctx)
-	}
-	if a.fallback != nil {
-		a.fallback.Shutdown(ctx)
-	}
-	a.logger.DebugContext(ctx, "alert service shutdown complete")
+	a.native.Shutdown(ctx)
+	a.fallback.Shutdown(ctx)
 }
 
-// BridgeStatus returns the functional state of the primary native bridge.
+// BridgeStatus reports the aggregate health of the alerting system.
 func (a *AlertService) BridgeStatus() BridgeStatus {
-	if a.native == nil {
-		return StatusUnsupported
-	}
 	return a.native.Status()
 }
 
-// ProbeAndCacheBridge performs a deep probe of the native bridge and caches the result.
-func (a *AlertService) ProbeAndCacheBridge(ctx context.Context, version string) {
-	if runtime.GOOS != "darwin" {
-		return
-	}
-
+// ProbeAndCacheBridge assesses environmental compatibility and caches it locally.
+func (a *AlertService) ProbeAndCacheBridge() {
 	// Ensure bridge is warmed up (probed) before checking status
 	a.Warmup()
 
 	// 1. Get current environment fingerprints
 	osVersion := "unknown"
-	out, err := exec.Command("sysctl", "-n", "kern.osversion").Output()
+	out, err := a.executor.Execute(context.Background(), "sysctl", "-n", "kern.osversion")
 	if err == nil {
 		osVersion = strings.TrimSpace(string(out))
 	}
 	execPath, _ := os.Executable()
 
-	// 2. Check cache
-	cached, err := a.db.GetBridgeHealth(ctx)
-	if err == nil && cached != nil {
-		if cached.OSVersion == osVersion && cached.BinaryPath == execPath && cached.BinaryVersion == version {
-			a.logger.DebugContext(ctx, "alert service: using cached bridge status", "status", cached.Status)
-			return
-		}
-	}
-
-	// 3. Perform Deep Probe
-	probes := ProbeBridge()
-	allPassed := true
-	for _, p := range probes {
-		if !p.Passed {
-			allPassed = false
-			break
-		}
-	}
-
-	status := StatusHealthy
-	if !allPassed {
-		status = StatusBroken
-	}
-
-	// 4. Update Cache
-	_ = a.db.UpdateBridgeHealth(ctx, db.BridgeHealth{
-		Status:        string(status),
+	// 2. Cache
+	_ = a.db.UpdateBridgeHealth(context.Background(), BridgeHealth{
+		Status:        string(a.native.Status()),
 		OSVersion:     osVersion,
 		BinaryPath:    execPath,
-		BinaryVersion: version,
+		BinaryVersion: "dev", // TODO: inject version
 		UpdatedAt:     time.Now(),
 	})
-
-	a.logger.InfoContext(ctx, "alert service: bridge probe complete", "status", status)
 }

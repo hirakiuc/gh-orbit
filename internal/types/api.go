@@ -238,6 +238,19 @@ type TrafficController interface {
 
 
 
+// CommandExecutor defines the interface for executing system commands safely.
+type CommandExecutor interface {
+	// Execute executes a command and returns its standard output.
+	Execute(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Run executes a command and waits for it to complete.
+	Run(ctx context.Context, name string, args ...string) error
+	// InteractiveGH executes a GitHub CLI command interactively using tea.ExecProcess.
+	InteractiveGH(callback func(error) tea.Msg, args ...string) tea.Cmd
+}
+
+// ErrMsg is a common error message wrapper for Bubble Tea updates.
+type ErrMsg struct{ Err error }
+
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {
 	GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, error)
