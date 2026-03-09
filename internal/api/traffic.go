@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -29,80 +30,182 @@ type apiTask struct {
 	ctx      context.Context
 }
 
-// APITrafficController ensures serialized, prioritized access to the GitHub API.
+// APITrafficController ensures prioritized access to the GitHub API.
 type APITrafficController struct {
 	ctx    context.Context // Application root context
 	logger *slog.Logger
 	mu     sync.Mutex
+	userMu sync.Mutex // Serializes PriorityUser tasks to prevent out-of-order writes
 	wg     sync.WaitGroup
 
 	taskCounter uint64
 
 	// Channels for prioritized tasks
-	high chan *apiTask
+	high chan *apiTask // Fast Track for PriorityUser
 	med  chan *apiTask
 	low  chan *apiTask
 
 	// Threshold for pausing background tasks (Enrichment)
-	rateLimitThreshold int
-	remainingRateLimit int
+	rateLimitThreshold int64
+	remainingRateLimit int64
+
+	// Concurrency scaling
+	workerLimit int32
+	sem         chan struct{} // Controls active workers
+	adj         chan int32    // Channel for scaling requests
+	drainCancel context.CancelFunc
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
+	const maxConcurrency = 3
 	tc := &APITrafficController{
 		ctx:                ctx,
 		logger:             logger,
-		high:               make(chan *apiTask),
-		med:                make(chan *apiTask),
-		low:                make(chan *apiTask),
+		high:               make(chan *apiTask, 10),
+		med:                make(chan *apiTask, 10),
+		low:                make(chan *apiTask, 100),
 		rateLimitThreshold: 500,
 		remainingRateLimit: 5000,
+		workerLimit:        maxConcurrency,
+		sem:                make(chan struct{}, maxConcurrency),
+		adj:                make(chan int32, 1),
 	}
-	tc.wg.Add(1)
-	// #nosec G118: Background worker intended to outlive request context
-	go tc.worker(ctx)
+
+	// Fill semaphore initially
+	for i := 0; i < maxConcurrency; i++ {
+		tc.sem <- struct{}{}
+	}
+
+	// Start concurrency manager
+	go tc.concurrencyManager(ctx)
+
+	// Launch worker pool
+	for i := 0; i < maxConcurrency; i++ {
+		tc.wg.Add(1)
+		// #nosec G118: Background worker intended to outlive request context
+		go tc.worker(ctx, i)
+	}
 	return tc
 }
 
-func (c *APITrafficController) worker(ctx context.Context) {
+func (c *APITrafficController) concurrencyManager(ctx context.Context) {
+	current := int32(3)
+	for {
+		select {
+		case <-ctx.Done():
+			if c.drainCancel != nil {
+				c.drainCancel()
+			}
+			return
+		case target := <-c.adj:
+			if target == current {
+				continue
+			}
+
+			// Cancel any existing background drainer before applying new logic
+			if c.drainCancel != nil {
+				c.drainCancel()
+				c.drainCancel = nil
+			}
+
+			if target < current {
+				// Scale down: Drain semaphore in background
+				delta := int(current - target)
+				// #nosec G118: cancel is managed by concurrencyManager and called on next event or shutdown
+				dCtx, cancel := context.WithCancel(c.ctx)
+				c.drainCancel = cancel
+
+				go func(ctx context.Context, d int) {
+					for i := 0; i < d; i++ {
+						select {
+						case <-ctx.Done():
+							return
+						case <-c.sem:
+						}
+					}
+				}(dCtx, delta)
+				c.logger.Info("traffic controller: scaling down concurrency", "new_limit", target)
+			} else {
+				// Scale up: Fill semaphore
+				for i := 0; i < int(target-current); i++ {
+					select {
+					case <-ctx.Done():
+						return
+					case c.sem <- struct{}{}:
+					}
+				}
+				c.logger.Info("traffic controller: scaled up concurrency", "new_limit", target)
+			}
+			current = target
+			atomic.StoreInt32(&c.workerLimit, target)
+		}
+	}
+}
+
+func (c *APITrafficController) worker(ctx context.Context, id int) {
 	defer c.wg.Done()
 	for {
 		var task *apiTask
+		var ok bool
 
-		// Nested select for genuine preemption AND context awareness
+		// 1. Wait for task (non-blocking on semaphore)
 		select {
 		case <-ctx.Done():
-			c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
 			return
-		case task = <-c.high:
+		case task, ok = <-c.high:
 		default:
 			select {
 			case <-ctx.Done():
-				c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
 				return
-			case task = <-c.high:
-			case task = <-c.med:
-			default:
-				select {
-				case <-ctx.Done():
-					c.logger.DebugContext(context.Background(), "traffic controller: worker stopping (context canceled)")
-					return
-				case task = <-c.high:
-				case task = <-c.med:
-				case task = <-c.low:
-				}
+			case task, ok = <-c.high:
+			case task, ok = <-c.med:
+			case task, ok = <-c.low:
 			}
 		}
 
+		if !ok {
+			return
+		}
+
+		// 2. Acquire semaphore slot (blocking until concurrency limit allows)
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.sem:
+			// Slot acquired
+		}
+
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
-			c.logger.DebugContext(ctx, "traffic controller: task dispatched", "task_id", task.id, "priority", task.priority)
+			c.logger.DebugContext(ctx, "traffic controller: worker dispatched task", "worker_id", id, "task_id", task.id, "priority", task.priority)
 		}
 		c.executeTask(ctx, task)
+
+		// 3. Release slot back to semaphore
+		select {
+		case c.sem <- struct{}{}:
+		case <-ctx.Done():
+		}
 	}
 }
 
 func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
-	// Use task's context for span parenting if available
+	// 1. Serialization for User Actions
+	if t.priority == PriorityUser {
+		c.userMu.Lock()
+		defer c.userMu.Unlock()
+	}
+
+	// 2. Rate Limit Guard (using atomic)
+	remaining := atomic.LoadInt64(&c.remainingRateLimit)
+	threshold := atomic.LoadInt64(&c.rateLimitThreshold)
+
+	if t.priority == PriorityEnrich && remaining < threshold {
+		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
+		t.resp <- nil
+		return
+	}
+
+	// 3. Execution
 	taskCtx := t.ctx
 	if taskCtx == nil {
 		taskCtx = ctx
@@ -113,46 +216,46 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 		trace.WithAttributes(
 			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
 			attribute.Int("priority", t.priority),
+			attribute.Int64("github.remaining_quota", remaining),
 		),
 	)
 	defer span.End()
 
-	// Rate limit guard
-	c.mu.Lock()
-	remaining := c.remainingRateLimit
-	threshold := c.rateLimitThreshold
-	c.mu.Unlock()
-
-	if t.priority == PriorityEnrich && remaining < threshold {
-		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
-		t.resp <- nil
-		return
-	}
-
-	c.logger.DebugContext(ctx, "traffic controller: executing task", "task_id", t.id, "priority", t.priority)
-
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	msg := t.fn(ctx)
+	msg := t.fn(execCtx)
 	t.resp <- msg
 }
 
-// UpdateRateLimit updates the internal tracking of the GitHub quota.
+// UpdateRateLimit updates the internal tracking of the GitHub quota and adjusts concurrency.
 func (c *APITrafficController) UpdateRateLimit(ctx context.Context, remaining int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.remainingRateLimit = remaining
+	atomic.StoreInt64(&c.remainingRateLimit, int64(remaining))
 	if c.logger.Enabled(ctx, slog.LevelDebug) {
 		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", "remaining", remaining)
+	}
+
+	// Dynamic Scaling Logic
+	c.adjustConcurrency(remaining)
+}
+
+func (c *APITrafficController) adjustConcurrency(remaining int) {
+	target := int32(3)
+	if remaining <= 500 {
+		target = 1
+	}
+
+	// Send non-blocking adjustment request
+	select {
+	case c.adj <- target:
+	default:
+		// Manager already busy or queue full, skip this cycle
 	}
 }
 
 // Remaining returns the last known remaining rate limit.
 func (c *APITrafficController) Remaining() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.remainingRateLimit
+	return int(atomic.LoadInt64(&c.remainingRateLimit))
 }
 
 // Shutdown waits for the worker to finish processing.

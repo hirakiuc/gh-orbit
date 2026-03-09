@@ -84,8 +84,10 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 		if m.state == StateDetail {
 			m.refreshDetailView()
 		}
-		actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
-		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
+		if msg.IsInitial {
+			actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
+			actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
+		}
 
 	case priorityUpdatedMsg:
 		m.allNotifications = msg.notifications

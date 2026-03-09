@@ -178,6 +178,8 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 	})
 }
 
+const EnrichmentChunkSize = 10
+
 // enrichItems triggers background enrichment for a specific set of notifications.
 func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 	if len(toEnrich) == 0 {
@@ -190,19 +192,31 @@ func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 		return m.FetchDetailCmd(n.GitHubID, n.SubjectURL, n.SubjectType)
 	}
 
-	// For multiple items (Viewport), we use FetchHybridBatch
-	return m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
-		results := m.enrich.FetchHybridBatch(ctx, toEnrich)
-		if len(results) == 0 {
-			return nil
-		}
+	// For multiple items (Viewport), split into smaller chunks to utilize concurrent workers
+	var cmds []tea.Cmd
 
-		notifs, err := m.db.ListNotifications(ctx)
-		if err != nil {
-			return errMsg{err: err}
+	for i := 0; i < len(toEnrich); i += EnrichmentChunkSize {
+		end := i + EnrichmentChunkSize
+		if end > len(toEnrich) {
+			end = len(toEnrich)
 		}
-		return notificationsLoadedMsg{notifications: notifs}
-	})
+		chunk := toEnrich[i:end]
+
+		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+			results := m.enrich.FetchHybridBatch(ctx, chunk)
+			if len(results) == 0 {
+				return nil
+			}
+
+			notifs, err := m.db.ListNotifications(ctx)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			return notificationsLoadedMsg{notifications: notifs, IsInitial: false}
+		}))
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) MarkRead(i item) tea.Cmd {

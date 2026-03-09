@@ -183,7 +183,7 @@ func (m *Model) loadNotifications() tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return notificationsLoadedMsg{notifications: notifications}
+		return notificationsLoadedMsg{notifications: notifications, IsInitial: true}
 	}
 }
 
@@ -226,6 +226,7 @@ func (m *Model) Shutdown() {
 // Internal messages
 type notificationsLoadedMsg struct {
 	notifications []types.NotificationWithState
+	IsInitial     bool
 }
 
 type priorityUpdatedMsg struct {

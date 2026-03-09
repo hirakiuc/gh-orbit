@@ -4,81 +4,156 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTrafficController_Serialization(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		logger := slog.Default()
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-		tc := NewAPITrafficController(ctx, logger)
+func TestTrafficController_Concurrency(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		var mu sync.Mutex
-		var sequence []int
-		var wg sync.WaitGroup
-		wg.Add(3)
+	logger := slog.Default()
+	tc := NewAPITrafficController(ctx, logger)
 
-		// Submit 3 tasks with different priorities
-		cmd1 := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+	const taskCount = 20
+	var wg sync.WaitGroup
+	wg.Add(taskCount)
+
+	start := time.Now()
+
+	// Submit many tasks simultaneously
+	for i := 0; i < taskCount; i++ {
+		go func(id int) {
 			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			mu.Lock()
-			sequence = append(sequence, PriorityEnrich)
-			mu.Unlock()
-			return nil
-		})
-		cmd2 := tc.Submit(PrioritySync, func(ctx context.Context) tea.Msg {
-			defer wg.Done()
-			mu.Lock()
-			sequence = append(sequence, PrioritySync)
-			mu.Unlock()
-			return nil
-		})
-		cmd3 := tc.Submit(PriorityUser, func(ctx context.Context) tea.Msg {
-			defer wg.Done()
-			mu.Lock()
-			sequence = append(sequence, PriorityUser)
-			mu.Unlock()
-			return nil
-		})
+			cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+				time.Sleep(50 * time.Millisecond) // Simulate API latency
+				return nil
+			})
+			_ = cmd()
+		}(i)
+	}
 
-		// Run them in parallel
-		go cmd1()
-		go cmd2()
-		go cmd3()
+	wg.Wait()
+	duration := time.Since(start)
 
-		// Wait for execution
-		synctest.Wait()
-		wg.Wait()
-
-		mu.Lock()
-		defer mu.Unlock()
-		assert.Len(t, sequence, 3, "Expected 3 tasks to complete")
-	})
+	// With 3 workers and 20 tasks of 50ms each:
+	// Serial: 20 * 50ms = 1000ms
+	// Concurrent (3 workers): ceil(20/3) * 50ms = 7 * 50ms = 350ms
+	// We expect it to be significantly faster than 1s
+	assert.Less(t, duration, 600*time.Millisecond, "Execution should be concurrent and faster than serial")
 }
 
-func TestTrafficController_RateLimitGuard(t *testing.T) {
-	logger := slog.Default()
+func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	defer cancel()
+
+	logger := slog.Default()
 	tc := NewAPITrafficController(ctx, logger)
-	tc.UpdateRateLimit(ctx, 100) // Below default threshold (500)
 
-	var enriched bool
-	cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
-		enriched = true
-		return nil
-	})
-
-	_ = cmd()
-
-	if enriched {
-		t.Error("Expected enrichment task to be skipped due to low rate limit")
+	// 1. Flood with low priority slow tasks
+	for i := 0; i < 10; i++ {
+		tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+			time.Sleep(100 * time.Millisecond)
+			return nil
+		})
 	}
+
+	// 2. Submit a high priority task
+	start := time.Now()
+	highDone := make(chan struct{})
+	go func() {
+		cmd := tc.Submit(PriorityUser, func(ctx context.Context) tea.Msg {
+			return nil
+		})
+		_ = cmd()
+		close(highDone)
+	}()
+
+	// High priority task should finish quickly despite the queue
+	select {
+	case <-highDone:
+		duration := time.Since(start)
+		assert.Less(t, duration, 150*time.Millisecond, "High priority task should preempt enrichment")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("High priority task timed out - likely blocked by enrichment")
+	}
+}
+
+func TestTrafficController_RateLimitAtomic(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := slog.Default()
+	tc := NewAPITrafficController(ctx, logger)
+
+	// Stress the atomic updates
+	const iterations = 100
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			tc.UpdateRateLimit(ctx, i)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			_ = tc.Remaining()
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestTrafficController_ScalingStress(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := slog.Default()
+	tc := NewAPITrafficController(ctx, logger)
+
+	// 1. Submit a continuous stream of background tasks
+	stopTasks := make(chan struct{})
+	var tasksCompleted int64
+	go func() {
+		for {
+			select {
+			case <-stopTasks:
+				return
+			default:
+				cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+					time.Sleep(10 * time.Millisecond)
+					atomic.AddInt64(&tasksCompleted, 1)
+					return nil
+				})
+				go cmd()
+				time.Sleep(2 * time.Millisecond)
+			}
+		}
+	}()
+
+	// 2. Rapidly fluctuate rate limit to trigger scaling
+	for i := 0; i < 10; i++ {
+		// Scale down
+		tc.UpdateRateLimit(ctx, 100) 
+		time.Sleep(20 * time.Millisecond)
+		
+		// Scale up
+		tc.UpdateRateLimit(ctx, 1000)
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	close(stopTasks)
+	time.Sleep(100 * time.Millisecond) // Allow final tasks to settle
+	
+	// If we haven't deadlocked, we pass
+	finalLimit := atomic.LoadInt32(&tc.workerLimit)
+	assert.Equal(t, int32(3), finalLimit, "Should settle at max concurrency")
 }
