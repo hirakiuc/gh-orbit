@@ -46,13 +46,13 @@ type APITrafficController struct {
 	low  chan *apiTask
 
 	// Threshold for pausing background tasks (Enrichment)
-	rateLimitThreshold int32
-	remainingRateLimit int32
+	rateLimitThreshold int64
+	remainingRateLimit int64
 
 	// Concurrency scaling
-	workerLimit int32
 	sem         chan struct{} // Controls active workers
 	adj         chan int32    // Channel for scaling requests
+	drainCancel context.CancelFunc
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
@@ -65,7 +65,6 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		low:                make(chan *apiTask, 100),
 		rateLimitThreshold: 500,
 		remainingRateLimit: 5000,
-		workerLimit:        maxConcurrency,
 		sem:                make(chan struct{}, maxConcurrency),
 		adj:                make(chan int32, 1),
 	}
@@ -92,22 +91,37 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if c.drainCancel != nil {
+				c.drainCancel()
+			}
 			return
 		case target := <-c.adj:
 			if target == current {
 				continue
 			}
 
+			// Cancel any existing background drainer before applying new logic
+			if c.drainCancel != nil {
+				c.drainCancel()
+				c.drainCancel = nil
+			}
+
 			if target < current {
-				// Scale down: Drain semaphore
-				for i := 0; i < int(current-target); i++ {
-					select {
-					case <-ctx.Done():
-						return
-					case <-c.sem:
+				// Scale down: Drain semaphore in background
+				delta := int(current - target)
+				dCtx, cancel := context.WithCancel(c.ctx)
+				c.drainCancel = cancel
+
+				go func(ctx context.Context, d int) {
+					for i := 0; i < d; i++ {
+						select {
+						case <-ctx.Done():
+							return
+						case <-c.sem:
+						}
 					}
-				}
-				c.logger.Info("traffic controller: scaled down concurrency", "new_limit", target)
+				}(dCtx, delta)
+				c.logger.Info("traffic controller: scaling down concurrency", "new_limit", target)
 			} else {
 				// Scale up: Fill semaphore
 				for i := 0; i < int(target-current); i++ {
@@ -120,7 +134,6 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 				c.logger.Info("traffic controller: scaled up concurrency", "new_limit", target)
 			}
 			current = target
-			atomic.StoreInt32(&c.workerLimit, target)
 		}
 	}
 }
@@ -157,7 +170,10 @@ func (c *APITrafficController) worker(ctx context.Context, id int) {
 		}
 
 		if !ok {
-			c.sem <- struct{}{}
+			select {
+			case c.sem <- struct{}{}:
+			default:
+			}
 			return
 		}
 
@@ -166,8 +182,11 @@ func (c *APITrafficController) worker(ctx context.Context, id int) {
 		}
 		c.executeTask(ctx, task)
 
-		// Release slot back to semaphore
-		c.sem <- struct{}{}
+		// Release slot back to semaphore (context-aware to prevent shutdown hangs)
+		select {
+		case c.sem <- struct{}{}:
+		case <-ctx.Done():
+		}
 	}
 }
 
@@ -179,8 +198,8 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 	}
 
 	// 2. Rate Limit Guard (using atomic)
-	remaining := atomic.LoadInt32(&c.remainingRateLimit)
-	threshold := atomic.LoadInt32(&c.rateLimitThreshold)
+	remaining := atomic.LoadInt64(&c.remainingRateLimit)
+	threshold := atomic.LoadInt64(&c.rateLimitThreshold)
 
 	if t.priority == PriorityEnrich && remaining < threshold {
 		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", remaining)
@@ -212,9 +231,7 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 
 // UpdateRateLimit updates the internal tracking of the GitHub quota and adjusts concurrency.
 func (c *APITrafficController) UpdateRateLimit(ctx context.Context, remaining int) {
-	// #nosec G115: GitHub rate limits are well within int32 range (max 5000-15000)
-	val := int32(remaining)
-	atomic.StoreInt32(&c.remainingRateLimit, val)
+	atomic.StoreInt64(&c.remainingRateLimit, int64(remaining))
 	if c.logger.Enabled(ctx, slog.LevelDebug) {
 		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", "remaining", remaining)
 	}
@@ -239,7 +256,7 @@ func (c *APITrafficController) adjustConcurrency(remaining int) {
 
 // Remaining returns the last known remaining rate limit.
 func (c *APITrafficController) Remaining() int {
-	return int(atomic.LoadInt32(&c.remainingRateLimit))
+	return int(atomic.LoadInt64(&c.remainingRateLimit))
 }
 
 // Shutdown waits for the worker to finish processing.
