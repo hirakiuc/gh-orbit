@@ -43,8 +43,8 @@ func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database Enri
 		done:   make(chan struct{}),
 	}
 	
-	// Start background pruning worker with application context
-	// #nosec G118: Background worker intended to outlive request context
+	// Start background pruning worker with lifecycle-managed context
+	// #nosec G118: Supervisor context used for background worker longevity
 	go e.pruningWorker(ctx)
 	
 	return e

@@ -79,12 +79,14 @@ func runDoctor() error {
 	logger, logCleanup, _ := config.SetupLogger(logLevel)
 	defer func() { _ = logCleanup() }()
 
+	executor := api.NewCommandExecutor()
+
 	// 1. Collect OS info
 	osVersion := "unknown"
 	if runtime.GOOS == "darwin" {
-		out, err := exec.Command("sysctl", "-n", "kern.osversion").Output()
+		out, err := executor.Execute(ctx, "sysctl", "-n", "kern.osversion")
 		if err == nil {
-			osVersion = string(out)
+			osVersion = strings.TrimSpace(string(out))
 		}
 	}
 
@@ -141,14 +143,17 @@ func runDoctor() error {
 	}
 	defer func() { _ = database.Close() }()
 
-	native := api.NewPlatformNotifier(ctx, logger)
+	lifecycle := api.NewAppLifecycle()
+	defer lifecycle.Shutdown()
+
+	native := api.NewPlatformNotifier(lifecycle.Context(), executor, logger)
 	fallback := api.NewBeeepNotifier(logger)
 	
 	activeCfg := config.DefaultConfig()
 	if cfg != nil {
 		activeCfg = cfg
 	}
-	alerts := api.NewAlertService(activeCfg, database, native, fallback, logger)
+	alerts := api.NewAlertService(activeCfg, database, native, fallback, executor, logger)
 	defer alerts.Shutdown(ctx)
 
 	if runtime.GOOS == "darwin" {
@@ -174,7 +179,7 @@ func runDoctor() error {
 		report.BridgeStatus = tierStatus
 		
 		// Focus Mode Probe (Darwin only)
-		report.FocusMode = api.CheckFocusMode()
+		report.FocusMode = api.CheckFocusMode(executor)
 	} else {
 		report.BridgeStatus = api.StatusUnsupported
 		report.ActiveTier = "Beeep (Cross-Platform)"
@@ -386,17 +391,19 @@ func run(ctx context.Context) error {
 }
 
 func launchTUI(ctx context.Context, env *environment, res *appResources) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	lifecycle := api.NewAppLifecycle()
+	defer lifecycle.Shutdown()
+
+	executor := api.NewCommandExecutor()
 
 	// Instantiate services via interfaces (Dependency Injection)
-	native := api.NewPlatformNotifier(ctx, env.logger)
+	native := api.NewPlatformNotifier(lifecycle.Context(), executor, env.logger)
 	fallback := api.NewBeeepNotifier(env.logger)
-	alerts := api.NewAlertService(res.config, res.database, native, fallback, env.logger)
+	alerts := api.NewAlertService(res.config, res.database, native, fallback, executor, env.logger)
 	fetcher := api.NewNotificationFetcher(res.client, env.logger)
 	syncer := api.NewSyncEngine(fetcher, res.database, alerts, env.logger)
-	enricher := api.NewEnrichmentEngine(ctx, res.client, res.database, env.logger)
-	traffic := api.NewAPITrafficController(ctx, env.logger)
+	enricher := api.NewEnrichmentEngine(lifecycle.Context(), res.client, res.database, env.logger)
+	traffic := api.NewAPITrafficController(lifecycle.Context(), env.logger)
 
 	m := tui.NewModel(
 		res.userID,
@@ -409,6 +416,7 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 		traffic,
 		alerts,
 		tui.WithVersion(version),
+		tui.WithExecutor(executor),
 	)
 
 	var opts []tea.ProgramOption
@@ -437,7 +445,7 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	}
 
 	// Stop all background workers tied to this context before entering shutdown block
-	cancel()
+	lifecycle.Shutdown()
 
 	// Graceful Shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

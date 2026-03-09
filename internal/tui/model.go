@@ -85,10 +85,18 @@ type Model struct {
 	heartbeatInterval time.Duration
 	clockInterval     time.Duration
 	lastQuitPress     time.Time
+	executor          api.CommandExecutor
 }
 
 // Option defines a functional option for Model configuration.
 type Option func(*Model)
+
+// WithExecutor sets the command executor.
+func WithExecutor(executor api.CommandExecutor) Option {
+	return func(m *Model) {
+		m.executor = executor
+	}
+}
 
 // WithTheme sets the initial theme.
 func WithTheme(isDark bool) Option {

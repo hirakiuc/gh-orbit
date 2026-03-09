@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -104,16 +103,14 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 	// Bubble Tea ExecProcess uses its own lifecycle, but we still log with context
 	m.logger.InfoContext(context.Background(), "checking out PR", "repo", repo, "number", number)
 
-	// #nosec G204: PR number and repo name are strictly regex-validated above
-	c := exec.Command("gh", "pr", "checkout", number, "-R", repo)
-	checkoutCmd := tea.ExecProcess(c, func(err error) tea.Msg {
+	checkoutCmd := m.executor.InteractiveGH(func(err error) tea.Msg {
 		if err != nil {
 			m.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
 			return errMsg{err: err}
 		}
 		m.logger.InfoContext(context.Background(), "checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
-	})
+	}, "pr", "checkout", number, "-R", repo)
 
 	if selectedItem.notification.GitHubID != "" {
 		return tea.Batch(checkoutCmd, m.MarkRead(selectedItem))
@@ -259,9 +256,7 @@ func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		m.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
-		// #nosec G204: all parameters are strictly regex-validated above
-		c := exec.Command("gh", ghCmd, "view", arg, "-R", repo, "--web")
-		if err := c.Run(); err != nil {
+		if err := m.executor.Run(ctx, "gh", ghCmd, "view", arg, "-R", repo, "--web"); err != nil {
 			m.logger.ErrorContext(ctx, "gh view command failed", "command", ghCmd, "error", err)
 			return errMsg{err: err}
 		}

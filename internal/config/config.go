@@ -95,10 +95,11 @@ func Load() (*Config, error) {
 		if err := cfg.Save(); err != nil {
 			return nil, err
 		}
-		return cfg, nil
 	}
 
-	data, err := os.ReadFile(path) // #nosec G304: Path is internally resolved following XDG specs
+	dir := filepath.Dir(path)
+	name := filepath.Base(path)
+	data, err := SecureReadFile(dir, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

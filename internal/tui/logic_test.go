@@ -151,6 +151,10 @@ func TestInterpreter_FullFlow(t *testing.T) {
 	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(func() tea.Msg { return nil }).Maybe()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
 	
+	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
+	mockExecutor.EXPECT().InteractiveGH(mock.Anything, "pr", "checkout", "1", "-R", "o/r").Return(func() tea.Msg { return nil }).Maybe()
+	mockExecutor.EXPECT().Run(mock.Anything, "gh", "pr", "view", "1", "-R", "o/r", "--web").Return(nil).Maybe()
+	
 	notif := types.NotificationWithState{
 		Notification: types.Notification{
 			GitHubID: "1",
@@ -519,6 +523,7 @@ func TestModel_Options(t *testing.T) {
 		"u", cfg, nil, nil, nil, nil, nil, nil, nil,
 		WithTheme(false),
 		WithVersion("1.2.3"),
+		WithExecutor(mocks.NewMockCommandExecutor(t)),
 	)
 	
 	assert.False(t, m.isDark)

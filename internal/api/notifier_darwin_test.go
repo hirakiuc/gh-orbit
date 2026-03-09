@@ -6,15 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestDarwinNotifier_Lifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := slog.Default()
+	mockExecutor := mocks.NewMockCommandExecutor(t)
 
-	n := NewPlatformNotifier(ctx, logger)
+	n := NewPlatformNotifier(ctx, mockExecutor, logger)
 	assert.NotNil(t, n)
 	
 	// Test Status
@@ -38,8 +41,10 @@ func TestDarwinNotifier_Notify(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := slog.Default()
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	mockExecutor.EXPECT().Run(mock.Anything, "osascript", "-e", mock.Anything).Return(nil).Maybe()
 
-	n := NewPlatformNotifier(ctx, logger)
+	n := NewPlatformNotifier(ctx, mockExecutor, logger)
 	t.Cleanup(func() { n.Shutdown(ctx) })
 
 	// Test async delivery (should not block or panic)

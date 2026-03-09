@@ -113,7 +113,7 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 
 	// 1. Acquire Global Migration Lock
 	lockPath := filepath.Join(os.TempDir(), "gh-orbit-migration.lock")
-	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304: Path is system temp dir
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304: Internal migration lock
 	if err != nil {
 		return fmt.Errorf("failed to open migration lock: %w", err)
 	}
@@ -201,11 +201,11 @@ func copyDir(src, dest string) error {
 }
 
 func copyFile(src, dest string) error {
-	in, err := os.Open(src) // #nosec G304: Path is validated during walk
+	in, err := os.Open(src) // #nosec G304: Internal migration path
 	if err != nil { return err }
 	defer func() { _ = in.Close() }()
 
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304: dest is internally resolved
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304: Internal migration path
 	if err != nil { return err }
 	defer func() { _ = out.Close() }()
 
@@ -232,7 +232,7 @@ func computeDirHash(root string) (string, error) {
 		rel, _ := filepath.Rel(root, f)
 		h.Write([]byte(rel))
 		
-		in, err := os.Open(f) // #nosec G304: f is validated during walk
+		in, err := os.Open(f) // #nosec G304: Internal migration path
 		if err != nil { return "", err }
 		_, _ = io.Copy(h, in)
 		_ = in.Close()

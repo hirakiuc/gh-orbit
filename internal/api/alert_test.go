@@ -25,8 +25,10 @@ func TestAlertService_Notify(t *testing.T) {
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
 	mockFallback := mocks.NewMockNotifier(t)
-	
-	s := NewAlertService(cfg, mockRepo, mockNative, mockFallback, logger)
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	mockExecutor.EXPECT().Execute(mock.Anything, "sysctl", mock.Anything, mock.Anything).Return([]byte("kern.osversion: 24G517"), nil).Maybe()
+
+	s := NewAlertService(cfg, mockRepo, mockNative, mockFallback, mockExecutor, logger)
 	
 	n := types.GHNotification{
 		ID: "1",
@@ -72,7 +74,8 @@ func TestAlertService_SyncStart(t *testing.T) {
 	
 	mockNative := mocks.NewMockNotifier(t)
 	mockFallback := mocks.NewMockNotifier(t)
-	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, slog.Default())
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, mockExecutor, slog.Default())
 
 	s.SyncStart(context.Background())
 }
@@ -81,7 +84,9 @@ func TestAlertService_Metadata(t *testing.T) {
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
 	mockFallback := mocks.NewMockNotifier(t)
-	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, slog.Default())
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	mockExecutor.EXPECT().Execute(mock.Anything, "sysctl", mock.Anything, mock.Anything).Return([]byte("kern.osversion: 24G517"), nil).Maybe()
+	s := NewAlertService(&config.Config{}, mockRepo, mockNative, mockFallback, mockExecutor, slog.Default())
 
 	// 1. ActiveTierInfo
 	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
@@ -104,7 +109,8 @@ func TestAlertService_Throttling(t *testing.T) {
 	cfg := &config.Config{Notifications: config.NotificationsConfig{Enabled: true}}
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
-	s := NewAlertService(cfg, mockRepo, mockNative, nil, slog.Default())
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	s := NewAlertService(cfg, mockRepo, mockNative, nil, mockExecutor, slog.Default())
 
 	// Move out of initialization
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
@@ -145,7 +151,8 @@ func TestAlertService_SpecificReasons(t *testing.T) {
 	}
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
-	s := NewAlertService(cfg, mockRepo, mockNative, nil, slog.Default())
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	s := NewAlertService(cfg, mockRepo, mockNative, nil, mockExecutor, slog.Default())
 
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
 	s.SyncStart(ctx)

@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+
+	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -8,6 +11,7 @@ import (
 type GHUser = types.GHUser
 type GHNotification = types.GHNotification
 type BridgeStatus = types.BridgeStatus
+type BridgeHealth = types.BridgeHealth
 
 const (
 	StatusHealthy           = types.StatusHealthy
@@ -38,6 +42,16 @@ type TaskFunc = types.TaskFunc
 type TrafficController = types.TrafficController
 type RESTClient = types.RESTClient
 type GraphQLClient = types.GraphQLClient
+
+// CommandExecutor defines the interface for executing system commands safely.
+type CommandExecutor interface {
+	// Execute executes a command and returns its standard output.
+	Execute(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Run executes a command and waits for it to complete.
+	Run(ctx context.Context, name string, args ...string) error
+	// InteractiveGH executes a GitHub CLI command interactively using tea.ExecProcess.
+	InteractiveGH(callback func(error) tea.Msg, args ...string) tea.Cmd
+}
 
 // Repository defines the full database capabilities required by the TUI and Services.
 type Repository = types.Repository
