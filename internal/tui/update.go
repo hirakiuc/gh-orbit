@@ -81,6 +81,9 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 	case notificationsLoadedMsg:
 		m.allNotifications = msg.notifications
 		m.applyFilters()
+		if m.state == StateDetail {
+			m.refreshDetailView()
+		}
 		actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
 
@@ -97,7 +100,7 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 		actions = append(actions, ActionLoadNotifications{}) // Reload after sync
 
 	case detailLoadedMsg:
-		m.ui.fetchingDetail = false
+		m.ui.SetFetching(false)
 		for idx, n := range m.allNotifications {
 			if n.GitHubID == msg.GitHubID {
 				m.allNotifications[idx].Body = msg.Body
@@ -109,12 +112,11 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 			}
 		}
 		if m.state == StateDetail {
-			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.GitHubID == msg.GitHubID {
-				m.detailView.activeDetail = m.renderMarkdown(msg.Body)
-				m.detailView.viewport.SetContent(m.detailView.activeDetail)
-			}
+			m.applyFilters() // This updates the items in the list from the modified allNotifications
+			m.refreshDetailView()
+		} else {
+			m.applyFilters()
 		}
-		m.applyFilters()
 
 	case pollTickMsg:
 		if msg.ID == m.heartbeatID {
@@ -136,7 +138,7 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 	case errMsg:
 		m.err = msg.err
 		m.ui.SetSyncing(false)
-		m.ui.fetchingDetail = false
+		m.ui.SetFetching(false)
 	}
 
 	// State-dependent transitions
@@ -214,11 +216,10 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				m.state = StateDetail
 				if !i.notification.IsEnriched {
-					m.ui.fetchingDetail = true
+					m.ui.SetFetching(true)
 					actions = append(actions, ActionEnrichItems{Notifications: []types.NotificationWithState{i.notification}})
-				} else {
-					m.detailView.viewport.SetContent(m.detailView.activeDetail)
 				}
+				m.refreshDetailView()
 			}
 		case key.Matches(msg, m.keys.ToggleRead):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
@@ -326,6 +327,18 @@ func (m *Model) getVisibleNotifications() []types.NotificationWithState {
 		}
 	}
 	return items
+}
+
+func (m *Model) refreshDetailView() {
+	if i, ok := m.listView.list.SelectedItem().(item); ok {
+		if i.notification.IsEnriched {
+			m.detailView.activeDetail = m.renderMarkdown(i.notification.Body)
+			m.detailView.viewport.SetContent(m.detailView.activeDetail)
+		} else {
+			m.detailView.activeDetail = ""
+			m.detailView.viewport.SetContent("")
+		}
+	}
 }
 
 func (m *Model) applyFilters() {
