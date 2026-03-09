@@ -22,7 +22,7 @@ func TestModel_Transition_Core(t *testing.T) {
 	
 	// 1. Initial Load
 	notifs := []types.NotificationWithState{{Notification: types.Notification{GitHubID: "1"}}}
-	actions := m.Transition(notificationsLoadedMsg{notifications: notifs}, 0)
+	actions := m.Transition(notificationsLoadedMsg{notifications: notifs, IsInitial: true}, 0)
 	assert.Equal(t, notifs, m.allNotifications)
 	require.Len(t, actions, 2)
 	assert.IsType(t, ActionEnrichItems{}, actions[0])
@@ -445,7 +445,7 @@ func TestModel_DetailView_ContentSync(t *testing.T) {
 			},
 		},
 	}
-	m.Transition(notificationsLoadedMsg{notifications: newNotifs}, 0)
+	m.Transition(notificationsLoadedMsg{notifications: newNotifs, IsInitial: true}, 0)
 	assert.Contains(t, stripANSI(m.detailView.activeDetail), "synced body")
 }
 
@@ -572,6 +572,7 @@ func TestModel_LoadNotifications(t *testing.T) {
 	msg := executeCmd(cmd)
 	assert.IsType(t, notificationsLoadedMsg{}, msg)
 	assert.Len(t, msg.(notificationsLoadedMsg).notifications, 1)
+	assert.True(t, msg.(notificationsLoadedMsg).IsInitial)
 
 	// Error path
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, fmt.Errorf("db error")).Once()

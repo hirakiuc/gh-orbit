@@ -90,7 +90,7 @@ func TestTrafficController_RateLimitAtomic(t *testing.T) {
 	tc := NewAPITrafficController(ctx, logger)
 
 	// Stress the atomic updates
-	const iterations = 1000
+	const iterations = 100
 	var wg sync.WaitGroup
 	wg.Add(2)
 

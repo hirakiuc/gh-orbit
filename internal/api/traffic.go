@@ -52,6 +52,7 @@ type APITrafficController struct {
 	// Concurrency scaling
 	workerLimit int32
 	sem         chan struct{} // Controls active workers
+	adj         chan int32    // Channel for scaling requests
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
@@ -66,12 +67,16 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		remainingRateLimit: 5000,
 		workerLimit:        maxConcurrency,
 		sem:                make(chan struct{}, maxConcurrency),
+		adj:                make(chan int32, 1),
 	}
 
 	// Fill semaphore initially
 	for i := 0; i < maxConcurrency; i++ {
 		tc.sem <- struct{}{}
 	}
+
+	// Start concurrency manager
+	go tc.concurrencyManager(ctx)
 
 	// Launch worker pool
 	for i := 0; i < maxConcurrency; i++ {
@@ -80,6 +85,44 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		go tc.worker(ctx, i)
 	}
 	return tc
+}
+
+func (c *APITrafficController) concurrencyManager(ctx context.Context) {
+	current := int32(3)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case target := <-c.adj:
+			if target == current {
+				continue
+			}
+
+			if target < current {
+				// Scale down: Drain semaphore
+				for i := 0; i < int(current-target); i++ {
+					select {
+					case <-ctx.Done():
+						return
+					case <-c.sem:
+					}
+				}
+				c.logger.Info("traffic controller: scaled down concurrency", "new_limit", target)
+			} else {
+				// Scale up: Fill semaphore
+				for i := 0; i < int(target-current); i++ {
+					select {
+					case <-ctx.Done():
+						return
+					case c.sem <- struct{}{}:
+					}
+				}
+				c.logger.Info("traffic controller: scaled up concurrency", "new_limit", target)
+			}
+			current = target
+			atomic.StoreInt32(&c.workerLimit, target)
+		}
+	}
 }
 
 func (c *APITrafficController) worker(ctx context.Context, id int) {
@@ -186,24 +229,11 @@ func (c *APITrafficController) adjustConcurrency(remaining int) {
 		target = 1
 	}
 
-	current := atomic.SwapInt32(&c.workerLimit, target)
-	if current == target {
-		return
-	}
-
-	// Drain or fill semaphore to match target
-	if target < current {
-		// Scaling down: Remove slots
-		for i := 0; i < int(current-target); i++ {
-			<-c.sem
-		}
-		c.logger.Info("traffic controller: scaling down concurrency due to low quota", "new_limit", target)
-	} else {
-		// Scaling up: Add slots
-		for i := 0; i < int(target-current); i++ {
-			c.sem <- struct{}{}
-		}
-		c.logger.Info("traffic controller: scaling up concurrency", "new_limit", target)
+	// Send non-blocking adjustment request
+	select {
+	case c.adj <- target:
+	default:
+		// Manager already busy or queue full, skip this cycle
 	}
 }
 

@@ -211,7 +211,7 @@ func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 			if err != nil {
 				return errMsg{err: err}
 			}
-			return notificationsLoadedMsg{notifications: notifs}
+			return notificationsLoadedMsg{notifications: notifs, IsInitial: false}
 		}))
 	}
 
