@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,4 +110,50 @@ func TestTrafficController_RateLimitAtomic(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestTrafficController_ScalingStress(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := slog.Default()
+	tc := NewAPITrafficController(ctx, logger)
+
+	// 1. Submit a continuous stream of background tasks
+	stopTasks := make(chan struct{})
+	var tasksCompleted int64
+	go func() {
+		for {
+			select {
+			case <-stopTasks:
+				return
+			default:
+				cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+					time.Sleep(10 * time.Millisecond)
+					atomic.AddInt64(&tasksCompleted, 1)
+					return nil
+				})
+				go cmd()
+				time.Sleep(2 * time.Millisecond)
+			}
+		}
+	}()
+
+	// 2. Rapidly fluctuate rate limit to trigger scaling
+	for i := 0; i < 10; i++ {
+		// Scale down
+		tc.UpdateRateLimit(ctx, 100) 
+		time.Sleep(20 * time.Millisecond)
+		
+		// Scale up
+		tc.UpdateRateLimit(ctx, 1000)
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	close(stopTasks)
+	time.Sleep(100 * time.Millisecond) // Allow final tasks to settle
+	
+	// If we haven't deadlocked, we pass
+	finalLimit := atomic.LoadInt32(&tc.workerLimit)
+	assert.Equal(t, int32(3), finalLimit, "Should settle at max concurrency")
 }

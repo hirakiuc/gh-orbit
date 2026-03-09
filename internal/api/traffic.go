@@ -50,6 +50,7 @@ type APITrafficController struct {
 	remainingRateLimit int64
 
 	// Concurrency scaling
+	workerLimit int32
 	sem         chan struct{} // Controls active workers
 	adj         chan int32    // Channel for scaling requests
 	drainCancel context.CancelFunc
@@ -65,6 +66,7 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		low:                make(chan *apiTask, 100),
 		rateLimitThreshold: 500,
 		remainingRateLimit: 5000,
+		workerLimit:        maxConcurrency,
 		sem:                make(chan struct{}, maxConcurrency),
 		adj:                make(chan int32, 1),
 	}
@@ -109,6 +111,7 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 			if target < current {
 				// Scale down: Drain semaphore in background
 				delta := int(current - target)
+				// #nosec G118: cancel is managed by concurrencyManager and called on next event or shutdown
 				dCtx, cancel := context.WithCancel(c.ctx)
 				c.drainCancel = cancel
 
@@ -134,6 +137,7 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 				c.logger.Info("traffic controller: scaled up concurrency", "new_limit", target)
 			}
 			current = target
+			atomic.StoreInt32(&c.workerLimit, target)
 		}
 	}
 }
