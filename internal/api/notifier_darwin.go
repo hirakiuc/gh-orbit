@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	once sync.Once
+	initOnce     sync.Once
+	initStatus   BridgeStatus = StatusUnknown
 	delegateInstance uintptr
 )
 
@@ -141,31 +142,33 @@ func (m *macosNotifier) checkBundle(ctx context.Context) error {
 func (m *macosNotifier) worker(ctx context.Context) {
 	defer m.wg.Done()
 
-	once.Do(func() {
+	initOnce.Do(func() {
 		if runtime.GOOS != "darwin" {
-			m.setStatus(StatusUnsupported)
+			initStatus = StatusUnsupported
 			return
 		}
 		
 		// 1. Framework Loading
 		if _, err := getFrameworks(); err != nil {
 			m.logger.DebugContext(ctx, "native bridge frameworks not available", "error", err)
-			m.setStatus(StatusUnsupported)
+			initStatus = StatusUnsupported
 			return
 		}
 
 		// 2. Mandatory Bundle Check
-		// Standalone binaries cannot use UNUserNotificationCenter reliably
+		// standalone binaries cannot use UNUserNotificationCenter reliably
 		if err := m.checkBundle(ctx); err != nil {
 			m.logger.DebugContext(ctx, "native bridge restricted (standalone binary), signaling unsupported for fallback", "error", err)
-			m.setStatus(StatusUnsupported)
+			initStatus = StatusUnsupported
 			return
 		}
 
 		m.setupDelegate(ctx)
 		m.requestAuth()
-		m.setStatus(StatusHealthy)
+		initStatus = StatusHealthy
 	})
+
+	m.setStatus(initStatus)
 
 	// Signal readiness
 	m.readyOnce.Do(func() { close(m.ready) })
@@ -255,8 +258,6 @@ func (m *macosNotifier) deliverNative(ctx context.Context, req alertRequest) err
 func (m *macosNotifier) setupDelegate(ctx context.Context) {
 	super := objc_getClass("NSObject")
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
-	
-	// We no longer need swizzleBundleID global callback as we removed swizzling
 	
 	callback := purego.NewCallback(func(self, sel, center, response, completion uintptr) {
 		if completion != 0 {
