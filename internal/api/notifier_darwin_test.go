@@ -8,7 +8,6 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 func TestDarwinNotifier_Lifecycle(t *testing.T) {
@@ -42,15 +41,20 @@ func TestDarwinNotifier_Notify(t *testing.T) {
 	defer cancel()
 	logger := slog.Default()
 	mockExecutor := mocks.NewMockCommandExecutor(t)
-	mockExecutor.EXPECT().Run(mock.Anything, "osascript", "-e", mock.Anything).Return(nil).Maybe()
 
 	n := NewPlatformNotifier(ctx, mockExecutor, logger)
 	t.Cleanup(func() { n.Shutdown(ctx) })
 
-	// Test async delivery (should not block or panic)
+	// Wait for worker to initialize and set status
+	select {
+	case <-n.Ready():
+	case <-time.After(time.Second):
+	}
+
+	// Verify that StatusUnsupported is set because of the forced AppleScript flag
+	assert.Equal(t, StatusUnsupported, n.Status())
+
+	// Test Notify (should not block or panic even if unsupported)
 	err := n.Notify(ctx, "Title", "Subtitle", "Body", "https://url", 1)
 	assert.NoError(t, err)
-	
-	// Allow small time for worker to process
-	time.Sleep(500 * time.Millisecond)
 }
