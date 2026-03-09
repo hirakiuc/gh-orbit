@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -447,6 +448,45 @@ func TestModel_DetailView_ContentSync(t *testing.T) {
 	}
 	m.Transition(notificationsLoadedMsg{notifications: newNotifs, IsInitial: true}, 0)
 	assert.Contains(t, stripANSI(m.detailView.activeDetail), "synced body")
+}
+
+func TestModel_DetailView_Scrolling(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	
+	// Set dimensions and initialize renderer
+	m.width = 80
+	m.height = 24
+	m.updateMarkdownRenderer()
+	
+	// Long body to ensure scrolling is possible
+	longBody := strings.Repeat("Line of text\n", 50)
+	notif := types.NotificationWithState{
+		Notification: types.Notification{
+			GitHubID: "1", 
+			SubjectTitle: "T1", 
+			Body: longBody, 
+			IsEnriched: true,
+		},
+	}
+	m.allNotifications = []types.NotificationWithState{notif}
+	m.applyFilters()
+	m.listView.list.Select(0)
+
+	// 1. Enter detail view
+	m.Transition(tea.KeyPressMsg{Code: ' ', Text: " "}, 0)
+	assert.Equal(t, StateDetail, m.state)
+	m.refreshDetailView() // Force refresh to ensure viewport is populated
+
+	initialOffset := m.detailView.viewport.YOffset()
+	assert.Equal(t, 0, initialOffset)
+
+	// 2. Simulate scroll down (j key)
+	// We call Update directly to simulate sub-model delegation
+	_, _ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	
+	newOffset := m.detailView.viewport.YOffset()
+	assert.Greater(t, newOffset, initialOffset, "Viewport YOffset should increase after scroll down")
 }
 
 func TestModel_Actions_EdgeCases(t *testing.T) {

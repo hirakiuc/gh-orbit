@@ -56,6 +56,11 @@ func newTestModel(t TestingT) *Model {
 	m.ui.toastTimeout = time.Millisecond
 	m.bridgeStatus = api.StatusHealthy
 	
+	// Initialize renderer
+	m.width = 80
+	m.height = 24
+	m.updateMarkdownRenderer()
+	
 	// Provision a default notification for tests
 	m.allNotifications = []types.NotificationWithState{
 		{

@@ -333,15 +333,49 @@ func (m *Model) getVisibleNotifications() []types.NotificationWithState {
 }
 
 func (m *Model) refreshDetailView() {
-	if i, ok := m.listView.list.SelectedItem().(item); ok {
-		if i.notification.IsEnriched {
-			m.detailView.activeDetail = m.renderMarkdown(i.notification.Body)
-			m.detailView.viewport.SetContent(m.detailView.activeDetail)
-		} else {
-			m.detailView.activeDetail = ""
-			m.detailView.viewport.SetContent("")
-		}
+	i, ok := m.listView.list.SelectedItem().(item)
+	if !ok {
+		return
 	}
+
+	currentWidth := m.width - 4
+	if currentWidth < 10 {
+		currentWidth = 10
+	}
+
+	// 1. Determine the raw content to display
+	var rawBody string
+	isReady := false
+	if m.ui.fetchingDetail {
+		rawBody = "\n  ◌ Loading content..."
+	} else if i.notification.IsEnriched {
+		rawBody = i.notification.Body
+		if rawBody == "" {
+			rawBody = "\n  (No description provided)"
+		}
+		isReady = true
+	} else {
+		rawBody = "\n  ◌ Waiting for enrichment..."
+	}
+
+	// 2. Guard: Skip if content and width are identical to last render
+	// We also check fetching state to ensure we transition from spinner to content correctly.
+	if i.notification.GitHubID == m.detailView.lastRenderedID &&
+		currentWidth == m.detailView.lastRenderedWidth &&
+		rawBody == m.detailView.activeDetail &&
+		!m.ui.fetchingDetail == isReady {
+		return
+	}
+
+	// 3. Render and Wrap
+	rendered := m.renderMarkdown(rawBody)
+	// Apply manual wrapping using Lipgloss style
+	wrapped := lipgloss.NewStyle().Width(currentWidth).Render(rendered)
+
+	m.detailView.viewport.SetContent(wrapped)
+	m.detailView.activeDetail = rawBody // Store rawBody for idempotent check
+	m.detailView.lastRenderedID = i.notification.GitHubID
+	m.detailView.lastRenderedWidth = currentWidth
 }
 
 func (m *Model) applyFilters() {

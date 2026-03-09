@@ -38,8 +38,10 @@ type ListModel struct {
 
 // DetailModel encapsulates viewport-specific state.
 type DetailModel struct {
-	viewport     viewport.Model
-	activeDetail string // Rendered markdown
+	viewport          viewport.Model
+	activeDetail      string // Rendered markdown
+	lastRenderedID    string
+	lastRenderedWidth int
 }
 
 // Model represents the application state.
@@ -124,6 +126,8 @@ func NewModel(
 	l.Styles.Title = styles.Title
 
 	vp := viewport.New()
+	vp.MouseWheelEnabled = true
+	vp.SoftWrap = false // We handle wrapping manually via lipgloss in refreshDetailView
 
 	m := &Model{
 		listView: ListModel{
