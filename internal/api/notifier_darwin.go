@@ -120,14 +120,12 @@ func (m *macosNotifier) setStatus(s BridgeStatus) {
 
 func (m *macosNotifier) checkBundle(ctx context.Context) error {
 	if os.Getenv("GH_ORBIT_NOTIFIER_FORCE_APPLE_SCRIPT") == "1" {
-		return nil
-	}
-
-	if _, err := getFrameworks(); err != nil {
-		return err
+		return fmt.Errorf("forced AppleScript")
 	}
 
 	bundleCls := objc_getClass("NSBundle")
+	if bundleCls == 0 { return fmt.Errorf("NSBundle not found") }
+	
 	bundle, bErr := safeMsgSend0(bundleCls, sel_mainBundle)
 	if bErr != nil || bundle == 0 {
 		return fmt.Errorf("could not get main bundle")
@@ -150,34 +148,28 @@ func (m *macosNotifier) worker(ctx context.Context) {
 			return
 		}
 		
-		// 1. Mandatory Bundle Check (Prevents NSInternalInconsistencyException)
-		if err := m.checkBundle(ctx); err != nil {
-			m.logger.WarnContext(ctx, "native bridge unsupported: running as standalone binary. using fallbacks.", "error", err)
-			m.setStatus(StatusUnsupported)
-			return
-		}
-
-		// 2. Framework Loading (Registration happens inside OnceValues)
+		// 1. Framework Loading (MUST happen before any objc calls)
 		if _, err := getFrameworks(); err != nil {
 			m.logger.WarnContext(ctx, "failed to load system frameworks", "error", err)
 			m.setStatus(StatusBroken)
 			return
 		}
-		
-		m.swizzleBundleID()
+
+		// 2. Mandatory Bundle Check
+		// If we don't have a bundle, we skip native initialization to avoid panics
+		if err := m.checkBundle(ctx); err != nil {
+			m.logger.DebugContext(ctx, "native bridge restricted (standalone binary), using AppleScript fallback", "error", err)
+			m.setStatus(StatusHealthy) // Still "Healthy" because AppleScript works on Darwin
+			return
+		}
+
 		m.setupDelegate(ctx)
 		m.requestAuth()
 		m.setStatus(StatusHealthy)
 	})
 
-	// Signal readiness for this specific instance (even if once.Do already ran)
+	// Signal readiness
 	m.readyOnce.Do(func() { close(m.ready) })
-
-	// 3. Fail-Fast: If initialization failed, stop the worker goroutine immediately.
-	if m.Status() != StatusHealthy {
-		m.logger.DebugContext(ctx, "macos native notifier worker exiting (unsupported environment)")
-		return
-	}
 
 	for {
 		select {
@@ -189,22 +181,38 @@ func (m *macosNotifier) worker(ctx context.Context) {
 				continue // Warmup sentinel
 			}
 
-			err := m.deliver(ctx, req)
-			if err != nil {
-				m.logger.WarnContext(ctx, "native delivery failed, attempting osascript fallback", "error", err)
-				m.deliverWithAppleScript(ctx, req)
-			}
+			m.deliver(ctx, req)
 		}
 	}
 }
 
-func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
+func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
+	// Try Native FIRST ONLY if we actually have a bundle identifier
+	// We check checkBundle again or trust the initial status.
+	// Actually, let's just try deliverNative and fallback if it fails.
+	// BUT deliverNative panics if currentNotificationCenter is nil.
+	
+	err := m.deliverNative(ctx, req)
+	if err != nil {
+		m.logger.DebugContext(ctx, "native delivery failed, attempting osascript fallback", "error", err)
+		m.deliverWithAppleScript(ctx, req)
+	}
+}
+
+func (m *macosNotifier) deliverNative(ctx context.Context, req alertRequest) error {
+	// Safety: check if we actually have a bundle ID before calling UNUserNotificationCenter
+	if err := m.checkBundle(ctx); err != nil {
+		return err // Fallback to AppleScript
+	}
+
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "macos.notify_deliver")
 	defer span.End()
 
 	// 1. Create content safely
 	contentCls := objc_getClass("UNMutableNotificationContent")
+	if contentCls == 0 { return fmt.Errorf("UNMutableNotificationContent class not found") }
+	
 	content, err := safeMsgSend0(contentCls, sel_new)
 	if err != nil { return err }
 	
@@ -239,12 +247,16 @@ func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) error {
 
 	// 3. Create request
 	reqCls := objc_getClass("UNNotificationRequest")
+	if reqCls == 0 { return fmt.Errorf("UNNotificationRequest class not found") }
+	
 	emptyStr, _ := nsString("")
 	notificationReq, err := safeMsgSend2(reqCls, sel_requestWithIdentifierContentTrigger, emptyStr, content)
 	if err != nil { return err }
 
 	// 4. Add to center
 	centerCls := objc_getClass("UNUserNotificationCenter")
+	if centerCls == 0 { return fmt.Errorf("UNUserNotificationCenter class not found") }
+	
 	center, err := safeMsgSend0(centerCls, sel_currentNotificationCenter)
 	if err != nil { return err }
 	
@@ -276,28 +288,17 @@ func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertReq
 	)
 
 	// Execute asynchronously with worker's lifecycle-managed context
-	// #nosec G118: Supervisor context used for background worker longevity
+	m.wg.Add(1)
 	go func() {
-		cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer m.wg.Done()
+		
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		if err := m.executor.Run(cmdCtx, "osascript", "-e", script); err != nil {
-			// We use a fresh background context for final best-effort logs if parent is canceled
 			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
 		}
-	}()}
-
-func (m *macosNotifier) swizzleBundleID() {
-	bundleCls := objc_getClass("NSBundle")
-	if bundleCls == 0 { return }
-
-	bundleIDCallback := purego.NewCallback(func(self, sel uintptr) uintptr {
-		// Compatibility Shim: Masquerade as Terminal to bypass notification restrictions
-		s, _ := nsString("com.apple.Terminal")
-		return s
-	})
-
-	class_replaceMethod(bundleCls, sel_registerName("bundleIdentifier"), bundleIDCallback, "@@:")
+	}()
 }
 
 func (m *macosNotifier) setupDelegate(ctx context.Context) {
