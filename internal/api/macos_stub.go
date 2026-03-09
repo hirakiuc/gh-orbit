@@ -8,7 +8,6 @@ import (
 )
 
 // NewPlatformNotifier returns a no-op notifier for non-macOS platforms.
-// The AlertService already handles tiered fallbacks, so this just needs to satisfy the constructor.
 func NewPlatformNotifier(ctx context.Context, executor CommandExecutor, logger *slog.Logger) Notifier {
 	return &stubNotifier{}
 }
@@ -20,14 +19,6 @@ func (s *stubNotifier) Notify(ctx context.Context, title, subtitle, body, url st
 }
 
 func (s *stubNotifier) Shutdown(ctx context.Context) {}
-
-func (s *stubNotifier) Warmup() {}
-
-func (s *stubNotifier) Ready() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
-}
 
 func (s *stubNotifier) Status() BridgeStatus {
 	return StatusUnsupported

@@ -14,28 +14,31 @@ type beeepNotifier struct {
 
 // NewBeeepNotifier returns a cross-platform notifier using the beeep library.
 func NewBeeepNotifier(logger *slog.Logger) Notifier {
-	return &beeepNotifier{logger: logger}
+	return &beeepNotifier{
+		logger: logger,
+	}
 }
 
 func (b *beeepNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
+	b.logger.DebugContext(ctx, "delivering notification via beeep fallback", "title", title)
+	
+	// Beeep doesn't natively support subtitles on all platforms, so we combine them.
 	fullTitle := title
 	if subtitle != "" {
-		fullTitle = fmt.Sprintf("[%s] %s", subtitle, title)
+		fullTitle = fmt.Sprintf("%s: %s", title, subtitle)
 	}
 
-	b.logger.DebugContext(ctx, "delivering notification via beeep fallback", "title", fullTitle)
-	return beeep.Notify(fullTitle, body, "")
+	// Beeep.Notify is already asynchronous on most platforms, but we follow our fire-and-forget pattern.
+	go func() {
+		if err := beeep.Notify(fullTitle, body, ""); err != nil {
+			b.logger.WarnContext(context.Background(), "beeep notification failed", "error", err)
+		}
+	}()
+
+	return nil
 }
 
 func (b *beeepNotifier) Shutdown(ctx context.Context) {}
-
-func (b *beeepNotifier) Warmup() {}
-
-func (b *beeepNotifier) Ready() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
-}
 
 func (b *beeepNotifier) Status() BridgeStatus {
 	return StatusHealthy

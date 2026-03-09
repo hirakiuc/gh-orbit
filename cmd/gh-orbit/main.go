@@ -157,23 +157,6 @@ func runDoctor() error {
 	defer alerts.Shutdown(ctx)
 
 	if runtime.GOOS == "darwin" {
-		alerts.Warmup()
-		
-		// Deterministic wait for readiness
-		select {
-		case <-alerts.Ready():
-		case <-time.After(2 * time.Second):
-		}
-
-		probes := api.ProbeBridge()
-		for _, p := range probes {
-			report.Checks = append(report.Checks, api.BridgeCheck{
-				Name:   p.Name,
-				Passed: p.Passed,
-				Message: p.Message,
-			})
-		}
-		
 		tierName, tierStatus := alerts.ActiveTierInfo()
 		report.ActiveTier = tierName
 		report.BridgeStatus = tierStatus
@@ -190,7 +173,7 @@ func runDoctor() error {
 		err := alerts.TestNotify(ctx, "Diagnostic Test", "gh-orbit doctor", "This is an end-to-end test notification.")
 		
 		testPassed := (err == nil)
-		msg := ""
+		msg := "Notification sent successfully"
 		if err != nil {
 			msg = err.Error()
 		}
@@ -214,7 +197,7 @@ func runDoctor() error {
 	fmt.Println("🤖 gh-orbit doctor report")
 	fmt.Println("==========================")
 	fmt.Printf("OS:     %s (%s)\n", report.OS, report.Arch)
-	fmt.Printf("Kernel: %s", report.KernelVersion)
+	fmt.Printf("Kernel: %s\n", report.KernelVersion)
 	
 	focusOut := report.FocusMode
 	if strings.Contains(report.FocusMode, "Active") {

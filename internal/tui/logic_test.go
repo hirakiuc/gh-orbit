@@ -564,9 +564,6 @@ func TestModel_Init(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 	
-	mockAlerter := m.alerter.(*mocks.MockAlerter)
-	mockAlerter.EXPECT().Warmup().Return().Once()
-
 	cmd := m.Init()
 	require.NotNil(t, cmd)
 	_ = executeCmd(cmd)

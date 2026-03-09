@@ -180,12 +180,6 @@ func (m *Model) Init() tea.Cmd {
 		m.loadNotifications(),
 		m.tickHeartbeat(),
 		m.tickClock(),
-		// Move side-effects out of constructor into Init
-		func() tea.Msg {
-			// Trigger bridge warmup/probe in background
-			m.alerter.Warmup()
-			return nil
-		},
 	)
 }
 
