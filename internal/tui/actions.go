@@ -178,6 +178,8 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 	})
 }
 
+const EnrichmentChunkSize = 10
+
 // enrichItems triggers background enrichment for a specific set of notifications.
 func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 	if len(toEnrich) == 0 {
@@ -191,11 +193,10 @@ func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 	}
 
 	// For multiple items (Viewport), split into smaller chunks to utilize concurrent workers
-	const chunkSize = 10
 	var cmds []tea.Cmd
 
-	for i := 0; i < len(toEnrich); i += chunkSize {
-		end := i + chunkSize
+	for i := 0; i < len(toEnrich); i += EnrichmentChunkSize {
+		end := i + EnrichmentChunkSize
 		if end > len(toEnrich) {
 			end = len(toEnrich)
 		}

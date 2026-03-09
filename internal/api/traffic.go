@@ -145,27 +145,17 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 func (c *APITrafficController) worker(ctx context.Context, id int) {
 	defer c.wg.Done()
 	for {
-		// Binary Scaler: Wait for slot in semaphore
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.sem:
-			// Acquired slot, proceed to pull task
-		}
-
 		var task *apiTask
 		var ok bool
 
-		// Priority Select: Always check High (Fast Track) first
+		// 1. Wait for task (non-blocking on semaphore)
 		select {
 		case <-ctx.Done():
-			c.sem <- struct{}{} // Return slot
 			return
 		case task, ok = <-c.high:
 		default:
 			select {
 			case <-ctx.Done():
-				c.sem <- struct{}{} // Return slot
 				return
 			case task, ok = <-c.high:
 			case task, ok = <-c.med:
@@ -174,11 +164,15 @@ func (c *APITrafficController) worker(ctx context.Context, id int) {
 		}
 
 		if !ok {
-			select {
-			case c.sem <- struct{}{}:
-			default:
-			}
 			return
+		}
+
+		// 2. Acquire semaphore slot (blocking until concurrency limit allows)
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.sem:
+			// Slot acquired
 		}
 
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
@@ -186,7 +180,7 @@ func (c *APITrafficController) worker(ctx context.Context, id int) {
 		}
 		c.executeTask(ctx, task)
 
-		// Release slot back to semaphore (context-aware to prevent shutdown hangs)
+		// 3. Release slot back to semaphore
 		select {
 		case c.sem <- struct{}{}:
 		case <-ctx.Done():
@@ -222,6 +216,7 @@ func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
 		trace.WithAttributes(
 			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
 			attribute.Int("priority", t.priority),
+			attribute.Int64("github.remaining_quota", remaining),
 		),
 	)
 	defer span.End()
