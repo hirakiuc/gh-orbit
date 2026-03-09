@@ -74,8 +74,9 @@ func (e *realCommandExecutor) Run(ctx context.Context, name string, args ...stri
 
 	// #nosec G204: name is validated against a strict whitelist
 	cmd := exec.CommandContext(ctx, name, args...)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("command %s failed: %w", name, err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command %s failed (output: %s): %w", name, string(out), err)
 	}
 	return nil
 }

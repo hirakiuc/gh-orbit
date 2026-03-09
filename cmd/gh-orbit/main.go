@@ -201,7 +201,7 @@ func runDoctor() error {
 		})
 		
 		// Allow small time for async delivery to hit system
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(2 * time.Second)
 	}
 
 	// 5. Output

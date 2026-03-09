@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/ebitengine/purego"
 	"github.com/hirakiuc/gh-orbit/internal/config"
@@ -148,18 +147,18 @@ func (m *macosNotifier) worker(ctx context.Context) {
 			return
 		}
 		
-		// 1. Framework Loading (MUST happen before any objc calls)
+		// 1. Framework Loading
 		if _, err := getFrameworks(); err != nil {
-			m.logger.WarnContext(ctx, "failed to load system frameworks", "error", err)
-			m.setStatus(StatusBroken)
+			m.logger.DebugContext(ctx, "native bridge frameworks not available", "error", err)
+			m.setStatus(StatusUnsupported)
 			return
 		}
 
 		// 2. Mandatory Bundle Check
-		// If we don't have a bundle, we skip native initialization to avoid panics
+		// Standalone binaries cannot use UNUserNotificationCenter reliably
 		if err := m.checkBundle(ctx); err != nil {
-			m.logger.DebugContext(ctx, "native bridge restricted (standalone binary), using AppleScript fallback", "error", err)
-			m.setStatus(StatusHealthy) // Still "Healthy" because AppleScript works on Darwin
+			m.logger.DebugContext(ctx, "native bridge restricted (standalone binary), signaling unsupported for fallback", "error", err)
+			m.setStatus(StatusUnsupported)
 			return
 		}
 
@@ -171,6 +170,11 @@ func (m *macosNotifier) worker(ctx context.Context) {
 	// Signal readiness
 	m.readyOnce.Do(func() { close(m.ready) })
 
+	// If we are not healthy, this worker doesn't need to run as AlertService will use Beeep
+	if m.Status() != StatusHealthy {
+		return
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -181,30 +185,12 @@ func (m *macosNotifier) worker(ctx context.Context) {
 				continue // Warmup sentinel
 			}
 
-			m.deliver(ctx, req)
+			_ = m.deliverNative(ctx, req)
 		}
 	}
 }
 
-func (m *macosNotifier) deliver(ctx context.Context, req alertRequest) {
-	// Try Native FIRST ONLY if we actually have a bundle identifier
-	// We check checkBundle again or trust the initial status.
-	// Actually, let's just try deliverNative and fallback if it fails.
-	// BUT deliverNative panics if currentNotificationCenter is nil.
-	
-	err := m.deliverNative(ctx, req)
-	if err != nil {
-		m.logger.DebugContext(ctx, "native delivery failed, attempting osascript fallback", "error", err)
-		m.deliverWithAppleScript(ctx, req)
-	}
-}
-
 func (m *macosNotifier) deliverNative(ctx context.Context, req alertRequest) error {
-	// Safety: check if we actually have a bundle ID before calling UNUserNotificationCenter
-	if err := m.checkBundle(ctx); err != nil {
-		return err // Fallback to AppleScript
-	}
-
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "macos.notify_deliver")
 	defer span.End()
@@ -266,44 +252,11 @@ func (m *macosNotifier) deliverNative(ctx context.Context, req alertRequest) err
 	return err
 }
 
-var appleScriptReplacer = strings.NewReplacer(
-	"\\", "\\\\",
-	"\"", "\\\"",
-	"`", "\\`",
-	"$", "\\$",
-)
-
-func escapeAppleScript(s string) string {
-	return appleScriptReplacer.Replace(s)
-}
-
-func (m *macosNotifier) deliverWithAppleScript(ctx context.Context, req alertRequest) {
-	m.logger.DebugContext(ctx, "delivering notification via osascript fallback")
-	
-	script := fmt.Sprintf(
-		"display notification \"%s\" with title \"%s\" subtitle \"%s\"",
-		escapeAppleScript(req.body),
-		escapeAppleScript(req.title),
-		escapeAppleScript(req.subtitle),
-	)
-
-	// Execute asynchronously with worker's lifecycle-managed context
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-		
-		cmdCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := m.executor.Run(cmdCtx, "osascript", "-e", script); err != nil {
-			m.logger.WarnContext(context.Background(), "osascript fallback failed", "error", err)
-		}
-	}()
-}
-
 func (m *macosNotifier) setupDelegate(ctx context.Context) {
 	super := objc_getClass("NSObject")
 	cls := objc_allocateClassPair(super, "OrbitNotificationDelegate", 0)
+	
+	// We no longer need swizzleBundleID global callback as we removed swizzling
 	
 	callback := purego.NewCallback(func(self, sel, center, response, completion uintptr) {
 		if completion != 0 {
