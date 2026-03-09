@@ -101,22 +101,22 @@ func (_c *MockSyncer_Shutdown_Call) RunAndReturn(run func(context.Context)) *Moc
 }
 
 // Sync provides a mock function with given fields: ctx, userID, force
-func (_m *MockSyncer) Sync(ctx context.Context, userID string, force bool) (int, error) {
+func (_m *MockSyncer) Sync(ctx context.Context, userID string, force bool) (types.RateLimitInfo, error) {
 	ret := _m.Called(ctx, userID, force)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Sync")
 	}
 
-	var r0 int
+	var r0 types.RateLimitInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, bool) (int, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) (types.RateLimitInfo, error)); ok {
 		return rf(ctx, userID, force)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, bool) int); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) types.RateLimitInfo); ok {
 		r0 = rf(ctx, userID, force)
 	} else {
-		r0 = ret.Get(0).(int)
+		r0 = ret.Get(0).(types.RateLimitInfo)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string, bool) error); ok {
@@ -148,12 +148,12 @@ func (_c *MockSyncer_Sync_Call) Run(run func(ctx context.Context, userID string,
 	return _c
 }
 
-func (_c *MockSyncer_Sync_Call) Return(_a0 int, _a1 error) *MockSyncer_Sync_Call {
+func (_c *MockSyncer_Sync_Call) Return(_a0 types.RateLimitInfo, _a1 error) *MockSyncer_Sync_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSyncer_Sync_Call) RunAndReturn(run func(context.Context, string, bool) (int, error)) *MockSyncer_Sync_Call {
+func (_c *MockSyncer_Sync_Call) RunAndReturn(run func(context.Context, string, bool) (types.RateLimitInfo, error)) *MockSyncer_Sync_Call {
 	_c.Call.Return(run)
 	return _c
 }

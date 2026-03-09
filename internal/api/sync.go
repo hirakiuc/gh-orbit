@@ -55,7 +55,7 @@ func (s *SyncEngine) BridgeStatus() BridgeStatus {
 // Sync performs a full synchronization cycle for notifications.
 // If force is true, it bypasses the PollInterval check.
 // It returns the remaining rate limit if known.
-func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, error) {
+func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types.RateLimitInfo, error) {
 	// Prepare alert service for a new cycle (detects Silent Initial Baseline)
 	if s.alerts != nil {
 		s.alerts.SyncStart(ctx)
@@ -77,11 +77,11 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 		"sync_id", syncID)
 	
 	metaKey := "notifications"
-	remaining := 5000 // Default
+	rlInfo := types.RateLimitInfo{Limit: 5000, Remaining: 5000}
 
 	meta, err := s.db.GetSyncMeta(ctx, userID, metaKey)
 	if err != nil {
-		return remaining, err
+		return rlInfo, err
 	}
 
 	// Initialize meta if not exists
@@ -109,7 +109,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 				"interval", meta.PollInterval,
 				"last_sync", meta.LastSyncAt)
 		}
-		return remaining, nil // Too soon to poll
+		return rlInfo, nil // Too soon to poll
 	}
 
 	if s.logger.Enabled(ctx, slog.LevelDebug) {
@@ -119,13 +119,13 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 			"last_modified", meta.LastModified)
 	}
 
-	notifications, newMeta, remaining, err := s.fetcher.FetchNotifications(ctx, meta, force)
+	notifications, newMeta, rlInfo, err := s.fetcher.FetchNotifications(ctx, meta, force)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
 		_ = s.db.UpdateSyncMeta(ctx, *meta)
-		return remaining, err
+		return rlInfo, err
 	}
 
 	span.SetAttributes(attribute.Int("notification_count", len(notifications)))
@@ -155,7 +155,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 				UpdatedAt:          n.UpdatedAt,
 			})
 			if err != nil {
-				return remaining, fmt.Errorf("failed to save notification %s: %w", n.ID, err)
+				return rlInfo, fmt.Errorf("failed to save notification %s: %w", n.ID, err)
 			}
 
 			// We only trigger alerts for notifications arriving AFTER the established baseline
@@ -187,5 +187,5 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (int, 
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	s.logger.InfoContext(ctx, "notification sync complete", "user_id", userID, "sync_id", syncID)
-	return remaining, s.db.UpdateSyncMeta(ctx, *newMeta)
+	return rlInfo, s.db.UpdateSyncMeta(ctx, *newMeta)
 }

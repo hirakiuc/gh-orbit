@@ -23,7 +23,7 @@ func (_m *MockFetcher) EXPECT() *MockFetcher_Expecter {
 }
 
 // FetchNotifications provides a mock function with given fields: ctx, meta, force
-func (_m *MockFetcher) FetchNotifications(ctx context.Context, meta *types.SyncMeta, force bool) ([]types.GHNotification, *types.SyncMeta, int, error) {
+func (_m *MockFetcher) FetchNotifications(ctx context.Context, meta *types.SyncMeta, force bool) ([]types.GHNotification, *types.SyncMeta, types.RateLimitInfo, error) {
 	ret := _m.Called(ctx, meta, force)
 
 	if len(ret) == 0 {
@@ -32,9 +32,9 @@ func (_m *MockFetcher) FetchNotifications(ctx context.Context, meta *types.SyncM
 
 	var r0 []types.GHNotification
 	var r1 *types.SyncMeta
-	var r2 int
+	var r2 types.RateLimitInfo
 	var r3 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.SyncMeta, bool) ([]types.GHNotification, *types.SyncMeta, int, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.SyncMeta, bool) ([]types.GHNotification, *types.SyncMeta, types.RateLimitInfo, error)); ok {
 		return rf(ctx, meta, force)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, *types.SyncMeta, bool) []types.GHNotification); ok {
@@ -53,10 +53,10 @@ func (_m *MockFetcher) FetchNotifications(ctx context.Context, meta *types.SyncM
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, *types.SyncMeta, bool) int); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, *types.SyncMeta, bool) types.RateLimitInfo); ok {
 		r2 = rf(ctx, meta, force)
 	} else {
-		r2 = ret.Get(2).(int)
+		r2 = ret.Get(2).(types.RateLimitInfo)
 	}
 
 	if rf, ok := ret.Get(3).(func(context.Context, *types.SyncMeta, bool) error); ok {
@@ -88,12 +88,12 @@ func (_c *MockFetcher_FetchNotifications_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *MockFetcher_FetchNotifications_Call) Return(_a0 []types.GHNotification, _a1 *types.SyncMeta, _a2 int, _a3 error) *MockFetcher_FetchNotifications_Call {
+func (_c *MockFetcher_FetchNotifications_Call) Return(_a0 []types.GHNotification, _a1 *types.SyncMeta, _a2 types.RateLimitInfo, _a3 error) *MockFetcher_FetchNotifications_Call {
 	_c.Call.Return(_a0, _a1, _a2, _a3)
 	return _c
 }
 
-func (_c *MockFetcher_FetchNotifications_Call) RunAndReturn(run func(context.Context, *types.SyncMeta, bool) ([]types.GHNotification, *types.SyncMeta, int, error)) *MockFetcher_FetchNotifications_Call {
+func (_c *MockFetcher_FetchNotifications_Call) RunAndReturn(run func(context.Context, *types.SyncMeta, bool) ([]types.GHNotification, *types.SyncMeta, types.RateLimitInfo, error)) *MockFetcher_FetchNotifications_Call {
 	_c.Call.Return(run)
 	return _c
 }

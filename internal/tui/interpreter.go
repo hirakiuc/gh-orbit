@@ -43,8 +43,8 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.model.loadNotifications()
 	case ActionUpdateRateLimit:
 		return func() tea.Msg {
-			// #nosec G115: standard conversion
-			i.model.traffic.UpdateRateLimit(context.Background(), a.Remaining)
+			i.model.RateLimit = a.Info
+			i.model.traffic.UpdateRateLimit(context.Background(), a.Info)
 			return nil
 		}
 	case ActionScheduleTick:

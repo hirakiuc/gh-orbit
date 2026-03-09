@@ -165,9 +165,19 @@ type DoctorReport struct {
 	Checks        []BridgeCheck     `json:"checks"`
 }
 
+// RateLimitInfo encapsulates GitHub API quota metadata.
+type RateLimitInfo struct {
+	Limit      int
+	Remaining  int
+	Used       int
+	Reset      time.Time
+	Resource   string
+	RetryAfter time.Duration
+}
+
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
-	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]GHNotification, *SyncMeta, int, error)
+	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]GHNotification, *SyncMeta, RateLimitInfo, error)
 }
 
 // Notifier defines the interface for delivering system notifications.
@@ -181,7 +191,7 @@ type Notifier interface {
 
 // Syncer defines the interface for the synchronization engine.
 type Syncer interface {
-	Sync(ctx context.Context, userID string, force bool) (int, error)
+	Sync(ctx context.Context, userID string, force bool) (RateLimitInfo, error)
 	Shutdown(ctx context.Context)
 	BridgeStatus() BridgeStatus
 }
@@ -221,7 +231,7 @@ type TaskFunc func(context.Context) tea.Msg
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
 	Submit(priority int, fn TaskFunc) tea.Cmd
-	UpdateRateLimit(ctx context.Context, remaining int)
+	UpdateRateLimit(ctx context.Context, info RateLimitInfo)
 	Remaining() int
 	Shutdown(ctx context.Context)
 }

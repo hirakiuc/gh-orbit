@@ -110,7 +110,7 @@ func (a ActionLoadNotifications) Type() ActionType { return ActionTypeLoadNotifi
 
 // ActionUpdateRateLimit updates the local rate limit status.
 type ActionUpdateRateLimit struct {
-	Remaining int
+	Info types.RateLimitInfo
 }
 
 func (a ActionUpdateRateLimit) Type() ActionType { return ActionTypeUpdateRateLimit }
