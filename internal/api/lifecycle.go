@@ -27,8 +27,12 @@ func NewAppLifecycle() *AppLifecycle {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	
 	go func() {
-		<-sigChan
-		cancel()
+		select {
+		case <-sigChan:
+			cancel()
+		case <-ctx.Done():
+			// Already canceled
+		}
 	}()
 	
 	return l

@@ -66,7 +66,7 @@ func (m *Model) OpenBrowser(u string) tea.Cmd {
 	}
 	if !isValidGitHubURL(u) {
 		return func() tea.Msg {
-			return errMsg{err: fmt.Errorf("refusing to open untrusted URL: %s", u)}
+			return types.ErrMsg{Err: fmt.Errorf("refusing to open untrusted URL: %s", u)}
 		}
 	}
 
@@ -75,7 +75,7 @@ func (m *Model) OpenBrowser(u string) tea.Cmd {
 		b := browser.New("", nil, nil)
 		if err := b.Browse(u); err != nil {
 			m.logger.ErrorContext(ctx, "failed to open browser", "error", err)
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 		return actionCompleteMsg{}
 	})
@@ -85,12 +85,12 @@ func (m *Model) OpenBrowser(u string) tea.Cmd {
 func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 	if !reRepoName.MatchString(repo) {
 		return func() tea.Msg {
-			return errMsg{err: fmt.Errorf("invalid repository name: %s", repo)}
+			return types.ErrMsg{Err: fmt.Errorf("invalid repository name: %s", repo)}
 		}
 	}
 	if !rePRNumber.MatchString(number) {
 		return func() tea.Msg {
-			return errMsg{err: fmt.Errorf("invalid PR number: %s", number)}
+			return types.ErrMsg{Err: fmt.Errorf("invalid PR number: %s", number)}
 		}
 	}
 
@@ -106,7 +106,7 @@ func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
 	checkoutCmd := m.executor.InteractiveGH(func(err error) tea.Msg {
 		if err != nil {
 			m.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 		m.logger.InfoContext(context.Background(), "checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
@@ -152,13 +152,13 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		err := m.db.SetPriority(ctx, id, priority)
 		if err != nil {
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 
 		// Reload to reflect state
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 
 		toast := "Priority cleared"
@@ -207,7 +207,7 @@ func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
 
 			notifs, err := m.db.ListNotifications(ctx)
 			if err != nil {
-				return errMsg{err: err}
+				return types.ErrMsg{Err: err}
 			}
 			return notificationsLoadedMsg{notifications: notifs, IsInitial: false}
 		}))
@@ -244,21 +244,21 @@ func (m *Model) ViewReleaseWeb(repo, tag string) tea.Cmd {
 func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
 	// Validation
 	if !reRepoName.MatchString(repo) {
-		return func() tea.Msg { return errMsg{err: fmt.Errorf("invalid repo: %s", repo)} }
+		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid repo: %s", repo)} }
 	}
 	if ghCmd == "release" {
 		if !reTagName.MatchString(arg) {
-			return func() tea.Msg { return errMsg{err: fmt.Errorf("invalid tag: %s", arg)} }
+			return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid tag: %s", arg)} }
 		}
 	} else if !rePRNumber.MatchString(arg) {
-		return func() tea.Msg { return errMsg{err: fmt.Errorf("invalid number: %s", arg)} }
+		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid number: %s", arg)} }
 	}
 
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		m.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
 		if err := m.executor.Run(ctx, "gh", ghCmd, "view", arg, "-R", repo, "--web"); err != nil {
 			m.logger.ErrorContext(ctx, "gh view command failed", "command", ghCmd, "error", err)
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 		return actionCompleteMsg{}
 	})
@@ -270,13 +270,13 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		res, err := m.enrich.FetchDetail(ctx, u, subjectType)
 		if err != nil {
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 
 		// Update database with granular enrich method
 		err = m.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
 		if err != nil {
-			return errMsg{err: err}
+			return types.ErrMsg{Err: err}
 		}
 
 		return detailLoadedMsg{

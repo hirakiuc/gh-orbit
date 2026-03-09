@@ -138,8 +138,8 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 	case viewportEnrichMsg:
 		actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
 
-	case errMsg:
-		m.err = msg.err
+	case types.ErrMsg:
+		m.err = msg.Err
 		m.ui.SetSyncing(false)
 		m.ui.SetFetching(false)
 	}

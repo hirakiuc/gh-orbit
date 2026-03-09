@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 var (
@@ -81,13 +82,10 @@ func (e *realCommandExecutor) Run(ctx context.Context, name string, args ...stri
 
 func (e *realCommandExecutor) InteractiveGH(callback func(error) tea.Msg, args ...string) tea.Cmd {
 	if err := e.validateArgs(args); err != nil {
-		return func() tea.Msg { return errMsg{err: err} }
+		return func() tea.Msg { return types.ErrMsg{Err: err} }
 	}
 
 	// #nosec G204: 'gh' is a trusted constant name
 	c := exec.Command("gh", args...)
 	return tea.ExecProcess(c, callback)
 }
-
-// errMsg is a copy of TUI errMsg to allow returning errors from InteractiveGH without circular dependency.
-type errMsg struct{ err error }
