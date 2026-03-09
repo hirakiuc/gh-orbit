@@ -8,53 +8,31 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-func TestDarwinNotifier_Lifecycle(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestDarwinNotifier_Notify(t *testing.T) {
+	ctx := context.Background()
 	logger := slog.Default()
 	mockExecutor := mocks.NewMockCommandExecutor(t)
 
+	// Expect osascript to be called via executor
+	mockExecutor.EXPECT().Run(mock.Anything, "osascript", "-e", mock.MatchedBy(func(s string) bool {
+		return assert.Contains(t, s, "display notification") &&
+			assert.Contains(t, s, "Test Body") &&
+			assert.Contains(t, s, "Test Title")
+	})).Return(nil).Once()
+
 	n := NewPlatformNotifier(ctx, mockExecutor, logger)
-	assert.NotNil(t, n)
 	
-	// Test Status
-	status := n.Status()
-	assert.NotEmpty(t, status)
+	err := n.Notify(ctx, "Test Title", "Test Subtitle", "Test Body", "https://url", 1)
+	assert.NoError(t, err)
 
-	// Test Warmup/Ready
-	n.Warmup()
-	select {
-	case <-n.Ready():
-		// Pass
-	case <-time.After(2 * time.Second):
-		// Warmup might be slow or unsupported in CI
-	}
-
-	n.Shutdown(ctx)
+	// Allow time for fire-and-forget goroutine to execute
+	time.Sleep(100 * time.Millisecond)
 }
 
-func TestDarwinNotifier_Notify(t *testing.T) {
-	t.Setenv("GH_ORBIT_NOTIFIER_FORCE_APPLE_SCRIPT", "1")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	logger := slog.Default()
-	mockExecutor := mocks.NewMockCommandExecutor(t)
-
-	n := NewPlatformNotifier(ctx, mockExecutor, logger)
-	t.Cleanup(func() { n.Shutdown(ctx) })
-
-	// Wait for worker to initialize and set status
-	select {
-	case <-n.Ready():
-	case <-time.After(time.Second):
-	}
-
-	// Verify that StatusUnsupported is set because of the forced AppleScript flag
-	assert.Equal(t, StatusUnsupported, n.Status())
-
-	// Test Notify (should not block or panic even if unsupported)
-	err := n.Notify(ctx, "Title", "Subtitle", "Body", "https://url", 1)
-	assert.NoError(t, err)
+func TestDarwinNotifier_Status(t *testing.T) {
+	n := NewPlatformNotifier(context.Background(), nil, slog.Default())
+	assert.Equal(t, StatusHealthy, n.Status())
 }

@@ -18,7 +18,7 @@ type AlertService struct {
 	logger   *slog.Logger
 	
 	// Tiered Notifiers
-	native   Notifier // Tier 1: Direct macOS bridge
+	native   Notifier // Tier 1: Platform-specific (e.g., macOS osascript)
 	fallback Notifier // Tier 2: Cross-platform fallback (beeep)
 	executor CommandExecutor
 
@@ -39,21 +39,6 @@ func NewAlertService(cfg *config.Config, database AlertRepository, native Notifi
 		executor:       executor,
 		syncRepoCounts: make(map[string]int),
 	}
-}
-
-// Warmup proactively assesses the bridge health without firing an alert.
-func (a *AlertService) Warmup() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// Proactively probe native tier
-	a.native.Warmup()
-	// Fallback tier is typically lazy or does not require warmup
-}
-
-// Ready returns a channel that is closed when the service is fully initialized.
-func (a *AlertService) Ready() <-chan struct{} {
-	return a.native.Ready()
 }
 
 // SyncStart signals the beginning of a new sync cycle, resetting throttles.
@@ -125,7 +110,7 @@ func (a *AlertService) TestNotify(ctx context.Context, title, subtitle, body str
 // ActiveTierInfo returns the name and health of the current primary notifier.
 func (a *AlertService) ActiveTierInfo() (string, BridgeStatus) {
 	if a.native.Status() == StatusHealthy {
-		return "macOS Native (Tier 1)", StatusHealthy
+		return "Platform Native (Tier 1)", StatusHealthy
 	}
 	return "Beeep Fallback (Tier 2)", a.fallback.Status()
 }
@@ -173,9 +158,6 @@ func (a *AlertService) BridgeStatus() BridgeStatus {
 
 // ProbeAndCacheBridge assesses environmental compatibility and caches it locally.
 func (a *AlertService) ProbeAndCacheBridge() {
-	// Ensure bridge is warmed up (probed) before checking status
-	a.Warmup()
-
 	// 1. Get current environment fingerprints
 	osVersion := "unknown"
 	out, err := a.executor.Execute(context.Background(), "sysctl", "-n", "kern.osversion")

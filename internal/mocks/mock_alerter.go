@@ -169,53 +169,6 @@ func (_c *MockAlerter_Notify_Call) RunAndReturn(run func(context.Context, types.
 	return _c
 }
 
-// Ready provides a mock function with no fields
-func (_m *MockAlerter) Ready() <-chan struct{} {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Ready")
-	}
-
-	var r0 <-chan struct{}
-	if rf, ok := ret.Get(0).(func() <-chan struct{}); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan struct{})
-		}
-	}
-
-	return r0
-}
-
-// MockAlerter_Ready_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Ready'
-type MockAlerter_Ready_Call struct {
-	*mock.Call
-}
-
-// Ready is a helper method to define mock.On call
-func (_e *MockAlerter_Expecter) Ready() *MockAlerter_Ready_Call {
-	return &MockAlerter_Ready_Call{Call: _e.mock.On("Ready")}
-}
-
-func (_c *MockAlerter_Ready_Call) Run(run func()) *MockAlerter_Ready_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockAlerter_Ready_Call) Return(_a0 <-chan struct{}) *MockAlerter_Ready_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockAlerter_Ready_Call) RunAndReturn(run func() <-chan struct{}) *MockAlerter_Ready_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Shutdown provides a mock function with given fields: ctx
 func (_m *MockAlerter) Shutdown(ctx context.Context) {
 	_m.Called(ctx)
@@ -328,38 +281,6 @@ func (_c *MockAlerter_TestNotify_Call) Return(_a0 error) *MockAlerter_TestNotify
 
 func (_c *MockAlerter_TestNotify_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockAlerter_TestNotify_Call {
 	_c.Call.Return(run)
-	return _c
-}
-
-// Warmup provides a mock function with no fields
-func (_m *MockAlerter) Warmup() {
-	_m.Called()
-}
-
-// MockAlerter_Warmup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Warmup'
-type MockAlerter_Warmup_Call struct {
-	*mock.Call
-}
-
-// Warmup is a helper method to define mock.On call
-func (_e *MockAlerter_Expecter) Warmup() *MockAlerter_Warmup_Call {
-	return &MockAlerter_Warmup_Call{Call: _e.mock.On("Warmup")}
-}
-
-func (_c *MockAlerter_Warmup_Call) Run(run func()) *MockAlerter_Warmup_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockAlerter_Warmup_Call) Return() *MockAlerter_Warmup_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *MockAlerter_Warmup_Call) RunAndReturn(run func()) *MockAlerter_Warmup_Call {
-	_c.Run(run)
 	return _c
 }
 

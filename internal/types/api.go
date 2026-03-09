@@ -185,8 +185,6 @@ type Notifier interface {
 	Notify(ctx context.Context, title, subtitle, body, url string, priority int) error
 	Shutdown(ctx context.Context)
 	Status() BridgeStatus
-	Warmup() // Proactive health check
-	Ready() <-chan struct{}
 }
 
 // Syncer defines the interface for the synchronization engine.
@@ -218,8 +216,6 @@ type Alerter interface {
 	Notify(ctx context.Context, n GHNotification) error
 	SyncStart(ctx context.Context)
 	Shutdown(ctx context.Context)
-	Ready() <-chan struct{}
-	Warmup()
 	ActiveTierInfo() (string, BridgeStatus)
 	TestNotify(ctx context.Context, title, subtitle, body string) error
 	BridgeStatus() BridgeStatus
