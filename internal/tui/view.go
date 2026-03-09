@@ -154,23 +154,23 @@ func (m *Model) renderDetailView() string {
 	header := lipgloss.JoinVertical(lipgloss.Left, title, m.styles.SelectedDescription.Render(meta))
 
 	// 2. Viewport (Body)
+	// Dynamically calculate height based on header size
 	detailMetaHeight := lipgloss.Height(header) + 1 // +1 for the newline
 	
 	availableHeight := m.height - m.headerHeight - m.footerHeight - detailMetaHeight
-	if availableHeight < 5 { availableHeight = 5 }
-
-	body := m.detailView.activeDetail
-	if m.ui.fetchingDetail {
-		body = "\n  ◌ Loading content..."
-	} else if body == "" {
-		body = "\n  (No description provided)"
+	if availableHeight < 5 { 
+		availableHeight = 5 
 	}
+	
+	// Sync viewport dimensions dynamically
+	m.detailView.viewport.SetWidth(m.width - 4)
+	m.detailView.viewport.SetHeight(availableHeight)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		"\n",
-		m.styles.Viewport.Width(m.width-4).Height(availableHeight).Render(body),
+		m.detailView.viewport.View(),
 	)
 }
 

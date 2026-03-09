@@ -83,27 +83,38 @@ func TestRenderDetailView(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 	m.width = 100
-	m.height = 50
+	m.height = 20
+	m.updateMarkdownRenderer()
 	
-	notifs := []types.NotificationWithState{
-		{Notification: types.Notification{GitHubID: "1", SubjectTitle: "T1", SubjectURL: "u1"}},
+	// Establish header/footer heights for layout
+	m.headerHeight = 1
+	m.footerHeight = 1
+	
+	notif := types.NotificationWithState{
+		Notification: types.Notification{GitHubID: "1", SubjectTitle: "T1", SubjectURL: "u1"},
 	}
-	m.listView.list.SetItems([]list.Item{item{notification: notifs[0]}})
+	m.listView.list.SetItems([]list.Item{item{notification: notif}})
 	m.listView.list.Select(0)
 	
 	// 1. Loading state
 	m.ui.SetFetching(true)
+	m.refreshDetailView()
 	v1 := stripANSI(m.renderDetailView())
-	assert.Contains(t, v1, "Loading content...")
+	assert.Contains(t, v1, "Loading content")
 	
 	// 2. Empty state
 	m.ui.SetFetching(false)
-	m.detailView.activeDetail = ""
+	notif.IsEnriched = true
+	notif.Body = ""
+	m.listView.list.SetItems([]list.Item{item{notification: notif}})
+	m.refreshDetailView()
 	v2 := stripANSI(m.renderDetailView())
 	assert.Contains(t, v2, "No description provided")
 	
 	// 3. Content state
-	m.detailView.activeDetail = "Some description"
+	notif.Body = "Some description"
+	m.listView.list.SetItems([]list.Item{item{notification: notif}})
+	m.refreshDetailView()
 	v3 := stripANSI(m.renderDetailView())
 	assert.Contains(t, v3, "Some description")
 }
