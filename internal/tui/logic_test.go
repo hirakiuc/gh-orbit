@@ -405,6 +405,50 @@ func TestModel_GHViewCmd_Validation(t *testing.T) {
 	require.IsType(t, errMsg{}, msg3)
 }
 
+func TestModel_DetailView_ContentSync(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	
+	// Initialize renderer
+	m.width = 100
+	m.updateMarkdownRenderer()
+	
+	notif := types.NotificationWithState{
+		Notification: types.Notification{
+			GitHubID: "1", 
+			SubjectTitle: "T1", 
+			Body: "original body", 
+			IsEnriched: true,
+		},
+	}
+	m.allNotifications = []types.NotificationWithState{notif}
+	m.applyFilters()
+	m.listView.list.Select(0)
+
+	// 1. Entering detail for pre-enriched item should show body immediately
+	m.Transition(tea.KeyPressMsg{Code: ' ', Text: " "}, 0)
+	assert.Equal(t, StateDetail, m.state)
+	assert.Contains(t, stripANSI(m.detailView.activeDetail), "original body")
+
+	// 2. Loading new details while in detail view should refresh content
+	m.Transition(detailLoadedMsg{GitHubID: "1", Body: "updated body"}, 0)
+	assert.Contains(t, stripANSI(m.detailView.activeDetail), "updated body")
+
+	// 3. Background sync while in detail view should preserve/refresh content
+	newNotifs := []types.NotificationWithState{
+		{
+			Notification: types.Notification{
+				GitHubID: "1", 
+				SubjectTitle: "T1", 
+				Body: "synced body", 
+				IsEnriched: true,
+			},
+		},
+	}
+	m.Transition(notificationsLoadedMsg{notifications: newNotifs}, 0)
+	assert.Contains(t, stripANSI(m.detailView.activeDetail), "synced body")
+}
+
 func TestModel_Actions_EdgeCases(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
