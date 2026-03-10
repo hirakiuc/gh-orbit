@@ -404,12 +404,23 @@ func (m *Model) applyFilters() {
 			}
 		}
 
-		if keep {
+	if keep {
 			filtered = append(filtered, item{notification: n})
 		}
 	}
 
+	// Preserve existing fuzzy filter state
+	// Maintenance Note: This manually syncs the FilterInput sub-component.
+	// Library upgrades to bubbles/v2 may change this internal structure.
+	currentFilter := m.listView.list.FilterValue()
+
 	m.listView.list.SetItems(filtered)
+
+	// Restore fuzzy filter BEFORE restoring selection to ensure index mapping is correct
+	if currentFilter != "" {
+		m.listView.list.FilterInput.SetValue(currentFilter)
+		m.listView.list.SetFilterText(currentFilter)
+	}
 
 	if selectedID != "" {
 		for index, li := range m.listView.list.Items() {
