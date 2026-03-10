@@ -702,3 +702,47 @@ func TestModel_Actions_Additional(t *testing.T) {
 	// 4. MarkRead (via method)
 	_ = m.MarkRead(i)
 }
+
+func TestModel_FilterPreservation(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	
+	// 0. Switch to TabAll to ensure items stay visible regardless of read state
+	m.listView.activeTab = TabAll
+
+	// 1. Setup multiple notifications
+	m.allNotifications = []types.NotificationWithState{
+		{Notification: types.Notification{GitHubID: "1", SubjectTitle: "Match Apple"}},
+		{Notification: types.Notification{GitHubID: "2", SubjectTitle: "Match Banana"}},
+		{Notification: types.Notification{GitHubID: "3", SubjectTitle: "Other Cherry"}},
+	}
+	m.applyFilters()
+	require.Len(t, m.listView.list.Items(), 3)
+
+	// 2. Apply fuzzy filter "Match"
+	m.listView.list.SetFilterText("Match")
+	// Note: We might need to manually trigger the filter logic in the test 
+	// because bubbles/list handles filtering in its Update loop usually.
+	// But our applyFilters now does it explicitly.
+	require.Len(t, m.listView.list.VisibleItems(), 2)
+
+	// 3. Trigger state change (Toggle Read)
+	// This calls applyFilters() internally
+	m.listView.list.Select(0)
+	target := m.listView.list.SelectedItem().(item)
+	
+	mockTraffic := m.traffic.(*mocks.MockTrafficController)
+	mockTraffic.EXPECT().Submit(mock.Anything, mock.Anything).Return(func() tea.Msg { return nil }).Maybe()
+
+	_ = m.ToggleRead(target)
+	
+	// 4. Verify filter is preserved and list is still filtered
+	assert.Equal(t, "Match", m.listView.list.FilterValue())
+	assert.Len(t, m.listView.list.VisibleItems(), 2)
+
+	// 5. Edge Case: Filter results in empty list
+	m.listView.list.SetFilterText("NonExistent")
+	m.applyFilters()
+	assert.Equal(t, "NonExistent", m.listView.list.FilterValue())
+	assert.Len(t, m.listView.list.VisibleItems(), 0)
+}
