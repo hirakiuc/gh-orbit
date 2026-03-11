@@ -44,12 +44,13 @@ func (m *macosNotifier) Notify(ctx context.Context, title, subtitle, body, url s
 
 	// Fire-and-Forget: Spawning a goroutine ensures AlertService is never blocked by osascript.
 	go func() {
-		// Internal timeout to prevent hanging processes
-		cmdCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Use request context (WithoutCancel) to ensure delivery even if the main loop advances,
+		// but tie it to the system-level timeout.
+		cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 
 		if err := m.executor.Run(cmdCtx, "osascript", "-e", script); err != nil {
-			m.logger.WarnContext(context.Background(), "macos: notification delivery failed", "error", err)
+			m.logger.WarnContext(cmdCtx, "macos: notification delivery failed", "error", err)
 		}
 	}()
 

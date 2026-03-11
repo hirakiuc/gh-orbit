@@ -30,8 +30,10 @@ func (b *beeepNotifier) Notify(ctx context.Context, title, subtitle, body, url s
 
 	// Beeep.Notify is already asynchronous on most platforms, but we follow our fire-and-forget pattern.
 	go func() {
+		// Use request context (WithoutCancel) to satisfy G118 while ensuring delivery.
+		backgroundCtx := context.WithoutCancel(ctx)
 		if err := beeep.Notify(fullTitle, body, ""); err != nil {
-			b.logger.WarnContext(context.Background(), "beeep notification failed", "error", err)
+			b.logger.WarnContext(backgroundCtx, "beeep notification failed", "error", err)
 		}
 	}()
 

@@ -1,7 +1,7 @@
 # Project variables
 BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
-GOLANGCI_LINT_VERSION=v2.10.1
+GOLANGCI_LINT_VERSION=v2.11.3
 
 .PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage coverage-summary artifacts
 
