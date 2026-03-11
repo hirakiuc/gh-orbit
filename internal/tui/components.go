@@ -12,13 +12,23 @@ type RenderContext struct {
 	Styles     Styles
 	Width      int
 	IsFetching bool
+	IsSelected bool
 }
 
-// RenderTargetHeader provides a consistent title row with Icons and Status badges.
-func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter string, isSelected bool) string {
+// RenderNotificationRow provides a consistent, non-truncated row layout.
+// Layout: [Indicator][Icon][Unread][Badge] [Title] [ID] [Priority]
+func RenderNotificationRow(ctx RenderContext, n types.NotificationWithState) string {
+	const minTitleWidth = 10
+	const selectionIndicatorWidth = 2
 	styles := ctx.Styles
 
-	// 1. Icon Selection
+	// 1. Selection Indicator
+	indicator := "  "
+	if ctx.IsSelected {
+		indicator = styles.Cursor.Render("▌ ")
+	}
+
+	// 2. Icon Selection
 	icon := "  "
 	switch n.SubjectType {
 	case "PullRequest":
@@ -31,24 +41,15 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 		icon = " "
 	}
 
-	// 2. Unread Indicator
+	// 3. Unread Indicator
 	unread := renderUnreadIndicator(styles, n.IsReadLocally)
 
-	// 3. Resource ID Extraction
+	// 4. Resource ID Extraction
 	id := ""
 	if lastIdx := strings.LastIndex(n.SubjectURL, "/"); lastIdx != -1 {
 		id = "#" + n.SubjectURL[lastIdx+1:]
 	}
-
-	// 4. Title Styling (Read vs Unread)
-	titleStr := n.SubjectTitle
-	titleStyle := styles.Unread
-	if n.IsReadLocally {
-		titleStyle = styles.SelectedDescription // Use a dim style for read
-	}
-	if isSelected {
-		titleStyle = styles.SelectedTitle
-	}
+	idStr := styles.SelectedDescription.Render(id)
 
 	// 5. Status Badge Logic
 	badge := ""
@@ -66,27 +67,52 @@ func RenderTargetHeader(ctx RenderContext, n types.NotificationWithState, filter
 		case "DRAFT":
 			badge = styles.StateDraft.Render("  DRAFT ")
 		default:
-			// Generic badge for other states
 			badge = styles.StateSkeleton.UnsetBlink().Render(fmt.Sprintf(" %s ", s))
 		}
 	}
 
-	// 6. Layout with truncation
-	// fixed widths: icon (2), unread (2), id (~5)
-	fixedWidth := 15
+	// 6. Priority Badge
+	priorityBadge := ""
+	switch n.Priority {
+	case 3:
+		priorityBadge = styles.PriorityHigh.Render(" [!!!]")
+	case 2:
+		priorityBadge = styles.PriorityMed.Render(" [!!]")
+	case 1:
+		priorityBadge = styles.PriorityLow.Render(" [!]")
+	}
+
+	// 7. Dynamic Width Calculation (Subtract-from-Total)
+	// We sum the visual width of all fixed components.
+	// Note: We add a small safety buffer (5 cells) to account for multi-byte glyphs (Nerd Fonts)
+	// which may render as 2 cells in some environments despite lipgloss.Width() reporting 1.
+	fixedWidth := selectionIndicatorWidth + lipgloss.Width(icon) + lipgloss.Width(unread) + lipgloss.Width(idStr) + 7 // +2 for spaces, +5 safety
 	if badge != "" {
 		fixedWidth += lipgloss.Width(badge) + 1
 	}
-
-	availableTitleWidth := ctx.Width - fixedWidth
-	if availableTitleWidth < 10 {
-		availableTitleWidth = 10
+	if priorityBadge != "" {
+		fixedWidth += lipgloss.Width(priorityBadge)
 	}
 
-	title := titleStyle.Width(availableTitleWidth).MaxWidth(availableTitleWidth).Render(titleStr)
-	idStr := styles.SelectedDescription.Render(id) // Use a subtle style for ID
+	availableTitleWidth := ctx.Width - fixedWidth
+	if availableTitleWidth < minTitleWidth {
+		availableTitleWidth = minTitleWidth
+	}
 
-	return fmt.Sprintf("%s%s%s %s %s", icon, unread, badge, title, idStr)
+	// 8. Title Styling & Truncation
+	titleStr := n.SubjectTitle
+	titleStyle := styles.Unread
+	if n.IsReadLocally {
+		titleStyle = styles.SelectedDescription
+	}
+	if ctx.IsSelected {
+		titleStyle = styles.SelectedTitle
+	}
+	title := titleStyle.Width(availableTitleWidth).MaxWidth(availableTitleWidth).Render(titleStr)
+
+	// 9. Assembly
+	// We use exact spacing to ensure width remains within ctx.Width
+	return fmt.Sprintf("%s%s%s%s%s%s%s", indicator, icon, unread, badge, title, idStr, priorityBadge)
 }
 
 func renderUnreadIndicator(styles Styles, isRead bool) string {

@@ -51,37 +51,16 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	isSelected := index == m.Index()
 
-	// 1. Selection Indicator
-	indicator := "  "
-	if isSelected {
-		indicator = d.styles.Cursor.Render("▌ ")
-	}
-
-	// 2. Target Identity Header (Icon + Title + #ID + Badge)
+	// 1. Target Identity Row (Indicator + Icon + Unread + Badge + Title + #ID + Priority)
 	ctx := RenderContext{
 		Styles:     d.styles,
 		Width:      m.Width(),
 		IsFetching: isSelected && d.IsFetching,
+		IsSelected: isSelected,
 	}
-	header := RenderTargetHeader(ctx, i.notification, m.FilterValue(), isSelected)
+	str := RenderNotificationRow(ctx, i.notification)
 
-	// 3. Status/Priority
-	str := fmt.Sprintf("%s%s", indicator, header)
-
-	priority := ""
-	switch i.notification.Priority {
-	case 3:
-		priority = d.styles.PriorityHigh.Render(" [!!!]")
-	case 2:
-		priority = d.styles.PriorityMed.Render(" [!!]")
-	case 1:
-		priority = d.styles.PriorityLow.Render(" [!]")
-	}
-	if priority != "" {
-		str += priority
-	}
-
-	// 4. Meta info (line 2)
+	// 2. Meta info (line 2)
 	relTime := humanize.Time(i.notification.UpdatedAt)
 	description := fmt.Sprintf("%s • %s", i.notification.RepositoryFullName, relTime)
 	if isSelected {
