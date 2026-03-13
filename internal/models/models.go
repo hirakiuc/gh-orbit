@@ -48,6 +48,15 @@ type BridgeHealth struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// EnrichmentResult holds the fetched details for a notification.
+type EnrichmentResult struct {
+	Body          string
+	HTMLURL       string
+	Author        string
+	ResourceState string
+	FetchedAt     time.Time
+}
+
 // Re-export triage models for legacy compatibility
 type Notification = triage.Notification
 type OrbitState = triage.State

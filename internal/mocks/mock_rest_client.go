@@ -4,6 +4,7 @@ package mocks
 
 import (
 	context "context"
+
 	io "io"
 
 	mock "github.com/stretchr/testify/mock"
@@ -23,7 +24,7 @@ func (_m *MockRESTClient) EXPECT() *MockRESTClient_Expecter {
 }
 
 // DoWithContext provides a mock function with given fields: ctx, method, path, body, response
-func (_m *MockRESTClient) DoWithContext(ctx context.Context, method string, path string, body io.Reader, response any) error {
+func (_m *MockRESTClient) DoWithContext(ctx context.Context, method string, path string, body io.Reader, response interface{}) error {
 	ret := _m.Called(ctx, method, path, body, response)
 
 	if len(ret) == 0 {
@@ -31,7 +32,7 @@ func (_m *MockRESTClient) DoWithContext(ctx context.Context, method string, path
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, io.Reader, any) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, io.Reader, interface{}) error); ok {
 		r0 = rf(ctx, method, path, body, response)
 	} else {
 		r0 = ret.Error(0)
@@ -50,14 +51,14 @@ type MockRESTClient_DoWithContext_Call struct {
 //   - method string
 //   - path string
 //   - body io.Reader
-//   - response any
-func (_e *MockRESTClient_Expecter) DoWithContext(ctx any, method any, path any, body any, response any) *MockRESTClient_DoWithContext_Call {
+//   - response interface{}
+func (_e *MockRESTClient_Expecter) DoWithContext(ctx interface{}, method interface{}, path interface{}, body interface{}, response interface{}) *MockRESTClient_DoWithContext_Call {
 	return &MockRESTClient_DoWithContext_Call{Call: _e.mock.On("DoWithContext", ctx, method, path, body, response)}
 }
 
-func (_c *MockRESTClient_DoWithContext_Call) Run(run func(ctx context.Context, method string, path string, body io.Reader, response any)) *MockRESTClient_DoWithContext_Call {
+func (_c *MockRESTClient_DoWithContext_Call) Run(run func(ctx context.Context, method string, path string, body io.Reader, response interface{})) *MockRESTClient_DoWithContext_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(io.Reader), args[4].(any))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(io.Reader), args[4].(interface{}))
 	})
 	return _c
 }
@@ -67,7 +68,7 @@ func (_c *MockRESTClient_DoWithContext_Call) Return(_a0 error) *MockRESTClient_D
 	return _c
 }
 
-func (_c *MockRESTClient_DoWithContext_Call) RunAndReturn(run func(context.Context, string, string, io.Reader, any) error) *MockRESTClient_DoWithContext_Call {
+func (_c *MockRESTClient_DoWithContext_Call) RunAndReturn(run func(context.Context, string, string, io.Reader, interface{}) error) *MockRESTClient_DoWithContext_Call {
 	_c.Call.Return(run)
 	return _c
 }

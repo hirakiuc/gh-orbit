@@ -24,14 +24,11 @@ packages:
       EnrichmentRepository:
       SyncRepository:
       Repository:
-      Fetcher:
       Notifier:
       Syncer:
       Enricher:
-      Alerter:
       TrafficController:
-      RESTClient:
-      GraphQLClient:
+      CommandExecutor:
 
   github.com/hirakiuc/gh-orbit/internal/api:
     config:
@@ -39,5 +36,15 @@ packages:
       outpkg: mocks
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
-      GitHubClient:
-      CommandExecutor:
+      Alerter:
+
+  github.com/hirakiuc/gh-orbit/internal/github:
+    config:
+      dir: internal/mocks
+      outpkg: mocks
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+    interfaces:
+      Client:
+      RESTClient:
+      GraphQLClient:
+      Fetcher:

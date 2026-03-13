@@ -6,7 +6,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 )
 
@@ -76,11 +75,6 @@ type DoctorReport struct {
 	Checks        []BridgeCheck     `json:"checks"`
 }
 
-// Fetcher defines the interface for retrieving notifications from an external source.
-type Fetcher interface {
-	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]github.Notification, *SyncMeta, RateLimitInfo, error)
-}
-
 // Notifier defines the interface for delivering system notifications.
 type Notifier interface {
 	Notify(ctx context.Context, title, subtitle, body, url string, priority int) error
@@ -97,28 +91,9 @@ type Syncer interface {
 
 // Enricher defines the interface for fetching notification details.
 type Enricher interface {
-	FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error)
-	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]EnrichmentResult
+	FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error)
+	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]models.EnrichmentResult
 	Shutdown(ctx context.Context)
-}
-
-// EnrichmentResult holds the fetched details for a notification.
-type EnrichmentResult struct {
-	Body          string
-	HTMLURL       string
-	Author        string
-	ResourceState string
-	FetchedAt     time.Time
-}
-
-// Alerter defines the interface for the high-level alerting service.
-type Alerter interface {
-	Notify(ctx context.Context, n github.Notification) error
-	SyncStart(ctx context.Context)
-	Shutdown(ctx context.Context)
-	ActiveTierInfo() (string, BridgeStatus)
-	TestNotify(ctx context.Context, title, subtitle, body string) error
-	BridgeStatus() BridgeStatus
 }
 
 // TaskFunc represents an API operation that returns a message.

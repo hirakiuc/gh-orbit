@@ -10,6 +10,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -28,7 +29,7 @@ type EnrichmentEngine struct {
 	client github.Client
 	db     types.EnrichmentRepository
 	logger *slog.Logger
-	cache  map[string]types.EnrichmentResult
+	cache  map[string]models.EnrichmentResult
 	mu     sync.RWMutex
 	sf     singleflight.Group
 	done   chan struct{}
@@ -39,7 +40,7 @@ func NewEnrichmentEngine(ctx context.Context, client github.Client, database typ
 		client: client,
 		db:     database,
 		logger: logger,
-		cache:  make(map[string]types.EnrichmentResult),
+		cache:  make(map[string]models.EnrichmentResult),
 		done:   make(chan struct{}),
 	}
 	
@@ -56,7 +57,7 @@ func (e *EnrichmentEngine) Shutdown(ctx context.Context) {
 }
 
 // FetchDetail retrieves detailed information for a notification from GitHub.
-func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (types.EnrichmentResult, error) {
+func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error) {
 	// 1. Check local cache
 	e.mu.RLock()
 	if res, ok := e.cache[u]; ok {
@@ -78,7 +79,7 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		)
 		defer span.End()
 
-		var res types.EnrichmentResult
+		var res models.EnrichmentResult
 		var err error
 
 		switch subjectType {
@@ -86,7 +87,7 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 			res, err = e.fetchREST(ctx, u)
 		default:
 			// Releases and others don't have descriptions in REST API without extra calls
-			res = types.EnrichmentResult{HTMLURL: u, FetchedAt: time.Now()}
+			res = models.EnrichmentResult{HTMLURL: u, FetchedAt: time.Now()}
 		}
 
 		if err != nil {
@@ -102,13 +103,13 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 	})
 
 	if err != nil {
-		return types.EnrichmentResult{}, err
+		return models.EnrichmentResult{}, err
 	}
 
-	return val.(types.EnrichmentResult), nil
+	return val.(models.EnrichmentResult), nil
 }
 
-func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (types.EnrichmentResult, error) {
+func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.EnrichmentResult, error) {
 	var data struct {
 		Body    string `json:"body"`
 		HTMLURL string `json:"html_url"`
@@ -122,7 +123,7 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (types.Enric
 	// go-gh handles the relative path vs absolute URL automatically.
 	err := e.client.REST().DoWithContext(ctx, "GET", u, nil, &data)
 	if err != nil {
-		return types.EnrichmentResult{}, fmt.Errorf("REST fetch failed: %w", err)
+		return models.EnrichmentResult{}, fmt.Errorf("REST fetch failed: %w", err)
 	}
 
 	resourceState := ""
@@ -130,7 +131,7 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (types.Enric
 		resourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
 	}
 
-	return types.EnrichmentResult{
+	return models.EnrichmentResult{
 		Body:          data.Body,
 		HTMLURL:       data.HTMLURL,
 		Author:        data.User.Login,
@@ -140,8 +141,8 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (types.Enric
 }
 
 // FetchHybridBatch retrieves metadata for multiple items using GQL for efficiency.
-func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]types.EnrichmentResult {
-	results := make(map[string]types.EnrichmentResult)
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]models.EnrichmentResult {
+	results := make(map[string]models.EnrichmentResult)
 	var nodeIDs []string
 
 	for _, n := range notifications {
@@ -166,7 +167,7 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 	return results
 }
 
-func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]types.EnrichmentResult) {
+func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]models.EnrichmentResult) {
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "enrichment.gql_batch")
 	defer span.End()
@@ -239,7 +240,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			}
 			
 			// Populate results for immediate TUI refresh
-			results[node.ID] = types.EnrichmentResult{
+			results[node.ID] = models.EnrichmentResult{
 				ResourceState: state,
 				FetchedAt:     time.Now(),
 			}

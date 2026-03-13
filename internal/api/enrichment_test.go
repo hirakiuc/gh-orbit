@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -37,7 +38,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
-		cached := types.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
+		cached := models.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
 		engine.cache["url"] = cached
 
 		res, err := engine.FetchDetail(ctx, "url", "Issue")
@@ -75,8 +76,8 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 	engine := NewEnrichmentEngine(ctx, nil, nil, slog.Default())
 	
 	engine.mu.Lock()
-	engine.cache["old"] = types.EnrichmentResult{FetchedAt: time.Now().Add(-20 * time.Minute)}
-	engine.cache["new"] = types.EnrichmentResult{FetchedAt: time.Now()}
+	engine.cache["old"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-20 * time.Minute)}
+	engine.cache["new"] = models.EnrichmentResult{FetchedAt: time.Now()}
 	engine.mu.Unlock()
 
 	engine.pruneExpired(ctx)

@@ -25,6 +25,7 @@ var (
 	version  = "dev"
 	logLevel = "info"
 	verbose  = false
+	testMode = false
 )
 
 func main() {
@@ -42,6 +43,8 @@ func main() {
 
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Logging level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output (OTel tracing)")
+	rootCmd.PersistentFlags().BoolVar(&testMode, "gh-orbit-test-mode", false, "Internal use only for E2E testing")
+	_ = rootCmd.PersistentFlags().MarkHidden("gh-orbit-test-mode")
 
 	rootCmd.AddCommand(doctorCmd())
 	rootCmd.AddCommand(syncCmd())
@@ -222,6 +225,10 @@ func getDirSize(path string) int64 {
 }
 
 func runSync() error {
+	if testMode {
+		_, err := initResources(context.Background(), slog.Default())
+		return err
+	}
 	env, ctx, err := initEnvironment(context.Background())
 	if err != nil {
 		return err
@@ -250,6 +257,10 @@ func runSync() error {
 }
 
 func runTUI() error {
+	if testMode {
+		_, err := initResources(context.Background(), slog.Default())
+		return err
+	}
 	env, ctx, err := initEnvironment(context.Background())
 	if err != nil {
 		return err

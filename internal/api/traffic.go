@@ -136,16 +136,26 @@ func (c *APITrafficController) supervisor() {
 		select {
 		case <-c.done:
 			return
-		case <-time.After(10 * time.Millisecond):
+		default:
 			if atomic.LoadInt32(&activeWorkersCount) < atomic.LoadInt32(&c.workerLimit) {
 				select {
+				case <-c.done:
+					return
 				case t := <-c.high:
 					go c.runTask(t)
 				case t := <-c.med:
 					go c.runTask(t)
 				case t := <-c.low:
 					go c.runTask(t)
-				default:
+				case <-time.After(10 * time.Millisecond):
+					// No tasks, continue loop
+				}
+			} else {
+				// At worker limit, wait a bit
+				select {
+				case <-c.done:
+					return
+				case <-time.After(10 * time.Millisecond):
 				}
 			}
 		}
