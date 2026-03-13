@@ -278,6 +278,12 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			"node_count", len(data.Nodes))
 	}
 
+	e.client.ReportRateLimit(types.RateLimitInfo{
+		Limit:     data.RateLimit.Cost + data.RateLimit.Remaining, // Best guess for Limit
+		Remaining: data.RateLimit.Remaining,
+		Used:      data.RateLimit.Cost,
+	})
+
 	span.SetAttributes(
 		attribute.Int("gql.cost", data.RateLimit.Cost),
 		attribute.Int("gql.nodes", len(data.Nodes)),

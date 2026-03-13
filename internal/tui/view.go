@@ -59,7 +59,7 @@ func (m *Model) renderHeader() string {
 	if m.ui.syncing {
 		status = m.ui.spinner.View() + " Syncing..."
 	} else {
-		status = fmt.Sprintf("Rate: %d", m.traffic.Remaining())
+		status = fmt.Sprintf("Quota: %d", m.traffic.Remaining())
 	}
 
 	header := lipgloss.JoinHorizontal(

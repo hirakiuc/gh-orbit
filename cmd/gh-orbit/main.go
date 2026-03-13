@@ -388,6 +388,9 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	enricher := api.NewEnrichmentEngine(lifecycle.Context(), res.client, res.database, env.logger)
 	traffic := api.NewAPITrafficController(lifecycle.Context(), env.logger)
 
+	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
+	res.client.SetRateLimitUpdates(traffic.RateLimitUpdates())
+
 	m := tui.NewModel(
 		res.userID,
 		res.config,

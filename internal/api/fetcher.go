@@ -26,6 +26,22 @@ type Client struct {
 	http    *http.Client
 	host    string
 	baseURL string
+	rateLimitUpdates chan types.RateLimitInfo
+}
+
+func (c *Client) SetRateLimitUpdates(ch chan types.RateLimitInfo) {
+	c.rateLimitUpdates = ch
+}
+
+func (c *Client) ReportRateLimit(info types.RateLimitInfo) {
+	if c.rateLimitUpdates == nil {
+		return
+	}
+	select {
+	case c.rateLimitUpdates <- info:
+	default:
+		// Drop update if channel is full or nobody is listening
+	}
 }
 
 // NewClient initializes a new GitHub API client using go-gh.
@@ -89,6 +105,9 @@ func (c *Client) CurrentUser(ctx context.Context) (*GHUser, error) {
 			return nil, err
 		}
 		defer func() { _ = resp.Body.Close() }()
+
+		c.ReportRateLimit(ParseRateLimitInfo(resp.Header))
+
 		var user GHUser
 		if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 			return nil, err
@@ -217,7 +236,8 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 			"force", force)
 
 		// Update rate limit info if available
-		rlInfo = parseRateLimitInfo(resp.Header)
+		rlInfo = ParseRateLimitInfo(resp.Header)
+		f.client.ReportRateLimit(rlInfo)
 
 		if resp.StatusCode == http.StatusNotModified {
 			f.logger.DebugContext(ctx, "sync: 304 Not Modified received", "url", url)
@@ -299,7 +319,9 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 	return allNotifications, &newMeta, rlInfo, nil
 }
 
-func parseRateLimitInfo(h http.Header) types.RateLimitInfo {
+// ParseRateLimitInfo extracts GitHub-specific rate limit headers into a standard structure.
+// It is used across the internal API package to propagate quota updates via the TrafficController.
+func ParseRateLimitInfo(h http.Header) types.RateLimitInfo {
 	info := types.RateLimitInfo{
 		Limit:     5000, // Default assume healthy
 		Remaining: 5000,
