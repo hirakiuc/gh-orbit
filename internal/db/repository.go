@@ -3,12 +3,16 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
 // UpsertMetadata inserts or updates core notification metadata from API polling.
-func (db *DB) UpsertMetadata(ctx context.Context, n Notification) error {
+func (db *DB) UpsertMetadata(ctx context.Context, n triage.Notification) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -119,7 +123,7 @@ func (db *DB) UpdateSubjectNodeID(ctx context.Context, id, nodeID string) error 
 }
 
 // UpsertNotification is a compatibility helper that performs a metadata upsert.
-func (db *DB) UpsertNotification(ctx context.Context, n Notification) error {
+func (db *DB) UpsertNotification(ctx context.Context, n triage.Notification) error {
 	return db.UpsertMetadata(ctx, n)
 }
 
@@ -135,11 +139,11 @@ func baseNotificationSelect() string {
 	`
 }
 
-func (db *DB) GetNotification(ctx context.Context, id string) (*NotificationWithState, error) {
+func (db *DB) GetNotification(ctx context.Context, id string) (*triage.NotificationWithState, error) {
 	query := baseNotificationSelect() + " WHERE n.github_id = ?"
 	row := db.QueryRowContext(ctx, query, id)
 
-	var ns NotificationWithState
+	var ns triage.NotificationWithState
 	err := row.Scan(
 		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
@@ -155,7 +159,7 @@ func (db *DB) GetNotification(ctx context.Context, id string) (*NotificationWith
 }
 
 // ListNotifications returns all notifications with their state.
-func (db *DB) ListNotifications(ctx context.Context) ([]NotificationWithState, error) {
+func (db *DB) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
 	query := baseNotificationSelect() + " ORDER BY n.updated_at DESC"
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -163,9 +167,9 @@ func (db *DB) ListNotifications(ctx context.Context) ([]NotificationWithState, e
 	}
 	defer func() { _ = rows.Close() }()
 
-	var results []NotificationWithState
+	var results []triage.NotificationWithState
 	for rows.Next() {
-		var ns NotificationWithState
+		var ns triage.NotificationWithState
 		err := rows.Scan(
 			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
@@ -180,7 +184,7 @@ func (db *DB) ListNotifications(ctx context.Context) ([]NotificationWithState, e
 }
 
 // UpdateOrbitState updates the local triage state.
-func (db *DB) UpdateOrbitState(ctx context.Context, state OrbitState) error {
+func (db *DB) UpdateOrbitState(ctx context.Context, state triage.State) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
 		SET priority = ?, status = ?, is_read_locally = ?, is_notified = ?
@@ -267,25 +271,29 @@ func (db *DB) MarkNotifiedBatch(ctx context.Context, ids []string) error {
 	}
 	defer func() { _ = stmt.Close() }()
 
+	var errs []error
 	for _, id := range ids {
-		_, err := stmt.ExecContext(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to mark notification %s as notified: %w", id, err)
+		if _, err := stmt.ExecContext(ctx, id); err != nil {
+			errs = append(errs, fmt.Errorf("failed to mark notification %s as notified: %w", id, err))
 		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	return tx.Commit()
 }
 
 // GetSyncMeta retrieves the sync metadata for a user and endpoint.
-func (db *DB) GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, error) {
+func (db *DB) GetSyncMeta(ctx context.Context, userID, key string) (*models.SyncMeta, error) {
 	row := db.QueryRowContext(ctx, `
 		SELECT user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at
 		FROM sync_meta
 		WHERE user_id = ? AND key = ?
 	`, userID, key)
 
-	var s SyncMeta
+	var s models.SyncMeta
 	err := row.Scan(&s.UserID, &s.Key, &s.LastModified, &s.ETag, &s.PollInterval, &s.LastSyncAt, &s.LastError, &s.LastErrorAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -297,7 +305,7 @@ func (db *DB) GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, e
 }
 
 // UpdateSyncMeta updates the sync metadata.
-func (db *DB) UpdateSyncMeta(ctx context.Context, s SyncMeta) error {
+func (db *DB) UpdateSyncMeta(ctx context.Context, s models.SyncMeta) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO sync_meta (user_id, key, last_modified, etag, poll_interval, last_sync_at, last_error, last_error_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -313,14 +321,14 @@ func (db *DB) UpdateSyncMeta(ctx context.Context, s SyncMeta) error {
 }
 
 // GetBridgeHealth retrieves the cached health status of the bridge.
-func (db *DB) GetBridgeHealth(ctx context.Context) (*BridgeHealth, error) {
+func (db *DB) GetBridgeHealth(ctx context.Context) (*models.BridgeHealth, error) {
 	row := db.QueryRowContext(ctx, `
 		SELECT status, os_version, binary_path, binary_version, updated_at
 		FROM bridge_health
 		WHERE id = 1
 	`)
 
-	var h BridgeHealth
+	var h models.BridgeHealth
 	err := row.Scan(&h.Status, &h.OSVersion, &h.BinaryPath, &h.BinaryVersion, &h.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -332,7 +340,7 @@ func (db *DB) GetBridgeHealth(ctx context.Context) (*BridgeHealth, error) {
 }
 
 // UpdateBridgeHealth updates the cached health status of the bridge.
-func (db *DB) UpdateBridgeHealth(ctx context.Context, h BridgeHealth) error {
+func (db *DB) UpdateBridgeHealth(ctx context.Context, h models.BridgeHealth) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO bridge_health (id, status, os_version, binary_path, binary_version, updated_at)
 		VALUES (1, ?, ?, ?, ?, ?)

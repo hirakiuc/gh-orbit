@@ -107,7 +107,7 @@ func Load() (*Config, error) {
 	// Strict Schema Enforcement:
 	// 1. Initialize with defaults to handle missing fields
 	cfg := DefaultConfig()
-	
+
 	// 2. Use Decoder with KnownFields(true) to catch typos
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)

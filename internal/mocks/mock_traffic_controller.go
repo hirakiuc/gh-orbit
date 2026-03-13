@@ -5,8 +5,10 @@ package mocks
 import (
 	context "context"
 
-	tea "charm.land/bubbletea/v2"
+	models "github.com/hirakiuc/gh-orbit/internal/models"
 	mock "github.com/stretchr/testify/mock"
+
+	tea "charm.land/bubbletea/v2"
 
 	types "github.com/hirakiuc/gh-orbit/internal/types"
 )
@@ -25,19 +27,19 @@ func (_m *MockTrafficController) EXPECT() *MockTrafficController_Expecter {
 }
 
 // RateLimitUpdates provides a mock function with no fields
-func (_m *MockTrafficController) RateLimitUpdates() chan types.RateLimitInfo {
+func (_m *MockTrafficController) RateLimitUpdates() chan models.RateLimitInfo {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for RateLimitUpdates")
 	}
 
-	var r0 chan types.RateLimitInfo
-	if rf, ok := ret.Get(0).(func() chan types.RateLimitInfo); ok {
+	var r0 chan models.RateLimitInfo
+	if rf, ok := ret.Get(0).(func() chan models.RateLimitInfo); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(chan types.RateLimitInfo)
+			r0 = ret.Get(0).(chan models.RateLimitInfo)
 		}
 	}
 
@@ -61,12 +63,12 @@ func (_c *MockTrafficController_RateLimitUpdates_Call) Run(run func()) *MockTraf
 	return _c
 }
 
-func (_c *MockTrafficController_RateLimitUpdates_Call) Return(_a0 chan types.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
+func (_c *MockTrafficController_RateLimitUpdates_Call) Return(_a0 chan models.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockTrafficController_RateLimitUpdates_Call) RunAndReturn(run func() chan types.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
+func (_c *MockTrafficController_RateLimitUpdates_Call) RunAndReturn(run func() chan models.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -199,7 +201,7 @@ func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.Ta
 }
 
 // UpdateRateLimit provides a mock function with given fields: ctx, info
-func (_m *MockTrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
+func (_m *MockTrafficController) UpdateRateLimit(ctx context.Context, info models.RateLimitInfo) {
 	_m.Called(ctx, info)
 }
 
@@ -210,14 +212,14 @@ type MockTrafficController_UpdateRateLimit_Call struct {
 
 // UpdateRateLimit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - info types.RateLimitInfo
+//   - info models.RateLimitInfo
 func (_e *MockTrafficController_Expecter) UpdateRateLimit(ctx interface{}, info interface{}) *MockTrafficController_UpdateRateLimit_Call {
 	return &MockTrafficController_UpdateRateLimit_Call{Call: _e.mock.On("UpdateRateLimit", ctx, info)}
 }
 
-func (_c *MockTrafficController_UpdateRateLimit_Call) Run(run func(ctx context.Context, info types.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
+func (_c *MockTrafficController_UpdateRateLimit_Call) Run(run func(ctx context.Context, info models.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.RateLimitInfo))
+		run(args[0].(context.Context), args[1].(models.RateLimitInfo))
 	})
 	return _c
 }
@@ -227,7 +229,7 @@ func (_c *MockTrafficController_UpdateRateLimit_Call) Return() *MockTrafficContr
 	return _c
 }
 
-func (_c *MockTrafficController_UpdateRateLimit_Call) RunAndReturn(run func(context.Context, types.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
+func (_c *MockTrafficController_UpdateRateLimit_Call) RunAndReturn(run func(context.Context, models.RateLimitInfo)) *MockTrafficController_UpdateRateLimit_Call {
 	_c.Run(run)
 	return _c
 }

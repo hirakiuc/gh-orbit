@@ -5,10 +5,12 @@ package api
 import (
 	"context"
 	"log/slog"
+
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 // NewPlatformNotifier returns a no-op notifier for non-macOS platforms.
-func NewPlatformNotifier(ctx context.Context, executor CommandExecutor, logger *slog.Logger) Notifier {
+func NewPlatformNotifier(ctx context.Context, executor types.CommandExecutor, logger *slog.Logger) types.Notifier {
 	return &stubNotifier{}
 }
 
@@ -20,12 +22,12 @@ func (s *stubNotifier) Notify(ctx context.Context, title, subtitle, body, url st
 
 func (s *stubNotifier) Shutdown(ctx context.Context) {}
 
-func (s *stubNotifier) Status() BridgeStatus {
-	return StatusUnsupported
+func (s *stubNotifier) Status() types.BridgeStatus {
+	return types.StatusUnsupported
 }
 
 // CheckFocusMode returns a no-op status for non-macOS platforms.
-func CheckFocusMode(executor CommandExecutor) string {
+func CheckFocusMode(executor types.CommandExecutor) string {
 	return "Unsupported platform"
 }
 

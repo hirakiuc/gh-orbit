@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -24,7 +25,7 @@ func TestDarwinNotifier_Notify(t *testing.T) {
 	})).Return(nil).Once()
 
 	n := NewPlatformNotifier(ctx, mockExecutor, logger)
-	
+
 	err := n.Notify(ctx, "Test Title", "Test Subtitle", "Test Body", "https://url", 1)
 	assert.NoError(t, err)
 
@@ -34,5 +35,5 @@ func TestDarwinNotifier_Notify(t *testing.T) {
 
 func TestDarwinNotifier_Status(t *testing.T) {
 	n := NewPlatformNotifier(context.Background(), nil, slog.Default())
-	assert.Equal(t, StatusHealthy, n.Status())
+	assert.Equal(t, types.StatusHealthy, n.Status())
 }

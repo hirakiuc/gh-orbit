@@ -52,7 +52,7 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestConfig_Load_Strictness(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Setup environment override
 	err := os.Setenv("XDG_CONFIG_HOME", tmpDir)
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ notifications:
 `
 		err := os.MkdirAll(filepath.Dir(expectedPath), 0o700)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(expectedPath, []byte(content), 0o600)
 		require.NoError(t, err)
 
@@ -109,24 +109,24 @@ func TestConfig_Persistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", tmpDir)
 
 	cfg := DefaultConfig()
-	
+
 	// Test Save (Must ensure parent exists first)
 	path, err := ResolveConfigPath()
 	require.NoError(t, err)
 	require.NoError(t, EnsurePrivateDir(filepath.Dir(path)))
 	require.NoError(t, cfg.Save())
-	
+
 	assert.FileExists(t, path)
 
 	// Test Resolve helpers
 	d, err := ResolveDataDir()
 	require.NoError(t, err)
 	assert.Contains(t, d, tmpDir)
-	
+
 	s, err := ResolveStateDir()
 	require.NoError(t, err)
 	assert.Contains(t, s, tmpDir)
-	
+
 	tp, err := ResolveTracePath()
 	require.NoError(t, err)
 	assert.Contains(t, tp, tmpDir)
@@ -135,11 +135,11 @@ func TestConfig_Persistence(t *testing.T) {
 func TestConfig_AuditPermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
-	
+
 	// Create dir with loose permissions
 	subDir := filepath.Join(tmpDir, "loose")
 	require.NoError(t, os.MkdirAll(subDir, 0o777)) // #nosec G301: Intentional loose perms for audit test
-	
+
 	fPath := filepath.Join(subDir, "file.txt")
 	require.NoError(t, os.WriteFile(fPath, []byte("data"), 0o666)) // #nosec G306: Intentional loose perms for audit test
 

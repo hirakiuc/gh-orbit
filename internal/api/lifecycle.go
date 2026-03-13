@@ -16,16 +16,16 @@ type AppLifecycle struct {
 // NewAppLifecycle creates a new lifecycle manager linked to system signals.
 func NewAppLifecycle() *AppLifecycle {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	l := &AppLifecycle{
 		ctx:    ctx,
 		cancel: cancel,
 	}
-	
+
 	// Handle termination signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	go func() {
 		select {
 		case <-sigChan:
@@ -34,7 +34,7 @@ func NewAppLifecycle() *AppLifecycle {
 			// Already canceled
 		}
 	}()
-	
+
 	return l
 }
 

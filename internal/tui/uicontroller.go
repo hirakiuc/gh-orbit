@@ -101,8 +101,10 @@ func (c *UIController) View(baseContent string, showDetail bool, viewportScrollP
 		toast := c.styles.Toast.Render(c.toastMessage)
 		toastWidth := lipgloss.Width(toast)
 		toastY := c.height - 2
-		if toastY < 0 { toastY = 0 }
-		
+		if toastY < 0 {
+			toastY = 0
+		}
+
 		toastLayer := lipgloss.NewLayer(toast).
 			X((c.width - toastWidth) / 2).
 			Y(toastY).
@@ -113,21 +115,25 @@ func (c *UIController) View(baseContent string, showDetail bool, viewportScrollP
 	// 2. Scrollbar for Detail View
 	if showDetail && !c.fetchingDetail && viewportScrollPercent >= 0 {
 		scrollbarHeight := viewportHeight
-		
+
 		thumbHeight := 3 // Minimal thumb size
 		if totalLines > 0 {
 			thumbHeight = int(float64(scrollbarHeight) * (float64(scrollbarHeight) / float64(totalLines)))
-			if thumbHeight < 3 { thumbHeight = 3 }
+			if thumbHeight < 3 {
+				thumbHeight = 3
+			}
 		}
-		if thumbHeight > scrollbarHeight { thumbHeight = scrollbarHeight }
-		
+		if thumbHeight > scrollbarHeight {
+			thumbHeight = scrollbarHeight
+		}
+
 		thumbPos := int(float64(scrollbarHeight-thumbHeight) * viewportScrollPercent)
-		
+
 		thumb := c.styles.ScrollbarThumb.
 			Width(1).
 			Height(thumbHeight).
 			Render(" ")
-		
+
 		sbLayer := lipgloss.NewLayer(thumb).
 			X(c.width - 2).
 			Y(4 + thumbPos). // Start after header
@@ -140,7 +146,7 @@ func (c *UIController) View(baseContent string, showDetail bool, viewportScrollP
 		chipText := fmt.Sprintf(" FILTER: %s ", strings.ToUpper(c.resourceFilter))
 		chip := c.styles.FilterChip.Render(chipText)
 		chipWidth := lipgloss.Width(chip)
-		
+
 		chipLayer := lipgloss.NewLayer(chip).
 			X(c.width - chipWidth - 2).
 			Y(0).

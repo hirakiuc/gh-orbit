@@ -7,9 +7,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/mock"
 )
@@ -37,8 +37,8 @@ func newTestModel(t TestingT) *Model {
 	mockExecutor := mocks.NewMockCommandExecutor(t)
 
 	// Basic bridge status mock (used in NewModel or Transition)
-	mockSyncer.EXPECT().BridgeStatus().Return(api.StatusHealthy).Maybe()
-	mockAlerter.EXPECT().BridgeStatus().Return(api.StatusHealthy).Maybe()
+	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
 	m := NewModel(
 		userID,
@@ -52,30 +52,30 @@ func newTestModel(t TestingT) *Model {
 		mockAlerter,
 		WithExecutor(mockExecutor),
 	)
-	
+
 	m.heartbeatInterval = time.Millisecond
 	m.clockInterval = time.Millisecond
 	m.ui.toastTimeout = time.Millisecond
-	m.bridgeStatus = api.StatusHealthy
-	
+	m.bridgeStatus = types.StatusHealthy
+
 	// Initialize renderer
 	m.width = 80
 	m.height = 24
 	m.updateMarkdownRenderer()
-	
+
 	// Provision a default notification for tests
-	m.allNotifications = []types.NotificationWithState{
+	m.allNotifications = []triage.NotificationWithState{
 		{
-			Notification: types.Notification{
-				GitHubID: "default-id",
-				SubjectTitle: "Default Title",
+			Notification: triage.Notification{
+				GitHubID:           "default-id",
+				SubjectTitle:       "Default Title",
 				RepositoryFullName: "owner/repo",
-				SubjectType: "",
+				SubjectType:        "",
 			},
 		},
 	}
 	m.applyFilters()
-	
+
 	m.ui.SetSize(80, 24)
 	return m
 }

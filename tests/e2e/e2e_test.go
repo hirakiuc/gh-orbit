@@ -18,9 +18,9 @@ func TestCLI_Bootstrap(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/user/notifications":
-			_ = json.NewEncoder(w).Encode([]interface{}{})
+			_ = json.NewEncoder(w).Encode([]any{})
 		case "/user":
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": 1, "login": "testuser"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "login": "testuser"})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -30,7 +30,7 @@ func TestCLI_Bootstrap(t *testing.T) {
 	// 2. Prepare Environment
 	tmpHome := t.TempDir()
 	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
-	
+
 	// Ensure binary exists
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		t.Skip("gh-orbit binary not found in bin/. Run 'make build' first.")
@@ -64,22 +64,22 @@ func TestCLI_Sync(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/notifications":
-			resp := []map[string]interface{}{
+			resp := []map[string]any{
 				{
-					"id": notifID,
+					"id":         notifID,
 					"updated_at": "2026-03-07T12:00:00Z",
-					"reason": "mention",
-					"repository": map[string]interface{}{"full_name": "owner/repo"},
-					"subject": map[string]interface{}{
+					"reason":     "mention",
+					"repository": map[string]any{"full_name": "owner/repo"},
+					"subject": map[string]any{
 						"title": "E2E Test Notification",
-						"url": "https://api.github.com/repos/owner/repo/issues/1",
-						"type": "Issue",
+						"url":   "https://api.github.com/repos/owner/repo/issues/1",
+						"type":  "Issue",
 					},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(resp)
 		case "/user":
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": 1, "login": "testuser"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "login": "testuser"})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -89,7 +89,7 @@ func TestCLI_Sync(t *testing.T) {
 	// 2. Prepare Environment
 	tmpHome := t.TempDir()
 	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
-	
+
 	cmd := exec.Command(binPath, "--gh-orbit-test-mode") // #nosec G204: Trusted E2E test binary
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmpHome,

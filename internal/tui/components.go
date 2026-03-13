@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
 type RenderContext struct {
@@ -17,7 +17,7 @@ type RenderContext struct {
 
 // RenderNotificationRow provides a consistent, non-truncated row layout.
 // Layout: [Indicator][Icon][Unread][Badge] [Title] [ID] [Priority]
-func RenderNotificationRow(ctx RenderContext, n types.NotificationWithState) string {
+func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) string {
 	const minTitleWidth = 10
 	const selectionIndicatorWidth = 2
 	styles := ctx.Styles
