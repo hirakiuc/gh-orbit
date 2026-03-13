@@ -50,7 +50,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
+func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 	var actions []Action
 
 	switch msg := msg.(type) {
@@ -143,6 +143,12 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 		m.ui.SetSyncing(false)
 		m.ui.SetFetching(false)
 	}
+
+	return actions
+}
+
+func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
+	actions := m.transitionGlobal(msg)
 
 	// State-dependent transitions
 	var stateActions []Action

@@ -6,111 +6,97 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
-// ActionType defines the category of an abstract TUI action.
-type ActionType string
+// Action defines the interface for decoupled TUI side-effects.
+type Action interface {
+	// Type returns a unique identifier for the action.
+	Type() string
+}
+
+// TickType identifies the kind of scheduled event.
+type TickType string
 
 const (
-	ActionTypeQuit              ActionType = "QUIT"
-	ActionTypeShowToast         ActionType = "SHOW_TOAST"
-	ActionTypeSyncNotifications ActionType = "SYNC_NOTIFICATIONS"
-	ActionTypeMarkRead          ActionType = "MARK_READ"
-	ActionTypeSetPriority       ActionType = "SET_PRIORITY"
-	ActionTypeViewWeb           ActionType = "VIEW_WEB"
-	ActionTypeCheckoutPR        ActionType = "CHECKOUT_PR"
-	ActionTypeEnrichItems       ActionType = "ENRICH_ITEMS"
-	ActionTypeScheduleTick      ActionType = "SCHEDULE_TICK"
-	ActionTypeLoadNotifications ActionType = "LOAD_NOTIFICATIONS"
-	ActionTypeUpdateRateLimit   ActionType = "UPDATE_RATE_LIMIT"
+	TickHeartbeat TickType = "heartbeat"
+	TickClock     TickType = "clock"
+	TickToast     TickType = "toast"
+	TickEnrich    TickType = "enrich"
 )
 
-// Action represents an abstract side-effect intent from the TUI logic.
-type Action interface {
-	Type() ActionType
-}
+// Concrete Action implementations
 
-// ActionQuit signals the application to exit.
 type ActionQuit struct{}
+func (a ActionQuit) Type() string { return "quit" }
 
-func (a ActionQuit) Type() ActionType { return ActionTypeQuit }
-
-// ActionShowToast displays a transient message to the user.
-type ActionShowToast struct {
-	Message string
-}
-
-func (a ActionShowToast) Type() ActionType { return ActionTypeShowToast }
-
-// ActionSyncNotifications triggers a synchronization cycle with GitHub.
 type ActionSyncNotifications struct {
 	Force bool
 }
+func (a ActionSyncNotifications) Type() string { return "sync_notifications" }
 
-func (a ActionSyncNotifications) Type() ActionType { return ActionTypeSyncNotifications }
-
-// ActionMarkRead updates the read status of a notification.
-type ActionMarkRead struct {
-	ID   string
-	Read bool
-}
-
-func (a ActionMarkRead) Type() ActionType { return ActionTypeMarkRead }
-
-// ActionSetPriority updates the priority level of a notification.
-type ActionSetPriority struct {
-	ID       string
-	Priority int
-}
-
-func (a ActionSetPriority) Type() ActionType { return ActionTypeSetPriority }
-
-// ActionViewWeb opens a notification's target in the system browser.
-type ActionViewWeb struct {
-	Notification types.NotificationWithState
-}
-
-func (a ActionViewWeb) Type() ActionType { return ActionTypeViewWeb }
-
-// ActionCheckoutPR performs a local git checkout of a Pull Request.
 type ActionCheckoutPR struct {
 	Repository string
 	Number     string
 }
+func (a ActionCheckoutPR) Type() string { return "checkout_pr" }
 
-func (a ActionCheckoutPR) Type() ActionType { return ActionTypeCheckoutPR }
+type ActionViewWeb struct {
+	Notification types.NotificationWithState
+}
+func (a ActionViewWeb) Type() string { return "view_web" }
 
-// ActionEnrichItems triggers metadata enrichment for a set of notifications.
+type ActionOpenBrowser struct {
+	URL string
+}
+func (a ActionOpenBrowser) Type() string { return "open_browser" }
+
+type ActionMarkRead struct {
+	ID   string
+	Read bool
+}
+func (a ActionMarkRead) Type() string { return "mark_read" }
+
+type ActionArchive struct {
+	ID string
+}
+func (a ActionArchive) Type() string { return "archive" }
+
+type ActionMute struct {
+	ID string
+}
+func (a ActionMute) Type() string { return "mute" }
+
+type ActionSetPriority struct {
+	ID       string
+	Priority int
+}
+func (a ActionSetPriority) Type() string { return "set_priority" }
+
+type ActionFetchDetail struct {
+	ID          string
+	URL         string
+	SubjectType string
+}
+func (a ActionFetchDetail) Type() string { return "fetch_detail" }
+
+type ActionShowToast struct {
+	Message string
+}
+func (a ActionShowToast) Type() string { return "show_toast" }
+
 type ActionEnrichItems struct {
 	Notifications []types.NotificationWithState
 }
+func (a ActionEnrichItems) Type() string { return "enrich_items" }
 
-func (a ActionEnrichItems) Type() ActionType { return ActionTypeEnrichItems }
+type ActionLoadNotifications struct{}
+func (a ActionLoadNotifications) Type() string { return "load_notifications" }
 
-// TickType distinguishes between different background timers.
-type TickType string
+type ActionUpdateRateLimit struct {
+	Info types.RateLimitInfo
+}
+func (a ActionUpdateRateLimit) Type() string { return "update_rate_limit" }
 
-const (
-	TickHeartbeat TickType = "HEARTBEAT"
-	TickClock     TickType = "CLOCK"
-	TickToast     TickType = "TOAST"
-	TickEnrich    TickType = "ENRICH"
-)
-
-// ActionScheduleTick schedules a future message delivery (timer).
 type ActionScheduleTick struct {
 	TickType TickType
 	Interval time.Duration
 }
-
-func (a ActionScheduleTick) Type() ActionType { return ActionTypeScheduleTick }
-
-// ActionLoadNotifications triggers a local data reload without remote sync.
-type ActionLoadNotifications struct{}
-
-func (a ActionLoadNotifications) Type() ActionType { return ActionTypeLoadNotifications }
-
-// ActionUpdateRateLimit updates the local rate limit status.
-type ActionUpdateRateLimit struct {
-	Info types.RateLimitInfo
-}
-
-func (a ActionUpdateRateLimit) Type() ActionType { return ActionTypeUpdateRateLimit }
+func (a ActionScheduleTick) Type() string { return "schedule_tick" }

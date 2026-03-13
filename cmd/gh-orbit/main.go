@@ -20,6 +20,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/attribute"
@@ -319,7 +320,7 @@ func initResources(ctx context.Context, logger *slog.Logger) (*appResources, err
 	}
 
 	// 4. Initialize API Client
-	client, err := api.NewClient()
+	client, err := github.NewClient()
 	if err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("error creating API client: %w", err)
@@ -383,7 +384,7 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 	native := api.NewPlatformNotifier(lifecycle.Context(), executor, env.logger)
 	fallback := api.NewBeeepNotifier(env.logger)
 	alerts := api.NewAlertService(res.config, res.database, native, fallback, executor, env.logger)
-	fetcher := api.NewNotificationFetcher(res.client, env.logger)
+	fetcher := github.NewNotificationFetcher(res.client, env.logger)
 	syncer := api.NewSyncEngine(fetcher, res.database, alerts, env.logger)
 	enricher := api.NewEnrichmentEngine(lifecycle.Context(), res.client, res.database, env.logger)
 	traffic := api.NewAPITrafficController(lifecycle.Context(), env.logger)

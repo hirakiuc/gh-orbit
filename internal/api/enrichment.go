@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
@@ -88,7 +87,7 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 	}
 
 	// 2. Use singleflight to merge simultaneous requests for the same URL
-	val, err, shared := e.sf.Do(u, func() (interface{}, error) {
+	val, err, shared := e.sf.Do(u, func() (any, error) {
 		return e.fetchDetailRaw(ctx, u, subjectType)
 	})
 
@@ -248,7 +247,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			rateLimit { cost, remaining }
 		}
 	`
-	variables := map[string]interface{}{"ids": ids}
+	variables := map[string]any{"ids": ids}
 	
 	var data struct {
 		Nodes []struct {
@@ -302,7 +301,9 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		}
 
 		if state != "" {
-			_ = e.db.UpdateResourceStateByNodeID(ctx, node.ID, state)
+			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state); err != nil {
+				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
+			}
 			
 			// Populate results for immediate TUI refresh
 			results[node.ID] = EnrichmentResult{
@@ -320,7 +321,7 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping (context canceled)")
+			e.logger.DebugContext(ctx, "enrichment: pruning worker stopping (context canceled)")
 			return
 		case <-e.done:
 			e.logger.DebugContext(context.Background(), "enrichment: pruning worker stopping (explicit shutdown)")
@@ -352,20 +353,4 @@ func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 	}
 }
 
-// GetEnrichmentCmd creates a Bubble Tea command to enrich a notification.
-func (e *EnrichmentEngine) GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		res, err := e.FetchDetail(ctx, u, subjectType)
-		if err != nil {
-			return errorMsg(err)
-		}
 
-		err = e.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState)
-		if err != nil {
-			return errorMsg(err)
-		}
-
-		return successMsg(res)
-	}
-}

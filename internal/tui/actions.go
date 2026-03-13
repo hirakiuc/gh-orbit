@@ -2,121 +2,14 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net/url"
-	"regexp"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/cli/go-gh/v2/pkg/browser"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 var _ = slog.LevelInfo
-
-var (
-	rePRNumber = regexp.MustCompile(`^[0-9]+$`)
-	reRepoName = regexp.MustCompile(`^[a-zA-Z0-9-._]+/[a-zA-Z0-9-._]+$`)
-	reTagName  = regexp.MustCompile(`^[a-zA-Z0-9-._/]+$`)
-)
-
-// ViewItem determines the correct view action based on the notification subject type.
-func (m *Model) ViewItem(i item) tea.Cmd {
-	notif := i.notification
-	repo := notif.RepositoryFullName
-
-	var cmd tea.Cmd
-	var toast string
-	switch notif.SubjectType {
-	case "PullRequest":
-		number := extractNumberFromURL(notif.SubjectURL)
-		if number != "" {
-			toast = "Opening PR..."
-			cmd = m.ViewPRWeb(repo, number)
-		}
-	case "Issue":
-		number := extractNumberFromURL(notif.SubjectURL)
-		if number != "" {
-			toast = "Opening issue..."
-			cmd = m.ViewIssueWeb(repo, number)
-		}
-	case "Release":
-		tag := extractTagFromURL(notif.SubjectURL)
-		if tag != "" {
-			toast = "Opening release..."
-			cmd = m.ViewReleaseWeb(repo, tag)
-		}
-	}
-
-	if cmd == nil {
-		// Fallback to standard browser open
-		toast = "Opening in browser..."
-		cmd = m.OpenBrowser(notif.HTMLURL)
-	}
-
-	return tea.Batch(cmd, m.ui.SetToast(toast), m.MarkRead(i))
-}
-
-// OpenBrowser opens the given URL in the default system browser.
-func (m *Model) OpenBrowser(u string) tea.Cmd {
-	if u == "" {
-		return nil
-	}
-	if !isValidGitHubURL(u) {
-		return func() tea.Msg {
-			return types.ErrMsg{Err: fmt.Errorf("refusing to open untrusted URL: %s", u)}
-		}
-	}
-
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		m.logger.InfoContext(ctx, "opening browser", "url", u)
-		b := browser.New("", nil, nil)
-		if err := b.Browse(u); err != nil {
-			m.logger.ErrorContext(ctx, "failed to open browser", "error", err)
-			return types.ErrMsg{Err: err}
-		}
-		return actionCompleteMsg{}
-	})
-}
-
-// CheckoutPR executes 'gh pr checkout' for the given repo and PR number.
-func (m *Model) CheckoutPR(repo, number string) tea.Cmd {
-	if !reRepoName.MatchString(repo) {
-		return func() tea.Msg {
-			return types.ErrMsg{Err: fmt.Errorf("invalid repository name: %s", repo)}
-		}
-	}
-	if !rePRNumber.MatchString(number) {
-		return func() tea.Msg {
-			return types.ErrMsg{Err: fmt.Errorf("invalid PR number: %s", number)}
-		}
-	}
-
-	// Find the item to mark as read
-	var selectedItem item
-	if i, ok := m.listView.list.SelectedItem().(item); ok {
-		selectedItem = i
-	}
-
-	// Bubble Tea ExecProcess uses its own lifecycle, but we still log with context
-	m.logger.InfoContext(context.Background(), "checking out PR", "repo", repo, "number", number)
-
-	checkoutCmd := m.executor.InteractiveGH(func(err error) tea.Msg {
-		if err != nil {
-			m.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
-			return types.ErrMsg{Err: err}
-		}
-		m.logger.InfoContext(context.Background(), "checkout successful", "repo", repo, "number", number)
-		return actionCompleteMsg{}
-	}, "pr", "checkout", number, "-R", repo)
-
-	if selectedItem.notification.GitHubID != "" {
-		return tea.Batch(checkoutCmd, m.MarkRead(selectedItem))
-	}
-	return checkoutCmd
-}
 
 // MarkReadByID marks a notification as read using only its ID.
 func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
@@ -224,48 +117,6 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	return m.MarkReadByID(i.notification.GitHubID, !i.notification.IsReadLocally)
 }
 
-
-// ViewPRWeb executes 'gh pr view --web' for the given repo and PR number.
-func (m *Model) ViewPRWeb(repo, number string) tea.Cmd {
-	return m.ghViewCmd("pr", repo, number)
-}
-
-// ViewIssueWeb executes 'gh issue view --web' for the given repo and issue number.
-func (m *Model) ViewIssueWeb(repo, number string) tea.Cmd {
-	return m.ghViewCmd("issue", repo, number)
-}
-
-// ViewReleaseWeb executes 'gh release view --web' for the given repo and tag.
-func (m *Model) ViewReleaseWeb(repo, tag string) tea.Cmd {
-	return m.ghViewCmd("release", repo, tag)
-}
-
-// ghViewCmd executes a 'gh <cmd> view --web' command.
-func (m *Model) ghViewCmd(ghCmd, repo, arg string) tea.Cmd {
-	// Validation
-	if !reRepoName.MatchString(repo) {
-		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid repo: %s", repo)} }
-	}
-	if ghCmd == "release" {
-		if !reTagName.MatchString(arg) {
-			return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid tag: %s", arg)} }
-		}
-	} else if !rePRNumber.MatchString(arg) {
-		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid number: %s", arg)} }
-	}
-
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		m.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
-		if err := m.executor.Run(ctx, "gh", ghCmd, "view", arg, "-R", repo, "--web"); err != nil {
-			m.logger.ErrorContext(ctx, "gh view command failed", "command", ghCmd, "error", err)
-			return types.ErrMsg{Err: err}
-		}
-		return actionCompleteMsg{}
-	})
-}
-
-// URL extraction helpers
-
 func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
 		res, err := m.enrich.FetchDetail(ctx, u, subjectType)
@@ -287,55 +138,4 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 			ResourceState: res.ResourceState,
 		}
 	})
-}
-
-func extractNumberFromURL(u string) string {
-	if u == "" {
-		return ""
-	}
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return ""
-	}
-
-	// Example: https://api.github.com/repos/owner/repo/pulls/123
-	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(segments) > 0 {
-		last := segments[len(segments)-1]
-		if rePRNumber.MatchString(last) {
-			return last
-		}
-	}
-	return ""
-}
-
-func extractTagFromURL(u string) string {
-	if u == "" {
-		return ""
-	}
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return ""
-	}
-
-	// Example: https://api.github.com/repos/owner/repo/releases/123
-	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(segments) > 0 {
-		last := segments[len(segments)-1]
-		if reTagName.MatchString(last) {
-			return last
-		}
-	}
-	return ""
-}
-
-func isValidGitHubURL(u string) bool {
-	if u == "" {
-		return false
-	}
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return false
-	}
-	return parsed.Host == "github.com" || strings.HasSuffix(parsed.Host, ".github.com")
 }

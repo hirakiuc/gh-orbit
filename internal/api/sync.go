@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -109,7 +110,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 				"interval", meta.PollInterval,
 				"last_sync", meta.LastSyncAt)
 		}
-		return rlInfo, nil // Too soon to poll
+		return rlInfo, types.ErrSyncIntervalNotReached // Too soon to poll
 	}
 
 	if s.logger.Enabled(ctx, slog.LevelDebug) {
@@ -124,7 +125,9 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 		s.logger.ErrorContext(ctx, "failed to fetch notifications", "sync_id", syncID, "error", err)
 		meta.LastError = err.Error()
 		meta.LastErrorAt = time.Now()
-		_ = s.db.UpdateSyncMeta(ctx, *meta)
+		if updateErr := s.db.UpdateSyncMeta(ctx, *meta); updateErr != nil {
+			s.logger.ErrorContext(ctx, "failed to update sync meta after fetch error", "sync_id", syncID, "error", updateErr)
+		}
 		return rlInfo, err
 	}
 
@@ -141,6 +144,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 			"count", len(notifications))
 
 		var newlyDiscoveredIDs []string
+		var upsertErrs []error
 
 		for _, n := range notifications {
 			err := s.db.UpsertNotification(ctx, types.Notification{
@@ -155,7 +159,8 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 				UpdatedAt:          n.UpdatedAt,
 			})
 			if err != nil {
-				return rlInfo, fmt.Errorf("failed to save notification %s: %w", n.ID, err)
+				upsertErrs = append(upsertErrs, fmt.Errorf("failed to save notification %s: %w", n.ID, err))
+				continue
 			}
 
 			// We only trigger alerts for notifications arriving AFTER the established baseline
@@ -165,12 +170,18 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 				// Alerts are sent only for truly new items (arrival > baseline sync)
 				if n.UpdatedAt.After(meta.LastSyncAt) {
 					if s.alerts != nil {
-						_ = s.alerts.Notify(ctx, n)
+						if notifyErr := s.alerts.Notify(ctx, n); notifyErr != nil {
+							s.logger.WarnContext(ctx, "failed to send alert for notification", "id", n.ID, "error", notifyErr)
+						}
 					}
 				}
 				// Mark as "processed" even if alert failed (to prevent infinite retry storm)
 				newlyDiscoveredIDs = append(newlyDiscoveredIDs, n.ID)
 			}
+		}
+
+		if len(upsertErrs) > 0 {
+			return rlInfo, errors.Join(upsertErrs...)
 		}
 
 		// Batch mark as notified to preserve baseline state
@@ -187,5 +198,11 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	s.logger.InfoContext(ctx, "notification sync complete", "user_id", userID, "sync_id", syncID)
-	return rlInfo, s.db.UpdateSyncMeta(ctx, *newMeta)
+	
+	if err := s.db.UpdateSyncMeta(ctx, *newMeta); err != nil {
+		s.logger.ErrorContext(ctx, "failed to update sync meta at end of cycle", "sync_id", syncID, "error", err)
+		return rlInfo, fmt.Errorf("sync meta update failed: %w", err)
+	}
+
+	return rlInfo, nil
 }

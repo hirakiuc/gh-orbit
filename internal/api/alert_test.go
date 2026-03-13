@@ -7,6 +7,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -30,7 +31,7 @@ func TestAlertService_Notify(t *testing.T) {
 
 	s := NewAlertService(cfg, mockRepo, mockNative, mockFallback, mockExecutor, logger)
 	
-	n := types.GHNotification{
+	n := github.Notification{
 		ID: "1",
 		Reason: "mention",
 		Subject: struct {
@@ -116,7 +117,7 @@ func TestAlertService_Throttling(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
 	s.SyncStart(ctx)
 
-	n := types.GHNotification{ID: "1", Reason: "mention"}
+	n := github.Notification{ID: "1", Reason: "mention"}
 	
 	// Mock Status for getNotifier
 	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
@@ -160,12 +161,12 @@ func TestAlertService_SpecificReasons(t *testing.T) {
 	mockNative.EXPECT().Status().Return(StatusHealthy).Maybe()
 
 	// 1. Matched reason: notify
-	n1 := types.GHNotification{ID: "1", Reason: "mention"}
+	n1 := github.Notification{ID: "1", Reason: "mention"}
 	mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	require.NoError(t, s.Notify(ctx, n1))
 
 	// 2. Unmatched reason: skip
-	n2 := types.GHNotification{ID: "2", Reason: "other"}
+	n2 := github.Notification{ID: "2", Reason: "other"}
 	require.NoError(t, s.Notify(ctx, n2))
 }

@@ -22,7 +22,7 @@ func (_m *MockGraphQLClient) EXPECT() *MockGraphQLClient_Expecter {
 }
 
 // DoWithContext provides a mock function with given fields: ctx, query, variables, response
-func (_m *MockGraphQLClient) DoWithContext(ctx context.Context, query string, variables map[string]interface{}, response interface{}) error {
+func (_m *MockGraphQLClient) DoWithContext(ctx context.Context, query string, variables map[string]any, response any) error {
 	ret := _m.Called(ctx, query, variables, response)
 
 	if len(ret) == 0 {
@@ -30,7 +30,7 @@ func (_m *MockGraphQLClient) DoWithContext(ctx context.Context, query string, va
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}, interface{}) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, map[string]any, any) error); ok {
 		r0 = rf(ctx, query, variables, response)
 	} else {
 		r0 = ret.Error(0)
@@ -47,15 +47,15 @@ type MockGraphQLClient_DoWithContext_Call struct {
 // DoWithContext is a helper method to define mock.On call
 //   - ctx context.Context
 //   - query string
-//   - variables map[string]interface{}
-//   - response interface{}
-func (_e *MockGraphQLClient_Expecter) DoWithContext(ctx interface{}, query interface{}, variables interface{}, response interface{}) *MockGraphQLClient_DoWithContext_Call {
+//   - variables map[string]any
+//   - response any
+func (_e *MockGraphQLClient_Expecter) DoWithContext(ctx any, query any, variables any, response any) *MockGraphQLClient_DoWithContext_Call {
 	return &MockGraphQLClient_DoWithContext_Call{Call: _e.mock.On("DoWithContext", ctx, query, variables, response)}
 }
 
-func (_c *MockGraphQLClient_DoWithContext_Call) Run(run func(ctx context.Context, query string, variables map[string]interface{}, response interface{})) *MockGraphQLClient_DoWithContext_Call {
+func (_c *MockGraphQLClient_DoWithContext_Call) Run(run func(ctx context.Context, query string, variables map[string]any, response any)) *MockGraphQLClient_DoWithContext_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(map[string]interface{}), args[3].(interface{}))
+		run(args[0].(context.Context), args[1].(string), args[2].(map[string]any), args[3].(any))
 	})
 	return _c
 }
@@ -65,7 +65,7 @@ func (_c *MockGraphQLClient_DoWithContext_Call) Return(_a0 error) *MockGraphQLCl
 	return _c
 }
 
-func (_c *MockGraphQLClient_DoWithContext_Call) RunAndReturn(run func(context.Context, string, map[string]interface{}, interface{}) error) *MockGraphQLClient_DoWithContext_Call {
+func (_c *MockGraphQLClient_DoWithContext_Call) RunAndReturn(run func(context.Context, string, map[string]any, any) error) *MockGraphQLClient_DoWithContext_Call {
 	_c.Call.Return(run)
 	return _c
 }

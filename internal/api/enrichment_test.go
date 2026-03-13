@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
@@ -112,29 +111,4 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 	assert.Contains(t, engine.cache, "new")
 }
 
-func TestEnrichmentEngine_Cmd(t *testing.T) {
-	ctx := context.Background()
-	mockClient := mocks.NewMockGitHubClient(t)
-	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
-	mockRepo := mocks.NewMockEnrichmentRepository(t)
-	mockREST := mocks.NewMockRESTClient(t)
-	
-	mockClient.EXPECT().BaseURL().Return("https://api.github.com/").Maybe()
-	mockClient.EXPECT().REST().Return(mockREST).Maybe()
-	mockREST.EXPECT().DoWithContext(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	
-	// Expect DB enrichment call
-	mockRepo.EXPECT().EnrichNotification(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
-	t.Cleanup(func() { engine.Shutdown(ctx) })
-
-	successCalled := false
-	cmd := engine.GetEnrichmentCmd("id", "https://api.github.com/u", "Issue", 
-		func(res EnrichmentResult) tea.Msg { successCalled = true; return nil },
-		func(err error) tea.Msg { return nil })
-	
-	require.NotNil(t, cmd)
-	_ = cmd()
-	assert.True(t, successCalled)
-}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/mock"
 )
@@ -20,9 +21,9 @@ func BenchmarkSyncEngine_Sync(b *testing.B) {
 	mockAlerter := mocks.NewMockAlerter(b)
 
 	// Pre-create many notifications
-	notifs := make([]types.GHNotification, 1000)
+	notifs := make([]github.Notification, 1000)
 	for i := 0; i < 1000; i++ {
-		notifs[i] = types.GHNotification{ID: "notif-id", UpdatedAt: time.Now()}
+		notifs[i] = github.Notification{ID: "notif-id", UpdatedAt: time.Now()}
 	}
 
 	engine := NewSyncEngine(mockFetcher, mockRepo, mockAlerter, logger)

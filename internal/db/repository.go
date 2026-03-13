@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -267,11 +268,15 @@ func (db *DB) MarkNotifiedBatch(ctx context.Context, ids []string) error {
 	}
 	defer func() { _ = stmt.Close() }()
 
+	var errs []error
 	for _, id := range ids {
-		_, err := stmt.ExecContext(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to mark notification %s as notified: %w", id, err)
+		if _, err := stmt.ExecContext(ctx, id); err != nil {
+			errs = append(errs, fmt.Errorf("failed to mark notification %s as notified: %w", id, err))
 		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	return tx.Commit()

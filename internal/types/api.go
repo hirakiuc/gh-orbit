@@ -2,120 +2,37 @@ package types
 
 import (
 	"context"
-	"database/sql"
-	"io"
-	"log/slog"
-	"net/http"
+	"errors"
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 )
 
-// GHUser represents the GitHub API response for a user.
-type GHUser struct {
-	ID    int64  `json:"id"`
-	Login string `json:"login"`
+// Sentinel errors for common failure modes.
+var (
+	ErrSyncIntervalNotReached = errors.New("sync: polling interval not reached")
+)
+
+// RateLimitError provides detailed context for GitHub API quota exhaustion.
+type RateLimitError struct {
+	Resource   string
+	RetryAfter time.Duration
 }
 
-// LogValue implements slog.LogValuer to redact sensitive user data.
-func (u GHUser) LogValue() slog.Value {
-	return slog.GroupValue(
-		slog.Int64("id", u.ID),
-		slog.String("login", "<REDACTED>"),
-	)
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("github: rate limit exceeded for %s (retry after %v)", e.Resource, e.RetryAfter)
 }
 
-// GitHubClient defines the operations required from the GitHub API client.
-type GitHubClient interface {
-	CurrentUser(ctx context.Context) (*GHUser, error)
-	MarkThreadAsRead(ctx context.Context, threadID string) error
-	REST() RESTClient
-	GQL() GraphQLClient
-	HTTP() *http.Client
-	BaseURL() string
-	SetRateLimitUpdates(ch chan RateLimitInfo)
-	ReportRateLimit(info RateLimitInfo)
-}
-
-// RESTClient defines the minimum interface needed from go-gh REST client.
-type RESTClient interface {
-	DoWithContext(ctx context.Context, method, path string, body io.Reader, response interface{}) error
-}
-
-// GraphQLClient defines the minimum interface needed from go-gh GQL client.
-type GraphQLClient interface {
-	DoWithContext(ctx context.Context, query string, variables map[string]interface{}, response interface{}) error
-}
-
-// Notification represents the core notification entity.
-type Notification struct {
-	GitHubID           string    `json:"github_id"`
-	SubjectTitle       string    `json:"subject_title"`
-	SubjectURL         string    `json:"subject_url"`
-	SubjectType        string    `json:"subject_type"`
-	Reason             string    `json:"reason"`
-	RepositoryFullName string    `json:"repository_full_name"`
-	HTMLURL            string    `json:"html_url"`
-	Body               string    `json:"body"`
-	AuthorLogin        string    `json:"author_login"`
-	ResourceState      string    `json:"resource_state"`
-	SubjectNodeID      string    `json:"subject_node_id"`
-	IsEnriched         bool      `json:"is_enriched"`
-	EnrichedAt         sql.NullTime `json:"enriched_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-}
-
-// OrbitState represents the local triage state for a notification.
-type OrbitState struct {
-	NotificationID string `json:"notification_id"`
-	Priority       int    `json:"priority"`
-	Status         string `json:"status"`
-	IsReadLocally  bool   `json:"is_read_locally"`
-	IsNotified     bool   `json:"is_notified"`
-}
-
-// NotificationWithState is a flattened view of a notification and its local state.
-type NotificationWithState struct {
-	Notification
-	OrbitState
-}
-
-// SyncMeta tracks the synchronization state for a specific user and endpoint.
-type SyncMeta struct {
-	UserID       string    `json:"user_id"`
-	Key          string    `json:"key"`
-	LastModified string    `json:"last_modified"`
-	ETag         string    `json:"etag"`
-	PollInterval int       `json:"poll_interval"`
-	LastSyncAt   time.Time `json:"last_sync_at"`
-	LastError    string    `json:"last_error"`
-	LastErrorAt  time.Time `json:"last_error_at"`
-}
-
-// BridgeHealth caches the functional state of the system bridge.
-type BridgeHealth struct {
-	Status        string    `json:"status"`
-	OSVersion     string    `json:"os_version"`
-	BinaryPath    string    `json:"binary_path"`
-	BinaryVersion string    `json:"binary_version"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
-
-// GHNotification represents the GitHub API response for a notification.
-type GHNotification struct {
-	ID         string    `json:"id"`
-	Reason     string    `json:"reason"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	Repository struct {
-		FullName string `json:"full_name"`
-	} `json:"repository"`
-	Subject struct {
-		Title  string `json:"title"`
-		URL    string `json:"url"`
-		Type   string `json:"type"`
-		NodeID string `json:"node_id"`
-	} `json:"subject"`
-}
+// Re-export model types for convenience
+type Notification = models.Notification
+type OrbitState = models.OrbitState
+type NotificationWithState = models.NotificationWithState
+type SyncMeta = models.SyncMeta
+type BridgeHealth = models.BridgeHealth
+type RateLimitInfo = models.RateLimitInfo
 
 // BridgeStatus represents the functional state of the native system bridge.
 type BridgeStatus string
@@ -167,19 +84,9 @@ type DoctorReport struct {
 	Checks        []BridgeCheck     `json:"checks"`
 }
 
-// RateLimitInfo encapsulates GitHub API quota metadata.
-type RateLimitInfo struct {
-	Limit      int
-	Remaining  int
-	Used       int
-	Reset      time.Time
-	Resource   string
-	RetryAfter time.Duration
-}
-
 // Fetcher defines the interface for retrieving notifications from an external source.
 type Fetcher interface {
-	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]GHNotification, *SyncMeta, RateLimitInfo, error)
+	FetchNotifications(ctx context.Context, meta *SyncMeta, force bool) ([]github.Notification, *SyncMeta, RateLimitInfo, error)
 }
 
 // Notifier defines the interface for delivering system notifications.
@@ -200,7 +107,6 @@ type Syncer interface {
 type Enricher interface {
 	FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error)
 	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]EnrichmentResult
-	GetEnrichmentCmd(id, u, subjectType string, successMsg func(EnrichmentResult) tea.Msg, errorMsg func(error) tea.Msg) tea.Cmd
 	Shutdown(ctx context.Context)
 }
 
@@ -215,7 +121,7 @@ type EnrichmentResult struct {
 
 // Alerter defines the interface for the high-level alerting service.
 type Alerter interface {
-	Notify(ctx context.Context, n GHNotification) error
+	Notify(ctx context.Context, n github.Notification) error
 	SyncStart(ctx context.Context)
 	Shutdown(ctx context.Context)
 	ActiveTierInfo() (string, BridgeStatus)
@@ -234,8 +140,6 @@ type TrafficController interface {
 	RateLimitUpdates() chan RateLimitInfo
 	Shutdown(ctx context.Context)
 }
-
-
 
 // CommandExecutor defines the interface for executing system commands safely.
 type CommandExecutor interface {
@@ -268,7 +172,6 @@ type EnrichmentRepository interface {
 // AlertRepository defines the database interactions required by the AlertService.
 type AlertRepository interface {
 	ListNotifications(ctx context.Context) ([]NotificationWithState, error)
-	GetNotification(ctx context.Context, id string) (*NotificationWithState, error)
 	GetBridgeHealth(ctx context.Context) (*BridgeHealth, error)
 	UpdateBridgeHealth(ctx context.Context, h BridgeHealth) error
 }
