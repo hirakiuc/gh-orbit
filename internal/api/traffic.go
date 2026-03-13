@@ -46,8 +46,9 @@ type APITrafficController struct {
 	low  chan *apiTask
 
 	// Rate Limit State
-	rlInfo       atomic.Pointer[types.RateLimitInfo]
-	lockoutUntil atomic.Pointer[time.Time]
+	rlInfo           atomic.Pointer[types.RateLimitInfo]
+	lockoutUntil     atomic.Pointer[time.Time]
+	rateLimitUpdates chan types.RateLimitInfo
 
 	// Concurrency scaling
 	workerLimit int32
@@ -68,6 +69,7 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		workerLimit: maxConcurrency,
 		sem:         make(chan struct{}, maxConcurrency),
 		adj:         make(chan int32, 1),
+		rateLimitUpdates: make(chan types.RateLimitInfo, 10),
 	}
 	tc.rlInfo.Store(initialRL)
 
@@ -76,8 +78,9 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		tc.sem <- struct{}{}
 	}
 
-	// Start concurrency manager
+	// Start background listeners
 	go tc.concurrencyManager(ctx)
+	go tc.rateLimitListener(ctx)
 
 	// Launch worker pool
 	for i := 0; i < maxConcurrency; i++ {
@@ -140,6 +143,25 @@ func (c *APITrafficController) concurrencyManager(ctx context.Context) {
 			atomic.StoreInt32(&c.workerLimit, target)
 		}
 	}
+}
+
+func (c *APITrafficController) rateLimitListener(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.DebugContext(context.Background(), "traffic controller: rate limit listener stopping (context canceled)")
+			return
+		case info, ok := <-c.rateLimitUpdates:
+			if !ok {
+				return
+			}
+			c.UpdateRateLimit(ctx, info)
+		}
+	}
+}
+
+func (c *APITrafficController) RateLimitUpdates() chan types.RateLimitInfo {
+	return c.rateLimitUpdates
 }
 
 func (c *APITrafficController) worker(ctx context.Context, id int) {

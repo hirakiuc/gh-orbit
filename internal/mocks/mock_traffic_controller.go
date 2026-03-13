@@ -24,6 +24,53 @@ func (_m *MockTrafficController) EXPECT() *MockTrafficController_Expecter {
 	return &MockTrafficController_Expecter{mock: &_m.Mock}
 }
 
+// RateLimitUpdates provides a mock function with no fields
+func (_m *MockTrafficController) RateLimitUpdates() chan types.RateLimitInfo {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for RateLimitUpdates")
+	}
+
+	var r0 chan types.RateLimitInfo
+	if rf, ok := ret.Get(0).(func() chan types.RateLimitInfo); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(chan types.RateLimitInfo)
+		}
+	}
+
+	return r0
+}
+
+// MockTrafficController_RateLimitUpdates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RateLimitUpdates'
+type MockTrafficController_RateLimitUpdates_Call struct {
+	*mock.Call
+}
+
+// RateLimitUpdates is a helper method to define mock.On call
+func (_e *MockTrafficController_Expecter) RateLimitUpdates() *MockTrafficController_RateLimitUpdates_Call {
+	return &MockTrafficController_RateLimitUpdates_Call{Call: _e.mock.On("RateLimitUpdates")}
+}
+
+func (_c *MockTrafficController_RateLimitUpdates_Call) Run(run func()) *MockTrafficController_RateLimitUpdates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockTrafficController_RateLimitUpdates_Call) Return(_a0 chan types.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockTrafficController_RateLimitUpdates_Call) RunAndReturn(run func() chan types.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Remaining provides a mock function with no fields
 func (_m *MockTrafficController) Remaining() int {
 	ret := _m.Called()

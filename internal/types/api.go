@@ -33,6 +33,7 @@ type GitHubClient interface {
 	GQL() GraphQLClient
 	HTTP() *http.Client
 	BaseURL() string
+	ReportRateLimit(info RateLimitInfo)
 }
 
 // RESTClient defines the minimum interface needed from go-gh REST client.
@@ -229,6 +230,7 @@ type TrafficController interface {
 	Submit(priority int, fn TaskFunc) tea.Cmd
 	UpdateRateLimit(ctx context.Context, info RateLimitInfo)
 	Remaining() int
+	RateLimitUpdates() chan RateLimitInfo
 	Shutdown(ctx context.Context)
 }
 

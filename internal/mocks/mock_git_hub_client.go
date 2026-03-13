@@ -315,6 +315,39 @@ func (_c *MockGitHubClient_REST_Call) RunAndReturn(run func() types.RESTClient) 
 	return _c
 }
 
+// ReportRateLimit provides a mock function with given fields: info
+func (_m *MockGitHubClient) ReportRateLimit(info types.RateLimitInfo) {
+	_m.Called(info)
+}
+
+// MockGitHubClient_ReportRateLimit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReportRateLimit'
+type MockGitHubClient_ReportRateLimit_Call struct {
+	*mock.Call
+}
+
+// ReportRateLimit is a helper method to define mock.On call
+//   - info types.RateLimitInfo
+func (_e *MockGitHubClient_Expecter) ReportRateLimit(info interface{}) *MockGitHubClient_ReportRateLimit_Call {
+	return &MockGitHubClient_ReportRateLimit_Call{Call: _e.mock.On("ReportRateLimit", info)}
+}
+
+func (_c *MockGitHubClient_ReportRateLimit_Call) Run(run func(info types.RateLimitInfo)) *MockGitHubClient_ReportRateLimit_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.RateLimitInfo))
+	})
+	return _c
+}
+
+func (_c *MockGitHubClient_ReportRateLimit_Call) Return() *MockGitHubClient_ReportRateLimit_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockGitHubClient_ReportRateLimit_Call) RunAndReturn(run func(types.RateLimitInfo)) *MockGitHubClient_ReportRateLimit_Call {
+	_c.Run(run)
+	return _c
+}
+
 // NewMockGitHubClient creates a new instance of MockGitHubClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockGitHubClient(t interface {
