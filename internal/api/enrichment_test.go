@@ -19,6 +19,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 	logger := slog.Default()
 	
 	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockREST := mocks.NewMockRESTClient(t)
 	
@@ -44,6 +45,7 @@ func TestEnrichmentEngine_Caching(t *testing.T) {
 	logger := slog.Default()
 	
 	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	
 	engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, logger)
@@ -71,6 +73,7 @@ func TestEnrichmentEngine_HybridBatch(t *testing.T) {
 	logger := slog.Default()
 	
 	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockGQL := mocks.NewMockGraphQLClient(t)
 	
@@ -112,6 +115,7 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 func TestEnrichmentEngine_Cmd(t *testing.T) {
 	ctx := context.Background()
 	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockREST := mocks.NewMockRESTClient(t)
 	

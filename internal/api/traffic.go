@@ -69,7 +69,7 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		workerLimit: maxConcurrency,
 		sem:         make(chan struct{}, maxConcurrency),
 		adj:         make(chan int32, 1),
-		rateLimitUpdates: make(chan types.RateLimitInfo, 10),
+		rateLimitUpdates: make(chan types.RateLimitInfo, 100),
 	}
 	tc.rlInfo.Store(initialRL)
 
@@ -149,7 +149,7 @@ func (c *APITrafficController) rateLimitListener(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.DebugContext(context.Background(), "traffic controller: rate limit listener stopping (context canceled)")
+			c.logger.DebugContext(ctx, "traffic controller: rate limit listener stopping (context canceled)")
 			return
 		case info, ok := <-c.rateLimitUpdates:
 			if !ok {
@@ -315,6 +315,7 @@ func (c *APITrafficController) Remaining() int {
 
 // Shutdown waits for the worker to finish processing.
 func (c *APITrafficController) Shutdown(ctx context.Context) {
+	close(c.rateLimitUpdates)
 	c.wg.Wait()
 	c.logger.DebugContext(ctx, "traffic controller: shutdown complete")
 }
