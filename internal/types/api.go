@@ -33,6 +33,7 @@ type GitHubClient interface {
 	GQL() GraphQLClient
 	HTTP() *http.Client
 	BaseURL() string
+	SetRateLimitUpdates(ch chan RateLimitInfo)
 	ReportRateLimit(info RateLimitInfo)
 }
 
