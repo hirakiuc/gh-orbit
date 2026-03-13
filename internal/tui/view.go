@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
@@ -53,7 +53,7 @@ func (m *Model) renderHeader() string {
 	}
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	
+
 	// 2. Right-side Status (Rate Limit / Sync)
 	status := ""
 	if m.ui.syncing {
@@ -87,7 +87,7 @@ func (m *Model) renderFooter() string {
 	// 3. Bridge Health Indicator
 	bridge := "[NATIVE]"
 	bridgeStyle := m.styles.StatusNormal
-	
+
 	switch m.bridgeStatus {
 	case types.StatusUnsupported:
 		bridge = "[FALLBACK]"
@@ -102,7 +102,7 @@ func (m *Model) renderFooter() string {
 		bridge = "[PROBING]"
 		bridgeStyle = m.styles.Help
 	}
-	
+
 	health := bridgeStyle.Render(bridge)
 
 	// 4. Rate Limit Status
@@ -145,23 +145,23 @@ func (m *Model) renderDetailView() string {
 
 	// 1. Header (Title + Metadata)
 	title := m.styles.DetailHeader.Render(i.notification.SubjectTitle)
-	
-	meta := fmt.Sprintf("%s • %s • %s", 
-		i.notification.RepositoryFullName, 
+
+	meta := fmt.Sprintf("%s • %s • %s",
+		i.notification.RepositoryFullName,
 		i.notification.AuthorLogin,
 		i.notification.ResourceState)
-	
+
 	header := lipgloss.JoinVertical(lipgloss.Left, title, m.styles.SelectedDescription.Render(meta))
 
 	// 2. Viewport (Body)
 	// Dynamically calculate height based on header size
 	detailMetaHeight := lipgloss.Height(header) + 1 // +1 for the newline
-	
+
 	availableHeight := m.height - m.headerHeight - m.footerHeight - detailMetaHeight
-	if availableHeight < 5 { 
-		availableHeight = 5 
+	if availableHeight < 5 {
+		availableHeight = 5
 	}
-	
+
 	// Sync viewport dimensions dynamically
 	m.detailView.viewport.SetWidth(m.width - 4)
 	m.detailView.viewport.SetHeight(availableHeight)

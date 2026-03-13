@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -38,20 +40,20 @@ func keyPress(s string) tea.KeyPressMsg {
 func TestInterpreter_Execute(t *testing.T) {
 	m := newTestModel(t)
 	interp := NewInterpreter(m)
-	
+
 	// Mock Submit for all actions that use it
 	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(func() tea.Msg { return nil }).Maybe()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
-	
+
 	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
 	mockExecutor.EXPECT().InteractiveGH(mock.Anything, "pr", "checkout", "1", "-R", "o/r").Return(func() tea.Msg { return nil }).Maybe()
 	mockExecutor.EXPECT().Run(mock.Anything, "gh", "pr", "view", "1", "-R", "o/r", "--web").Return(nil).Maybe()
-	
-	notif := types.NotificationWithState{
-		Notification: types.Notification{
-			GitHubID: "1",
-			SubjectURL: "https://api.github.com/repos/o/r/pulls/1",
-			SubjectType: "PullRequest",
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:           "1",
+			SubjectURL:         "https://api.github.com/repos/o/r/pulls/1",
+			SubjectType:        "PullRequest",
 			RepositoryFullName: "o/r",
 		},
 	}
@@ -64,14 +66,14 @@ func TestInterpreter_Execute(t *testing.T) {
 		ActionSetPriority{ID: "1", Priority: 1},
 		ActionViewWeb{Notification: notif},
 		ActionCheckoutPR{Repository: "o/r", Number: "1"},
-		ActionEnrichItems{Notifications: []types.NotificationWithState{notif}},
+		ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}},
 		ActionLoadNotifications{},
-		ActionUpdateRateLimit{Info: types.RateLimitInfo{Remaining: 100}},
+		ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 100}},
 		ActionScheduleTick{TickType: TickHeartbeat, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickClock, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickToast, Interval: time.Millisecond},
 	}
-	
+
 	for _, a := range actions {
 		cmd := interp.Execute(a)
 		assert.NotNil(t, cmd)
@@ -85,7 +87,7 @@ func TestInterpreter_Execute(t *testing.T) {
 func TestModel_Transition_EdgeCases(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	m.allNotifications = []types.NotificationWithState{{Notification: types.Notification{GitHubID: "1"}}}
+	m.allNotifications = []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}
 	m.applyFilters()
 
 	// 1. Detail Loaded (No actions returned, just state update)
@@ -97,7 +99,7 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 	assert.Contains(t, actions, ActionShowToast{Message: "updated"})
 
 	// 3. Sync Complete
-	actions = m.Transition(syncCompleteMsg{rateLimit: types.RateLimitInfo{Remaining: 500}}, 0)
+	actions = m.Transition(syncCompleteMsg{rateLimit: models.RateLimitInfo{Remaining: 500}}, 0)
 	assert.Contains(t, actions, ActionLoadNotifications{})
 	assert.Equal(t, 500, m.RateLimit.Remaining)
 }
@@ -105,15 +107,15 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 func TestModel_Transition_Navigation(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	
-	notif := types.NotificationWithState{
-		Notification: types.Notification{
-			GitHubID: "1",
-			SubjectURL: "https://api.github.com/repos/o/r/pulls/1",
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "1",
+			SubjectURL:  "https://api.github.com/repos/o/r/pulls/1",
 			SubjectType: "PullRequest",
 		},
 	}
-	m.allNotifications = []types.NotificationWithState{notif}
+	m.allNotifications = []triage.NotificationWithState{notif}
 	m.applyFilters()
 	m.listView.list.Select(0)
 
@@ -125,7 +127,7 @@ func TestModel_Transition_Navigation(t *testing.T) {
 	actions := m.Transition(msg, 0)
 	assert.Equal(t, StateDetail, m.state)
 	// Should return ActionEnrichItems because notif.IsEnriched is false
-	assert.Contains(t, actions, ActionEnrichItems{Notifications: []types.NotificationWithState{notif}})
+	assert.Contains(t, actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}})
 
 	// 2. Return to List View
 	msg = keyPress("esc")
@@ -136,12 +138,12 @@ func TestModel_Transition_Navigation(t *testing.T) {
 func TestModel_Transition_Priority(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	
-	notif := types.NotificationWithState{
-		Notification: types.Notification{GitHubID: "1"},
-		State: types.OrbitState{Priority: 0},
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "1"},
+		State:        triage.State{Priority: 0},
 	}
-	m.allNotifications = []types.NotificationWithState{notif}
+	m.allNotifications = []triage.NotificationWithState{notif}
 	m.applyFilters()
 	m.listView.list.Select(0)
 
@@ -159,7 +161,7 @@ func TestModel_Transition_Priority(t *testing.T) {
 func TestModel_Transition_Tabs(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	
+
 	// 1. Next Tab
 	msg := keyPress("tab")
 	initialTab := m.listView.activeTab
@@ -175,14 +177,14 @@ func TestModel_Transition_Tabs(t *testing.T) {
 func TestModel_Transition_Enrichment(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	
-	notifs := []types.NotificationWithState{
-		{Notification: types.Notification{GitHubID: "1", IsEnriched: false}},
-		{Notification: types.Notification{GitHubID: "2", IsEnriched: false}},
+
+	notifs := []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1", IsEnriched: false}},
+		{Notification: triage.Notification{GitHubID: "2", IsEnriched: false}},
 	}
 	m.allNotifications = notifs
 	m.applyFilters()
-	
+
 	// Ensure list size is enough to show both items
 	m.listView.list.SetSize(100, 100)
 	m.listView.list.Select(0)
@@ -190,13 +192,13 @@ func TestModel_Transition_Enrichment(t *testing.T) {
 
 	// 1. Viewport enrichment msg
 	actions := m.Transition(viewportEnrichMsg{}, oldIndex)
-	assert.Contains(t, actions, ActionEnrichItems{Notifications: []types.NotificationWithState{notifs[0], notifs[1]}})
+	assert.Contains(t, actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{notifs[0], notifs[1]}})
 
 	// 2. List index change (debounced enrichment)
 	// Manually set new index on list to simulate movement
 	m.listView.list.Select(1)
 	actions = m.Transition(keyPress("down"), oldIndex)
-	
+
 	// We expect ActionScheduleTick for TickEnrich
 	found := false
 	for _, a := range actions {
@@ -211,7 +213,7 @@ func TestModel_Transition_Enrichment(t *testing.T) {
 func TestModel_Transition_Filtering(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
-	
+
 	// 1. Filter PRs
 	msg := keyPress("p") // matches FilterPR
 	_ = m.Transition(msg, 0)

@@ -3,8 +3,6 @@ package models
 import (
 	"fmt"
 	"time"
-
-	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
 // RateLimitError provides detailed context for GitHub API quota exhaustion.
@@ -56,8 +54,3 @@ type EnrichmentResult struct {
 	ResourceState string
 	FetchedAt     time.Time
 }
-
-// Re-export triage models for legacy compatibility
-type Notification = triage.Notification
-type OrbitState = triage.State
-type NotificationWithState = triage.NotificationWithState

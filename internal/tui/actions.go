@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -71,7 +72,7 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 const EnrichmentChunkSize = 10
 
 // enrichItems triggers background enrichment for a specific set of notifications.
-func (m *Model) enrichItems(toEnrich []types.NotificationWithState) tea.Cmd {
+func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 	if len(toEnrich) == 0 {
 		return nil
 	}

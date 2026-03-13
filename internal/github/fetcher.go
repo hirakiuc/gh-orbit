@@ -129,8 +129,8 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *mode
 
 		for _, p := range page {
 			allNotifications = append(allNotifications, Notification{
-				ID: p.ID,
-				Reason: p.Reason,
+				ID:        p.ID,
+				Reason:    p.Reason,
 				UpdatedAt: p.UpdatedAt,
 				Repository: struct {
 					FullName string `json:"full_name"`

@@ -8,7 +8,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/models"
-	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -19,7 +19,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockREST := mocks.NewMockRESTClient(t)
-	
+
 	mockClient.EXPECT().BaseURL().Return("https://api.github.com/").Maybe()
 	mockClient.EXPECT().REST().Return(mockREST).Maybe()
 
@@ -58,12 +58,12 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 
 	t.Run("Batch Fetch Nodes", func(t *testing.T) {
 		mockGQL.EXPECT().DoWithContext(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-		
+
 		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
-		notifs := []types.NotificationWithState{
-			{Notification: types.Notification{GitHubID: "1", SubjectNodeID: "node1"}},
+		notifs := []triage.NotificationWithState{
+			{Notification: triage.Notification{GitHubID: "1", SubjectNodeID: "node1"}},
 		}
 
 		results := engine.FetchHybridBatch(ctx, notifs)
@@ -74,7 +74,7 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 func TestEnrichmentEngine_Pruning(t *testing.T) {
 	ctx := context.Background()
 	engine := NewEnrichmentEngine(ctx, nil, nil, slog.Default())
-	
+
 	engine.mu.Lock()
 	engine.cache["old"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-20 * time.Minute)}
 	engine.cache["new"] = models.EnrichmentResult{FetchedAt: time.Now()}

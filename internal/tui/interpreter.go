@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -101,7 +102,7 @@ func (i *Interpreter) executeOpenBrowser(u string) tea.Cmd {
 	if u == "" {
 		return nil
 	}
-	
+
 	// Validation (previously in Model.OpenBrowser)
 	if !isValidGitHubURL(u) {
 		return func() tea.Msg {
@@ -152,7 +153,7 @@ func (i *Interpreter) executeCheckoutPR(repo, number string) tea.Cmd {
 	return checkoutCmd
 }
 
-func (i *Interpreter) executeViewWeb(n types.NotificationWithState) tea.Cmd {
+func (i *Interpreter) executeViewWeb(n triage.NotificationWithState) tea.Cmd {
 	repo := n.RepositoryFullName
 
 	var cmd tea.Cmd

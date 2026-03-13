@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,27 +14,27 @@ func TestRenderNotificationRow_States(t *testing.T) {
 		Styles: DefaultStyles(true),
 		Width:  100,
 	}
-	
-	notif := types.NotificationWithState{
-		Notification: types.Notification{
-			SubjectType: "PullRequest",
-			SubjectTitle: "Title",
-			SubjectURL: "https://github.com/o/r/pull/123",
-			GitHubID: "123",
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			SubjectType:   "PullRequest",
+			SubjectTitle:  "Title",
+			SubjectURL:    "https://github.com/o/r/pull/123",
+			GitHubID:      "123",
 			ResourceState: "MERGED",
 		},
 	}
-	
+
 	// Test normal
 	out := RenderNotificationRow(ctx, notif)
 	assert.Contains(t, stripANSI(out), "Title")
 	assert.Contains(t, stripANSI(out), "MERGED")
-	
+
 	// Test selected
 	ctx.IsSelected = true
 	outSelected := RenderNotificationRow(ctx, notif)
 	assert.Contains(t, stripANSI(outSelected), "▌")
-	
+
 	// Test high priority with narrow width
 	const testWidth = 100
 	ctx.Width = testWidth

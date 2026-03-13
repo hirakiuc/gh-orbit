@@ -34,7 +34,7 @@ func Open(ctx context.Context, logger *slog.Logger) (*DB, error) {
 	// 1. Perform Discovery and Migration if necessary
 	if err := migrateLegacyData(ctx, logger, primaryPath); err != nil {
 		logger.ErrorContext(ctx, "persistence migration failed", "error", err)
-		// We continue even if migration fails to allow the app to boot, 
+		// We continue even if migration fails to allow the app to boot,
 		// but it might mean a fresh DB is created.
 	}
 
@@ -74,7 +74,7 @@ func migrateLegacyData(ctx context.Context, logger *slog.Logger, primaryPath str
 
 	// Discovery Ladder
 	var legacyPath string
-	
+
 	// Tier 1: XDG_STATE_HOME (previous version)
 	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
 		candidate := filepath.Join(stateHome, "gh-orbit", "orbit.db")
@@ -158,9 +158,13 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 
 	// Deterministic Verification
 	srcHash, err := computeDirHash(srcDir)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	destHash, err := computeDirHash(tmpDest)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	if srcHash != destHash {
 		return fmt.Errorf("migration verification failed: hash mismatch")
@@ -174,7 +178,7 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 		var linkErr *os.LinkError
 		if errors.As(err, &linkErr) {
 			// Cross-partition move might fail even after copy if Rename is used on the parent.
-			// However, since we already copied to tmpDest (which is in destDir's parent), 
+			// However, since we already copied to tmpDest (which is in destDir's parent),
 			// Rename should work. If not, we do a final copy-swap.
 			logger.WarnContext(ctx, "atomic rename failed, falling back to final copy-swap", "error", err)
 		}
@@ -188,7 +192,9 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 
 func copyDir(src, dest string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error { // #nosec G703: src is internally resolved
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		rel, _ := filepath.Rel(src, path)
 		targetPath := filepath.Join(dest, rel)
 
@@ -202,11 +208,15 @@ func copyDir(src, dest string) error {
 
 func copyFile(src, dest string) error {
 	in, err := os.Open(src) // #nosec G304: Internal migration path
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer func() { _ = in.Close() }()
 
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304: Internal migration path
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, in)
@@ -218,22 +228,28 @@ func computeDirHash(root string) (string, error) {
 	var files []string
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error { // #nosec G703: root is internally resolved
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if !info.IsDir() {
 			files = append(files, path)
 		}
 		return nil
 	})
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 
 	sort.Strings(files)
 
 	for _, f := range files {
 		rel, _ := filepath.Rel(root, f)
 		h.Write([]byte(rel))
-		
+
 		in, err := os.Open(f) // #nosec G304: Internal migration path
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		_, _ = io.Copy(h, in)
 		_ = in.Close()
 	}

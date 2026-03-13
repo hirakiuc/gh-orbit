@@ -12,6 +12,8 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -28,7 +30,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockRepo := mocks.NewMockSyncRepository(t)
 		mockAlerter := mocks.NewMockAlerter(t)
 
-		meta := &types.SyncMeta{
+		meta := &models.SyncMeta{
 			UserID: userID,
 			Key:    "notifications",
 		}
@@ -39,12 +41,12 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(meta, nil).Once()
 		mockAlerter.EXPECT().SyncStart(mock.Anything).Return().Once()
-		mockFetcher.EXPECT().FetchNotifications(mock.Anything, meta, false).Return(notifs, meta, types.RateLimitInfo{}, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, meta, false).Return(notifs, meta, models.RateLimitInfo{}, nil).Once()
 		mockRepo.EXPECT().UpsertNotification(mock.Anything, mock.Anything).Return(nil).Once()
-		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&types.NotificationWithState{
-			State: types.OrbitState{IsNotified: false},
+		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&triage.NotificationWithState{
+			State: triage.State{IsNotified: false},
 		}, nil).Once()
-		
+
 		// Expect Notify because UpdatedAt is After LastSyncAt (which is zero)
 		mockAlerter.EXPECT().Notify(mock.Anything, mock.Anything).Return(nil).Once()
 
@@ -61,7 +63,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		recentMeta := &types.SyncMeta{
+		recentMeta := &models.SyncMeta{
 			UserID:       userID,
 			Key:          "notifications",
 			PollInterval: 60,
@@ -80,7 +82,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher := mocks.NewMockFetcher(t)
 		mockRepo := mocks.NewMockSyncRepository(t)
 
-		recentMeta := &types.SyncMeta{
+		recentMeta := &models.SyncMeta{
 			UserID:       userID,
 			Key:          "notifications",
 			PollInterval: 60,
@@ -88,7 +90,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		}
 
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(recentMeta, nil).Once()
-		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, types.RateLimitInfo{}, nil).Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, models.RateLimitInfo{}, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
 		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
@@ -111,8 +113,8 @@ func TestConditionalRequest(t *testing.T) {
 
 	client := github.NewTestClient(ts.Client(), ts.URL+"/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
-	meta := &types.SyncMeta{ETag: "etag-123"}
-	
+	meta := &models.SyncMeta{ETag: "etag-123"}
+
 	_, _, _, err := fetcher.FetchNotifications(context.Background(), meta, false)
 	require.NoError(t, err)
 }
@@ -127,8 +129,8 @@ func TestETagSanitization(t *testing.T) {
 
 		client := github.NewTestClient(ts.Client(), ts.URL+"/")
 		fetcher := github.NewNotificationFetcher(client, slog.Default())
-		
-		_, newMeta, _, err := fetcher.FetchNotifications(context.Background(), &types.SyncMeta{}, false)
+
+		_, newMeta, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
 		require.NoError(t, err)
 		assert.Empty(t, newMeta.ETag)
 	})
@@ -147,8 +149,8 @@ func TestPagination(t *testing.T) {
 
 	client := github.NewTestClient(ts.Client(), ts.URL+"/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
-	
-	notifs, _, _, err := fetcher.FetchNotifications(context.Background(), &types.SyncMeta{}, false)
+
+	notifs, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
 	require.NoError(t, err)
 	assert.Len(t, notifs, 3)
 }
@@ -161,8 +163,8 @@ func TestFetcher_ErrorHandling(t *testing.T) {
 
 	client := github.NewTestClient(ts.Client(), ts.URL+"/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
-	
-	_, _, _, err := fetcher.FetchNotifications(context.Background(), &types.SyncMeta{}, false)
+
+	_, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
 }

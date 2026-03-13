@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"modernc.org/sqlite"
@@ -21,7 +23,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	notif := Notification{
+	notif := triage.Notification{
 		GitHubID:           "123",
 		SubjectTitle:       "Test PR",
 		SubjectURL:         "https://api.github.com/repos/owner/repo/pulls/1",
@@ -53,7 +55,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "123"
-	notif := Notification{
+	notif := triage.Notification{
 		GitHubID:  id,
 		UpdatedAt: time.Now(),
 	}
@@ -61,7 +63,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	require.NoError(t, db.UpsertNotification(ctx, notif))
 
 	// Manually set some triage state
-	err = db.UpdateOrbitState(ctx, OrbitState{
+	err = db.UpdateOrbitState(ctx, triage.State{
 		NotificationID: id,
 		Priority:       3,
 		Status:         "archived",
@@ -76,7 +78,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	ns, err := db.GetNotification(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, ns)
-	
+
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsReadLocally)
@@ -91,7 +93,7 @@ func TestMarkNotifiedBatch(t *testing.T) {
 
 	ids := []string{"1", "2", "3"}
 	for _, id := range ids {
-		require.NoError(t, db.UpsertNotification(ctx, Notification{
+		require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
 			GitHubID:  id,
 			UpdatedAt: time.Now(),
 		}))
@@ -117,7 +119,7 @@ func TestRepository_Actions(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "action-test"
-	require.NoError(t, db.UpsertNotification(ctx, Notification{
+	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
 		GitHubID:  id,
 		UpdatedAt: time.Now(),
 	}))
@@ -177,7 +179,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "enrich-test"
-	require.NoError(t, db.UpsertNotification(ctx, Notification{
+	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
 		GitHubID:  id,
 		UpdatedAt: time.Now(),
 	}))
@@ -189,7 +191,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	ns, err := db.GetNotification(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, ns)
-	
+
 	assert.Equal(t, "Some body", ns.Body)
 	assert.Equal(t, "author", ns.AuthorLogin)
 	assert.Equal(t, "https://github.com/u", ns.HTMLURL)
@@ -205,24 +207,24 @@ func TestRepository_SyncAndHealth(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	// 1. Sync Meta
-	meta := SyncMeta{
+	meta := models.SyncMeta{
 		UserID: "user-1",
 		Key:    "notifications",
 		ETag:   "etag-123",
 	}
 	require.NoError(t, db.UpdateSyncMeta(ctx, meta))
-	
+
 	sm, err := db.GetSyncMeta(ctx, "user-1", "notifications")
 	require.NoError(t, err)
 	require.NotNil(t, sm)
 	assert.Equal(t, "etag-123", sm.ETag)
 
 	// 2. Bridge Health
-	health := BridgeHealth{
+	health := models.BridgeHealth{
 		Status: "active",
 	}
 	require.NoError(t, db.UpdateBridgeHealth(ctx, health))
-	
+
 	h, err := db.GetBridgeHealth(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, h)
@@ -259,9 +261,9 @@ func TestRepository_ConstraintError(t *testing.T) {
 	_, err = db.Exec(`INSERT INTO notifications
  (github_id, subject_title, subject_type, reason, repository_full_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		"dup", "title", "Issue", "reason", "repo", time.Now())
-	
+
 	require.Error(t, err)
-	
+
 	// Use Go 1.26 errors.AsType for SQLite error validation
 	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		assert.Equal(t, 1555, sqliteErr.Code(), "Expected SQLITE_CONSTRAINT_PRIMARYKEY (1555)")
@@ -278,7 +280,7 @@ func TestRepository_UpdateByNodeID(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "node-test"
-	require.NoError(t, db.UpsertNotification(ctx, Notification{
+	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
 		GitHubID:      id,
 		SubjectNodeID: "node-123",
 		UpdatedAt:     time.Now(),
@@ -326,14 +328,14 @@ func TestMigration_HashAndCopy(t *testing.T) {
 	// Test computeDirHash and copyDir
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(dir+"/f1", []byte("data"), 0o600))
-	
+
 	h1, err := computeDirHash(dir)
 	require.NoError(t, err)
 	require.NotEmpty(t, h1)
 
 	dest := t.TempDir() + "/copy"
 	require.NoError(t, copyDir(dir, dest))
-	
+
 	h2, err := computeDirHash(dest)
 	require.NoError(t, err)
 	assert.Equal(t, h1, h2)
@@ -342,7 +344,7 @@ func TestMigration_HashAndCopy(t *testing.T) {
 func TestOpen_Success(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
-	
+
 	// Mock userHome to use temp dir
 	tmpHome := t.TempDir()
 	originalUserHome := userHome
@@ -363,8 +365,8 @@ func TestListNotifications(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	require.NoError(t, db.UpsertNotification(ctx, Notification{GitHubID: "1", UpdatedAt: time.Now()}))
-	require.NoError(t, db.UpsertNotification(ctx, Notification{GitHubID: "2", UpdatedAt: time.Now()}))
+	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{GitHubID: "1", UpdatedAt: time.Now()}))
+	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{GitHubID: "2", UpdatedAt: time.Now()}))
 
 	list, err := db.ListNotifications(ctx)
 	require.NoError(t, err)

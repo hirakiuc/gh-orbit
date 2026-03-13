@@ -16,20 +16,20 @@ type State struct {
 
 // Notification represents the core notification entity.
 type Notification struct {
-	GitHubID           string    `json:"github_id"`
-	SubjectTitle       string    `json:"subject_title"`
-	SubjectURL         string    `json:"subject_url"`
-	SubjectType        string    `json:"subject_type"`
-	Reason             string    `json:"reason"`
-	RepositoryFullName string    `json:"repository_full_name"`
-	HTMLURL            string    `json:"html_url"`
-	Body               string    `json:"body"`
-	AuthorLogin        string    `json:"author_login"`
-	ResourceState      string    `json:"resource_state"`
-	SubjectNodeID      string    `json:"subject_node_id"`
-	IsEnriched         bool      `json:"is_enriched"`
+	GitHubID           string       `json:"github_id"`
+	SubjectTitle       string       `json:"subject_title"`
+	SubjectURL         string       `json:"subject_url"`
+	SubjectType        string       `json:"subject_type"`
+	Reason             string       `json:"reason"`
+	RepositoryFullName string       `json:"repository_full_name"`
+	HTMLURL            string       `json:"html_url"`
+	Body               string       `json:"body"`
+	AuthorLogin        string       `json:"author_login"`
+	ResourceState      string       `json:"resource_state"`
+	SubjectNodeID      string       `json:"subject_node_id"`
+	IsEnriched         bool         `json:"is_enriched"`
 	EnrichedAt         sql.NullTime `json:"enriched_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
 }
 
 // NotificationWithState is a flattened view of a notification and its local state.

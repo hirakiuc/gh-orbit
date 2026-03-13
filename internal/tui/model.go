@@ -12,6 +12,8 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -65,7 +67,7 @@ type Model struct {
 	version          string
 	styles           Styles
 	keys             KeyMap
-	allNotifications []types.NotificationWithState
+	allNotifications []triage.NotificationWithState
 	err              error
 	state            AppState
 	isDark           bool
@@ -80,7 +82,7 @@ type Model struct {
 	// Background Sync State
 	LastSyncAt        time.Time
 	PollInterval      int
-	RateLimit         types.RateLimitInfo
+	RateLimit         models.RateLimitInfo
 	heartbeatID       uint64
 	clockID           uint64
 	heartbeatInterval time.Duration
@@ -234,17 +236,17 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 
 // Messages
 type notificationsLoadedMsg struct {
-	notifications []types.NotificationWithState
+	notifications []triage.NotificationWithState
 	IsInitial     bool
 }
 
 type priorityUpdatedMsg struct {
-	notifications []types.NotificationWithState
+	notifications []triage.NotificationWithState
 	toast         string
 }
 
 type syncCompleteMsg struct {
-	rateLimit types.RateLimitInfo
+	rateLimit models.RateLimitInfo
 }
 
 type detailLoadedMsg struct {

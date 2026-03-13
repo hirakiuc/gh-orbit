@@ -6,9 +6,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -226,7 +227,7 @@ func (m *Model) transitionList(msg tea.Msg) []Action {
 				m.state = StateDetail
 				if !i.notification.IsEnriched {
 					m.ui.SetFetching(true)
-					actions = append(actions, ActionEnrichItems{Notifications: []types.NotificationWithState{i.notification}})
+					actions = append(actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{i.notification}})
 				}
 				m.refreshDetailView()
 			}
@@ -311,14 +312,14 @@ func (m *Model) getPriorityToast(p int) string {
 	}
 }
 
-func (m *Model) getVisibleNotifications() []types.NotificationWithState {
+func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
 	start, end := m.listView.list.Paginator.GetSliceBounds(len(m.listView.list.Items()))
 	if start < 0 || end > len(m.listView.list.Items()) || start >= end {
 		return nil
 	}
 	visible := m.listView.list.Items()[start:end]
 
-	var items []types.NotificationWithState
+	var items []triage.NotificationWithState
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
 			var isExpired bool
@@ -410,7 +411,7 @@ func (m *Model) applyFilters() {
 			}
 		}
 
-	if keep {
+		if keep {
 			filtered = append(filtered, item{notification: n})
 		}
 	}

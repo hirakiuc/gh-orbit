@@ -10,15 +10,16 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 // AlertService coordinates the logic for when and how to send system alerts.
 type AlertService struct {
-	config   *config.Config
-	db       types.AlertRepository
-	logger   *slog.Logger
-	
+	config *config.Config
+	db     types.AlertRepository
+	logger *slog.Logger
+
 	// Tiered Notifiers
 	native   types.Notifier // Tier 1: Platform-specific (e.g., macOS osascript)
 	fallback types.Notifier // Tier 2: Cross-platform fallback (beeep)
@@ -161,7 +162,7 @@ func (a *AlertService) getNotifier() types.Notifier {
 
 // RefreshBridgeHealth re-detects the bridge status by probing the system.
 func (a *AlertService) RefreshBridgeHealth(ctx context.Context) (types.BridgeStatus, error) {
-	err := a.db.UpdateBridgeHealth(ctx, types.BridgeHealth{
+	err := a.db.UpdateBridgeHealth(ctx, models.BridgeHealth{
 		Status:    string(types.StatusHealthy),
 		UpdatedAt: time.Now(),
 	})
@@ -174,7 +175,7 @@ func (a *AlertService) RefreshBridgeHealth(ctx context.Context) (types.BridgeSta
 
 	execPath, _ := os.Executable()
 
-	_ = a.db.UpdateBridgeHealth(ctx, types.BridgeHealth{
+	_ = a.db.UpdateBridgeHealth(ctx, models.BridgeHealth{
 		Status:        string(types.StatusHealthy),
 		OSVersion:     osVersion,
 		BinaryPath:    execPath,

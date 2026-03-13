@@ -25,7 +25,7 @@ func TestDarwinNotifier_Notify(t *testing.T) {
 	})).Return(nil).Once()
 
 	n := NewPlatformNotifier(ctx, mockExecutor, logger)
-	
+
 	err := n.Notify(ctx, "Test Title", "Test Subtitle", "Test Body", "https://url", 1)
 	assert.NoError(t, err)
 

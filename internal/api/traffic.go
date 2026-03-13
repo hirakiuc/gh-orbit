@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -40,14 +41,14 @@ type APITrafficController struct {
 	low  chan *apiTask
 
 	// Rate Limit State
-	rlInfo           atomic.Pointer[types.RateLimitInfo]
+	rlInfo           atomic.Pointer[models.RateLimitInfo]
 	lockoutUntil     atomic.Pointer[time.Time]
 
 	// Workers
 	workerLimit   int32
 	done          chan struct{}
 
-	rateLimitUpdates chan types.RateLimitInfo
+	rateLimitUpdates chan models.RateLimitInfo
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
@@ -59,11 +60,11 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 		low:              make(chan *apiTask, 100),
 		workerLimit:      3, // Default concurrency
 		done:             make(chan struct{}),
-		rateLimitUpdates: make(chan types.RateLimitInfo, 100),
+		rateLimitUpdates: make(chan models.RateLimitInfo, 100),
 	}
 
 	// Initialize rate limit info with safe defaults
-	c.rlInfo.Store(&types.RateLimitInfo{Remaining: 5000})
+	c.rlInfo.Store(&models.RateLimitInfo{Remaining: 5000})
 
 	// Start supervisor
 	go c.supervisor()
@@ -78,7 +79,7 @@ func (c *APITrafficController) Remaining() int {
 	return c.rlInfo.Load().Remaining
 }
 
-func (c *APITrafficController) RateLimitUpdates() chan types.RateLimitInfo {
+func (c *APITrafficController) RateLimitUpdates() chan models.RateLimitInfo {
 	return c.rateLimitUpdates
 }
 
@@ -111,7 +112,7 @@ func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
 	}
 }
 
-func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
+func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.RateLimitInfo) {
 	c.rlInfo.Store(&info)
 
 	// Update worker limits based on remaining quota

@@ -7,23 +7,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
 // Sentinel errors for common failure modes.
 var (
 	ErrSyncIntervalNotReached = errors.New("sync: polling interval not reached")
 )
-
-// RateLimitError provides detailed context for GitHub API quota exhaustion.
-type RateLimitError = models.RateLimitError
-
-// Re-export model types for convenience
-type Notification = models.Notification
-type OrbitState = models.OrbitState
-type NotificationWithState = models.NotificationWithState
-type SyncMeta = models.SyncMeta
-type BridgeHealth = models.BridgeHealth
-type RateLimitInfo = models.RateLimitInfo
 
 // BridgeStatus represents the functional state of the native system bridge.
 type BridgeStatus string
@@ -84,7 +74,7 @@ type Notifier interface {
 
 // Syncer defines the interface for the synchronization engine.
 type Syncer interface {
-	Sync(ctx context.Context, userID string, force bool) (RateLimitInfo, error)
+	Sync(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error)
 	Shutdown(ctx context.Context)
 	BridgeStatus() BridgeStatus
 }
@@ -92,7 +82,7 @@ type Syncer interface {
 // Enricher defines the interface for fetching notification details.
 type Enricher interface {
 	FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error)
-	FetchHybridBatch(ctx context.Context, notifications []NotificationWithState) map[string]models.EnrichmentResult
+	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState) map[string]models.EnrichmentResult
 	Shutdown(ctx context.Context)
 }
 
@@ -102,9 +92,9 @@ type TaskFunc func(context.Context) tea.Msg
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
 	Submit(priority int, fn TaskFunc) tea.Cmd
-	UpdateRateLimit(ctx context.Context, info RateLimitInfo)
+	UpdateRateLimit(ctx context.Context, info models.RateLimitInfo)
 	Remaining() int
-	RateLimitUpdates() chan RateLimitInfo
+	RateLimitUpdates() chan models.RateLimitInfo
 	Shutdown(ctx context.Context)
 }
 
@@ -123,10 +113,10 @@ type ErrMsg struct{ Err error }
 
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {
-	GetSyncMeta(ctx context.Context, userID, key string) (*SyncMeta, error)
-	UpdateSyncMeta(ctx context.Context, s SyncMeta) error
-	UpsertNotification(ctx context.Context, n Notification) error
-	GetNotification(ctx context.Context, id string) (*NotificationWithState, error)
+	GetSyncMeta(ctx context.Context, userID, key string) (*models.SyncMeta, error)
+	UpdateSyncMeta(ctx context.Context, s models.SyncMeta) error
+	UpsertNotification(ctx context.Context, n triage.Notification) error
+	GetNotification(ctx context.Context, id string) (*triage.NotificationWithState, error)
 	MarkNotifiedBatch(ctx context.Context, ids []string) error
 }
 
@@ -138,9 +128,9 @@ type EnrichmentRepository interface {
 
 // AlertRepository defines the database interactions required by the AlertService.
 type AlertRepository interface {
-	ListNotifications(ctx context.Context) ([]NotificationWithState, error)
-	GetBridgeHealth(ctx context.Context) (*BridgeHealth, error)
-	UpdateBridgeHealth(ctx context.Context, h BridgeHealth) error
+	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
+	GetBridgeHealth(ctx context.Context) (*models.BridgeHealth, error)
+	UpdateBridgeHealth(ctx context.Context, h models.BridgeHealth) error
 }
 
 // Repository defines the full database capabilities required by the TUI and Services.
@@ -148,7 +138,7 @@ type Repository interface {
 	SyncRepository
 	EnrichmentRepository
 	AlertRepository
-	
+
 	// Triage specific
 	MarkReadLocally(ctx context.Context, id string, isRead bool) error
 	ArchiveThread(ctx context.Context, id string) error

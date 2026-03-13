@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
 func BenchmarkModel_View(b *testing.B) {
-	m := newTestModel(b) 
-	
+	m := newTestModel(b)
+
 	// Pre-populate many notifications
-	notifs := make([]types.NotificationWithState, 1000)
+	notifs := make([]triage.NotificationWithState, 1000)
 	for i := 0; i < 1000; i++ {
-		notifs[i] = types.NotificationWithState{
-			Notification: types.Notification{
+		notifs[i] = triage.NotificationWithState{
+			Notification: triage.Notification{
 				GitHubID:     fmt.Sprintf("%d", i),
 				SubjectTitle: "Benchmark notification item",
 				SubjectType:  "PullRequest",

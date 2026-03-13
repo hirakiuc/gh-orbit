@@ -8,6 +8,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,7 +19,7 @@ func TestAlertService_Notify(t *testing.T) {
 	cfg := &config.Config{Notifications: config.NotificationsConfig{Enabled: true}}
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
-	
+
 	s := NewAlertService(cfg, mockRepo, mockNative, nil, nil, slog.Default())
 
 	t.Run("Standard Alert", func(t *testing.T) {
@@ -61,7 +62,7 @@ func TestAlertService_SyncStart(t *testing.T) {
 	})
 
 	t.Run("Existing Data detection", func(t *testing.T) {
-		mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]types.NotificationWithState{{}}, nil).Once()
+		mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{{}}, nil).Once()
 		s.SyncStart(ctx)
 		assert.False(t, s.isInitializing)
 	})
@@ -100,7 +101,7 @@ func TestAlertService_Throttling(t *testing.T) {
 		s.syncAlertCount = 5
 		mockNative.EXPECT().Status().Return(types.StatusHealthy).Maybe()
 		mockNative.EXPECT().Notify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-		
+
 		err := s.Notify(ctx, github.Notification{Reason: "mention"})
 		assert.NoError(t, err)
 		assert.Equal(t, 6, s.syncAlertCount)

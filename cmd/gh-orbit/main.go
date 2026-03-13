@@ -94,7 +94,7 @@ func runDoctor() error {
 	ctx := context.Background()
 	level := &slog.LevelVar{}
 	level.Set(getSlogLevel(logLevel))
-	
+
 	logger, logCleanup, err := config.SetupLogger(level)
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func printDoctorReport(r types.DoctorReport) {
 func getDirSize(path string) int64 {
 	var size int64
 	_ = os.MkdirAll(path, 0o700) // #nosec G301: Private directory
-	_, _ = os.ReadDir(path) // Trigger any FS errors early
+	_, _ = os.ReadDir(path)      // Trigger any FS errors early
 	// Simple approximation for doctor report
 	return size
 }
@@ -279,7 +279,7 @@ func runTUI() error {
 
 type environment struct {
 	logger      *slog.Logger
-	logCleanup   func() error
+	logCleanup  func() error
 	otelCleanup func()
 	span        trace.Span
 }
@@ -331,7 +331,7 @@ type appResources struct {
 func initResources(ctx context.Context, logger *slog.Logger) (*appResources, error) {
 	// 1. gh CLI Check
 	// Inherit credentials from environment
-	
+
 	// 2. Load Config
 	cfg, err := config.Load()
 	if err != nil {

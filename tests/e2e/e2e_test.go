@@ -30,7 +30,7 @@ func TestCLI_Bootstrap(t *testing.T) {
 	// 2. Prepare Environment
 	tmpHome := t.TempDir()
 	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
-	
+
 	// Ensure binary exists
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		t.Skip("gh-orbit binary not found in bin/. Run 'make build' first.")
@@ -66,14 +66,14 @@ func TestCLI_Sync(t *testing.T) {
 		case "/notifications":
 			resp := []map[string]any{
 				{
-					"id": notifID,
+					"id":         notifID,
 					"updated_at": "2026-03-07T12:00:00Z",
-					"reason": "mention",
+					"reason":     "mention",
 					"repository": map[string]any{"full_name": "owner/repo"},
 					"subject": map[string]any{
 						"title": "E2E Test Notification",
-						"url": "https://api.github.com/repos/owner/repo/issues/1",
-						"type": "Issue",
+						"url":   "https://api.github.com/repos/owner/repo/issues/1",
+						"type":  "Issue",
 					},
 				},
 			}
@@ -89,7 +89,7 @@ func TestCLI_Sync(t *testing.T) {
 	// 2. Prepare Environment
 	tmpHome := t.TempDir()
 	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
-	
+
 	cmd := exec.Command(binPath, "--gh-orbit-test-mode") // #nosec G204: Trusted E2E test binary
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmpHome,

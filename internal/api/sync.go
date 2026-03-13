@@ -9,6 +9,8 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -55,7 +57,7 @@ func (s *SyncEngine) BridgeStatus() types.BridgeStatus {
 }
 
 // Sync executes a single synchronization cycle.
-func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types.RateLimitInfo, error) {
+func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error) {
 	// Prepare alert service for a new cycle (detects Silent Initial Baseline)
 	if s.alerts != nil {
 		s.alerts.SyncStart(ctx)
@@ -71,13 +73,13 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 	defer span.End()
 
 	syncID := time.Now().UnixNano()
-	s.logger.InfoContext(ctx, "starting notification sync", 
-		"user_id", userID, 
-		"force", force, 
+	s.logger.InfoContext(ctx, "starting notification sync",
+		"user_id", userID,
+		"force", force,
 		"sync_id", syncID)
-	
+
 	metaKey := "notifications"
-	rlInfo := types.RateLimitInfo{Limit: 5000, Remaining: 5000}
+	rlInfo := models.RateLimitInfo{Limit: 5000, Remaining: 5000}
 
 	meta, err := s.db.GetSyncMeta(ctx, userID, metaKey)
 	if err != nil {
@@ -86,7 +88,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 
 	// Initialize meta if not exists
 	if meta == nil {
-		meta = &types.SyncMeta{
+		meta = &models.SyncMeta{
 			UserID:       userID,
 			Key:          metaKey,
 			PollInterval: DefaultPollInterval,
@@ -104,8 +106,8 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 	// Check if we should poll based on LastSyncAt and PollInterval
 	if !force && time.Since(meta.LastSyncAt).Seconds() < float64(meta.PollInterval) {
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			s.logger.DebugContext(ctx, "sync: skipping poll, interval not reached", 
-				"sync_id", syncID, 
+			s.logger.DebugContext(ctx, "sync: skipping poll, interval not reached",
+				"sync_id", syncID,
 				"interval", meta.PollInterval,
 				"last_sync", meta.LastSyncAt)
 		}
@@ -113,9 +115,9 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 	}
 
 	if s.logger.Enabled(ctx, slog.LevelDebug) {
-		s.logger.DebugContext(ctx, "sync: executing API fetch", 
-			"sync_id", syncID, 
-			"etag", meta.ETag, 
+		s.logger.DebugContext(ctx, "sync: executing API fetch",
+			"sync_id", syncID,
+			"etag", meta.ETag,
 			"last_modified", meta.LastModified)
 	}
 
@@ -138,15 +140,15 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 			s.logger.DebugContext(ctx, "sync: no new notifications (304 or empty)", "sync_id", syncID)
 		}
 	} else {
-		s.logger.InfoContext(ctx, "sync: processing new notifications", 
-			"sync_id", syncID, 
+		s.logger.InfoContext(ctx, "sync: processing new notifications",
+			"sync_id", syncID,
 			"count", len(notifications))
 
 		var newlyDiscoveredIDs []string
 		var upsertErrs []error
 
 		for _, n := range notifications {
-			err := s.db.UpsertNotification(ctx, types.Notification{
+			err := s.db.UpsertNotification(ctx, triage.Notification{
 				GitHubID:           n.ID,
 				SubjectTitle:       n.Subject.Title,
 				SubjectURL:         n.Subject.URL,
@@ -197,7 +199,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types
 	newMeta.LastSyncAt = time.Now()
 	newMeta.LastError = "" // Clear previous error on success
 	s.logger.InfoContext(ctx, "notification sync complete", "user_id", userID, "sync_id", syncID)
-	
+
 	if err := s.db.UpdateSyncMeta(ctx, *newMeta); err != nil {
 		s.logger.ErrorContext(ctx, "failed to update sync meta at end of cycle", "sync_id", syncID, "error", err)
 		return rlInfo, fmt.Errorf("sync meta update failed: %w", err)

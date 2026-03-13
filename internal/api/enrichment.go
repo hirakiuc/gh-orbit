@@ -11,6 +11,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -43,11 +44,11 @@ func NewEnrichmentEngine(ctx context.Context, client github.Client, database typ
 		cache:  make(map[string]models.EnrichmentResult),
 		done:   make(chan struct{}),
 	}
-	
+
 	// Start background pruning worker with lifecycle-managed context
 	// #nosec G118: Supervisor context used for background worker longevity
 	go e.pruningWorker(ctx)
-	
+
 	return e
 }
 
@@ -141,7 +142,7 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.Enri
 }
 
 // FetchHybridBatch retrieves metadata for multiple items using GQL for efficiency.
-func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]models.EnrichmentResult {
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState) map[string]models.EnrichmentResult {
 	results := make(map[string]models.EnrichmentResult)
 	var nodeIDs []string
 
@@ -182,7 +183,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		}
 	`
 	variables := map[string]any{"ids": ids}
-	
+
 	var data struct {
 		Nodes []struct {
 			ID      string `json:"id"`
@@ -205,13 +206,13 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	}
 
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.DebugContext(ctx, "enrichment: graphql batch fetch complete", 
-			"cost", data.RateLimit.Cost, 
+		e.logger.DebugContext(ctx, "enrichment: graphql batch fetch complete",
+			"cost", data.RateLimit.Cost,
 			"remaining", data.RateLimit.Remaining,
 			"node_count", len(data.Nodes))
 	}
 
-	e.client.ReportRateLimit(types.RateLimitInfo{
+	e.client.ReportRateLimit(models.RateLimitInfo{
 		Limit:     data.RateLimit.Cost + data.RateLimit.Remaining, // Best guess for Limit
 		Remaining: data.RateLimit.Remaining,
 		Used:      data.RateLimit.Cost,
@@ -223,8 +224,10 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	)
 
 	for _, node := range data.Nodes {
-		if node.ID == "" { continue }
-		
+		if node.ID == "" {
+			continue
+		}
+
 		state := ""
 		if node.Merged {
 			state = "Merged"
@@ -238,7 +241,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state); err != nil {
 				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
 			}
-			
+
 			// Populate results for immediate TUI refresh
 			results[node.ID] = models.EnrichmentResult{
 				ResourceState: state,
