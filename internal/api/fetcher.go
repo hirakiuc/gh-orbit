@@ -319,6 +319,8 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *type
 	return allNotifications, &newMeta, rlInfo, nil
 }
 
+// ParseRateLimitInfo extracts GitHub-specific rate limit headers into a standard structure.
+// It is used across the internal API package to propagate quota updates via the TrafficController.
 func ParseRateLimitInfo(h http.Header) types.RateLimitInfo {
 	info := types.RateLimitInfo{
 		Limit:     5000, // Default assume healthy
