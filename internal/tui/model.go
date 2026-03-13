@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -51,11 +52,11 @@ type Model struct {
 	detailView DetailModel
 
 	// Shared State & Services (Interfaces)
-	db               api.Repository
-	client           api.GitHubClient
-	sync             api.Syncer
-	enrich           api.Enricher
-	traffic          api.TrafficController
+	db               types.Repository
+	client           github.Client
+	sync             types.Syncer
+	enrich           types.Enricher
+	traffic          types.TrafficController
 	alerter          api.Alerter
 	ui               UIController
 	config           *config.Config
@@ -73,7 +74,7 @@ type Model struct {
 	height           int
 	headerHeight     int
 	footerHeight     int
-	bridgeStatus     api.BridgeStatus
+	bridgeStatus     types.BridgeStatus
 	interpreter      *Interpreter
 
 	// Background Sync State
@@ -85,14 +86,14 @@ type Model struct {
 	heartbeatInterval time.Duration
 	clockInterval     time.Duration
 	lastQuitPress     time.Time
-	executor          api.CommandExecutor
+	executor          types.CommandExecutor
 }
 
 // Option defines a functional option for Model configuration.
 type Option func(*Model)
 
 // WithExecutor sets the command executor.
-func WithExecutor(executor api.CommandExecutor) Option {
+func WithExecutor(executor types.CommandExecutor) Option {
 	return func(m *Model) {
 		m.executor = executor
 	}
@@ -117,11 +118,11 @@ func NewModel(
 	userID string,
 	cfg *config.Config,
 	logger *slog.Logger,
-	database api.Repository,
-	client api.GitHubClient,
-	syncer api.Syncer,
-	enricher api.Enricher,
-	traffic api.TrafficController,
+	database types.Repository,
+	client github.Client,
+	syncer types.Syncer,
+	enricher types.Enricher,
+	traffic types.TrafficController,
 	alerter api.Alerter,
 	opts ...Option,
 ) *Model {
@@ -151,63 +152,42 @@ func NewModel(
 		enrich:       enricher,
 		traffic:      traffic,
 		alerter:      alerter,
-		ui:           NewUIController(styles),
 		config:       cfg,
 		logger:       logger,
 		userID:       userID,
 		styles:       styles,
 		keys:         keys,
-		isDark:       true,
-		state:             StateList,
-		PollInterval:      cfg.Notifications.SyncInterval,
-		LastSyncAt:        time.Now(),
-		heartbeatInterval: time.Second,
-		clockInterval:     time.Minute,
+		state:        StateList,
+		PollInterval: cfg.Notifications.SyncInterval,
+		// Default intervals
+		heartbeatInterval: time.Duration(cfg.Notifications.SyncInterval) * time.Second,
+		clockInterval:     1 * time.Minute,
 	}
 
-	m.interpreter = NewInterpreter(m)
-
+	// Apply options
 	for _, opt := range opts {
 		opt(m)
 	}
 
+	m.interpreter = NewInterpreter(m)
+	m.ui = NewUIController(m.styles)
+
 	return m
 }
 
-// Init initializes the application by loading data and starting background tasks.
+// Init sets up initial application state and background workers.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadNotifications(),
-		m.tickHeartbeat(),
 		m.tickClock(),
+		m.tickHeartbeat(),
 	)
-}
-
-func (m *Model) loadNotifications() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		notifications, err := m.db.ListNotifications(ctx)
-		if err != nil {
-			return types.ErrMsg{Err: err}
-		}
-		return notificationsLoadedMsg{notifications: notifications, IsInitial: true}
-	}
-}
-
-func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
-	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
-		remaining, err := m.sync.Sync(ctx, m.userID, force)
-		if err != nil {
-			return types.ErrMsg{Err: err}
-		}
-		return syncCompleteMsg{rateLimit: remaining}
-	})
 }
 
 func (m *Model) tickHeartbeat() tea.Cmd {
 	m.heartbeatID++
 	id := m.heartbeatID
-	return tea.Tick(m.heartbeatInterval, func(t time.Time) tea.Msg {
+	return tea.Tick(m.heartbeatInterval, func(_ time.Time) tea.Msg {
 		return pollTickMsg{ID: id}
 	})
 }
@@ -215,22 +195,44 @@ func (m *Model) tickHeartbeat() tea.Cmd {
 func (m *Model) tickClock() tea.Cmd {
 	m.clockID++
 	id := m.clockID
-	return tea.Tick(m.clockInterval, func(t time.Time) tea.Msg {
+	return tea.Tick(m.clockInterval, func(_ time.Time) tea.Msg {
 		return clockTickMsg{ID: id}
 	})
 }
 
-// Shutdown ensures all background services are stopped gracefully.
 func (m *Model) Shutdown() {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	m.sync.Shutdown(ctx)
+	m.enrich.Shutdown(ctx)
 	m.traffic.Shutdown(ctx)
 	m.alerter.Shutdown(ctx)
 }
 
-// Internal messages
+// loadNotifications loads the full list of notifications from local database.
+func (m *Model) loadNotifications() tea.Cmd {
+	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
+		notifs, err := m.db.ListNotifications(ctx)
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+		// Initial load triggers initial enrichment
+		return notificationsLoadedMsg{notifications: notifs, IsInitial: true}
+	})
+}
+
+func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
+	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
+		rl, err := m.sync.Sync(ctx, m.userID, force)
+		if err != nil && err != types.ErrSyncIntervalNotReached {
+			return types.ErrMsg{Err: err}
+		}
+		return syncCompleteMsg{rateLimit: rl}
+	})
+}
+
+// Messages
 type notificationsLoadedMsg struct {
 	notifications []types.NotificationWithState
 	IsInitial     bool
@@ -254,15 +256,8 @@ type detailLoadedMsg struct {
 }
 
 type actionCompleteMsg struct{}
-
 type clearStatusMsg struct{}
-
-type pollTickMsg struct {
-	ID uint64
-}
-
-type clockTickMsg struct {
-	ID uint64
-}
-
 type viewportEnrichMsg struct{}
+
+type pollTickMsg struct{ ID uint64 }
+type clockTickMsg struct{ ID uint64 }

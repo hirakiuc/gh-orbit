@@ -98,6 +98,13 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *mode
 			return nil, &newMeta, rlInfo, nil
 		}
 
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
+			return nil, nil, rlInfo, &models.RateLimitError{
+				Resource:   rlInfo.Resource,
+				RetryAfter: rlInfo.RetryAfter,
+			}
+		}
+
 		if resp.StatusCode >= 400 {
 			return nil, nil, rlInfo, fmt.Errorf("API error: %s", resp.Status)
 		}

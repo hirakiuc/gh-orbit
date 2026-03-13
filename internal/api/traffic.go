@@ -2,17 +2,13 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/types"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Priority levels
@@ -34,9 +30,7 @@ type apiTask struct {
 type APITrafficController struct {
 	ctx    context.Context // Application root context
 	logger *slog.Logger
-	mu     sync.Mutex
 	userMu sync.Mutex // Serializes PriorityUser tasks to prevent out-of-order writes
-	wg     sync.WaitGroup
 
 	taskCounter uint64
 
@@ -48,292 +42,60 @@ type APITrafficController struct {
 	// Rate Limit State
 	rlInfo           atomic.Pointer[types.RateLimitInfo]
 	lockoutUntil     atomic.Pointer[time.Time]
-	rateLimitUpdates chan types.RateLimitInfo
 
-	// Concurrency scaling
-	workerLimit int32
-	sem         chan struct{} // Controls active workers
-	adj         chan int32    // Channel for scaling requests
-	drainCancel context.CancelFunc
+	// Workers
+	workerLimit   int32
+	done          chan struct{}
+
+	rateLimitUpdates chan types.RateLimitInfo
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
-	const maxConcurrency = 3
-	initialRL := &types.RateLimitInfo{Limit: 5000, Remaining: 5000}
-	tc := &APITrafficController{
-		ctx:         ctx,
-		logger:      logger,
-		high:        make(chan *apiTask, 10),
-		med:         make(chan *apiTask, 10),
-		low:         make(chan *apiTask, 100),
-		workerLimit: maxConcurrency,
-		sem:         make(chan struct{}, maxConcurrency),
-		adj:         make(chan int32, 1),
+	c := &APITrafficController{
+		ctx:              ctx,
+		logger:           logger,
+		high:             make(chan *apiTask, 10),
+		med:              make(chan *apiTask, 50),
+		low:              make(chan *apiTask, 100),
+		workerLimit:      3, // Default concurrency
+		done:             make(chan struct{}),
 		rateLimitUpdates: make(chan types.RateLimitInfo, 100),
 	}
-	tc.rlInfo.Store(initialRL)
 
-	// Fill semaphore initially
-	for i := 0; i < maxConcurrency; i++ {
-		tc.sem <- struct{}{}
-	}
+	// Initialize rate limit info with safe defaults
+	c.rlInfo.Store(&types.RateLimitInfo{Remaining: 5000})
 
-	// Start background listeners
-	go tc.concurrencyManager(ctx)
-	go tc.rateLimitListener(ctx)
+	// Start supervisor
+	go c.supervisor()
+	// Start background rate limit listener
+	// #nosec G118: Background listener longevity tied to traffic controller done signal
+	go c.rateLimitListener()
 
-	// Launch worker pool
-	for i := 0; i < maxConcurrency; i++ {
-		tc.wg.Add(1)
-		go tc.worker(ctx, i)
-	}
-
-	return tc
+	return c
 }
 
-func (c *APITrafficController) concurrencyManager(ctx context.Context) {
-	current := int32(3)
-	for {
-		select {
-		case <-ctx.Done():
-			if c.drainCancel != nil {
-				c.drainCancel()
-			}
-			return
-		case target := <-c.adj:
-			if target == current {
-				continue
-			}
-
-			// Cancel any existing background drainer before applying new logic
-			if c.drainCancel != nil {
-				c.drainCancel()
-				c.drainCancel = nil
-			}
-
-			if target < current {
-				// Scale down: Drain semaphore in background
-				delta := int(current - target)
-				// #nosec G118: cancel is managed by concurrencyManager and called on next event or shutdown
-				dCtx, cancel := context.WithCancel(c.ctx)
-				c.drainCancel = cancel
-
-				go func(ctx context.Context, d int) {
-					for i := 0; i < d; i++ {
-						select {
-						case <-ctx.Done():
-							return
-						case <-c.sem:
-						}
-					}
-				}(dCtx, delta)
-				c.logger.Info("traffic controller: scaling down concurrency", "new_limit", target)
-			} else {
-				// Scale up: Fill semaphore
-				for i := 0; i < int(target-current); i++ {
-					select {
-					case <-ctx.Done():
-						return
-					case c.sem <- struct{}{}:
-					}
-				}
-				c.logger.Info("traffic controller: scaled up concurrency", "new_limit", target)
-			}
-			current = target
-			atomic.StoreInt32(&c.workerLimit, target)
-		}
-	}
-}
-
-func (c *APITrafficController) rateLimitListener(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			c.logger.DebugContext(ctx, "traffic controller: rate limit listener stopping (context canceled)")
-			return
-		case info, ok := <-c.rateLimitUpdates:
-			if !ok {
-				return
-			}
-			c.UpdateRateLimit(ctx, info)
-		}
-	}
+func (c *APITrafficController) Remaining() int {
+	return c.rlInfo.Load().Remaining
 }
 
 func (c *APITrafficController) RateLimitUpdates() chan types.RateLimitInfo {
 	return c.rateLimitUpdates
 }
 
-func (c *APITrafficController) worker(ctx context.Context, id int) {
-	defer c.wg.Done()
-	for {
-		var task *apiTask
-		var ok bool
-
-		// 1. Wait for task (non-blocking on semaphore)
-		select {
-		case <-ctx.Done():
-			return
-		case task, ok = <-c.high:
-		default:
-			select {
-			case <-ctx.Done():
-				return
-			case task, ok = <-c.high:
-			case task, ok = <-c.med:
-			case task, ok = <-c.low:
-			}
-		}
-
-		if !ok {
-			return
-		}
-
-		// 2. Acquire semaphore slot (blocking until concurrency limit allows)
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.sem:
-			// Slot acquired
-		}
-
-		if c.logger.Enabled(ctx, slog.LevelDebug) {
-			c.logger.DebugContext(ctx, "traffic controller: worker dispatched task", "worker_id", id, "task_id", task.id, "priority", task.priority)
-		}
-		c.executeTask(ctx, task)
-
-		// 3. Release slot back to semaphore
-		select {
-		case c.sem <- struct{}{}:
-		case <-ctx.Done():
-		}
-	}
-}
-
-func (c *APITrafficController) executeTask(ctx context.Context, t *apiTask) {
-	// 1. Lockout Check (Secondary Rate Limits)
-	if until := c.lockoutUntil.Load(); until != nil {
-		if time.Now().Before(*until) {
-			if t.priority != PriorityUser {
-				c.logger.WarnContext(ctx, "traffic controller: task skipped due to active lockout", "task_id", t.id, "until", *until)
-				t.resp <- nil
-				return
-			}
-			// For user actions, we might wait? or just fail. 
-			// Best practice says STOP ALL. 
-			t.resp <- nil
-			return
-		}
-	}
-
-	// 2. Serialization for User Actions
-	if t.priority == PriorityUser {
-		c.userMu.Lock()
-		defer c.userMu.Unlock()
-	}
-
-	// 3. Rate Limit Guard
-	rl := c.rlInfo.Load()
-	threshold := int64(rl.Limit) / 10
-	if threshold > 1000 {
-		threshold = 1000
-	}
-
-	if t.priority == PriorityEnrich && int64(rl.Remaining) < threshold {
-		c.logger.WarnContext(ctx, "traffic controller: skipping enrichment due to low quota", "task_id", t.id, "remaining", rl.Remaining, "threshold", threshold)
-		t.resp <- nil
-		return
-	}
-
-	if int64(rl.Remaining) < 100 && t.priority != PriorityUser {
-		c.logger.WarnContext(ctx, "traffic controller: skipping non-user task due to critical quota", "task_id", t.id, "remaining", rl.Remaining)
-		t.resp <- nil
-		return
-	}
-
-	// 4. Execution
-	taskCtx := t.ctx
-	if taskCtx == nil {
-		taskCtx = ctx
-	}
-
-	tracer := config.GetTracer()
-	_, span := tracer.Start(taskCtx, "traffic_controller.execute",
-		trace.WithAttributes(
-			attribute.String("task_id", fmt.Sprintf("%d", t.id)),
-			attribute.Int("priority", t.priority),
-			attribute.Int64("github.remaining_quota", int64(rl.Remaining)),
-		),
-	)
-	defer span.End()
-
-	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	msg := t.fn(execCtx)
-	t.resp <- msg
-}
-
-// UpdateRateLimit updates the internal tracking of the GitHub quota and adjusts concurrency.
-func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
-	c.rlInfo.Store(&info)
-
-	if info.RetryAfter > 0 {
-		until := time.Now().Add(info.RetryAfter)
-		c.lockoutUntil.Store(&until)
-		c.logger.WarnContext(ctx, "traffic controller: secondary rate limit hit, locking out", "retry_after", info.RetryAfter)
-	}
-
-	if c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.DebugContext(ctx, "traffic controller: updated rate limit", 
-			"remaining", info.Remaining, 
-			"reset", info.Reset)
-	}
-
-	// Dynamic Scaling Logic
-	c.adjustConcurrency(info.Remaining)
-}
-
-func (c *APITrafficController) adjustConcurrency(remaining int) {
-	target := int32(3)
-	if remaining <= 500 {
-		target = 1
-	}
-
-	// Send non-blocking adjustment request
-	select {
-	case c.adj <- target:
-	default:
-		// Manager already busy or queue full, skip this cycle
-	}
-}
-
-// Remaining returns the last known remaining rate limit.
-func (c *APITrafficController) Remaining() int {
-	return c.rlInfo.Load().Remaining
-}
-
-// Shutdown waits for the worker to finish processing.
-func (c *APITrafficController) Shutdown(ctx context.Context) {
-	close(c.rateLimitUpdates)
-	c.wg.Wait()
-	c.logger.DebugContext(ctx, "traffic controller: shutdown complete")
-}
-
-// Submit wraps an API operation in a serialized, prioritized command.
 func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
 	return func() tea.Msg {
-		c.mu.Lock()
-		c.taskCounter++
-		id := c.taskCounter
-		c.mu.Unlock()
-
 		task := &apiTask{
-			id:       id,
+			id:       atomic.AddUint64(&c.taskCounter, 1),
 			priority: priority,
 			fn:       fn,
 			resp:     make(chan tea.Msg, 1),
-			ctx:      c.ctx, // Carry root application context for trace linkage
+			ctx:      c.ctx,
+		}
+
+		select {
+		case <-c.done:
+			return nil
+		default:
 		}
 
 		switch priority {
@@ -347,4 +109,100 @@ func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
 
 		return <-task.resp
 	}
+}
+
+func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info types.RateLimitInfo) {
+	c.rlInfo.Store(&info)
+
+	// Update worker limits based on remaining quota
+	newLimit := int32(3)
+	if info.Remaining < 500 {
+		newLimit = 1
+		c.logger.InfoContext(ctx, "traffic controller: scaling down concurrency", "new_limit", newLimit)
+	} else if info.Remaining > 1000 {
+		newLimit = 3
+		c.logger.InfoContext(ctx, "traffic controller: scaled up concurrency", "new_limit", newLimit)
+	}
+	atomic.StoreInt32(&c.workerLimit, newLimit)
+
+	// Check for lockout (primary fallback)
+	if info.Remaining == 0 && !info.Reset.IsZero() {
+		c.lockoutUntil.Store(&info.Reset)
+	}
+}
+
+func (c *APITrafficController) supervisor() {
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-time.After(10 * time.Millisecond):
+			if atomic.LoadInt32(&activeWorkersCount) < atomic.LoadInt32(&c.workerLimit) {
+				select {
+				case t := <-c.high:
+					go c.runTask(t)
+				case t := <-c.med:
+					go c.runTask(t)
+				case t := <-c.low:
+					go c.runTask(t)
+				default:
+				}
+			}
+		}
+	}
+}
+
+var activeWorkersCount int32
+
+func (c *APITrafficController) runTask(t *apiTask) {
+	atomic.AddInt32(&activeWorkersCount, 1)
+	defer atomic.AddInt32(&activeWorkersCount, -1)
+
+	// Check lockout
+	if until := c.lockoutUntil.Load(); until != nil && time.Now().Before(*until) {
+		if t.priority != PriorityUser {
+			c.logger.WarnContext(t.ctx, "traffic controller: lockout active, skipping background task", "task_id", t.id)
+			t.resp <- nil
+			return
+		}
+	}
+
+	// Dynamic Throttling: Skip low-priority enrichment if quota is critical
+	if t.priority == PriorityEnrich && c.Remaining() < 500 {
+		c.logger.WarnContext(t.ctx, "traffic controller: skipping enrichment due to low quota", 
+			"task_id", t.id, "remaining", c.Remaining(), "threshold", 500)
+		t.resp <- nil
+		return
+	}
+
+	// Execution
+	if t.priority == PriorityUser {
+		c.userMu.Lock()
+		defer c.userMu.Unlock()
+	}
+
+	t.resp <- t.fn(t.ctx)
+}
+
+func (c *APITrafficController) rateLimitListener() {
+	for {
+		select {
+		case <-c.done:
+			// Drain remaining updates if any during shutdown
+			c.logger.DebugContext(context.Background(), "traffic controller: rate limit listener stopping")
+			return
+		case info, ok := <-c.rateLimitUpdates:
+			if !ok {
+				return
+			}
+			c.UpdateRateLimit(c.ctx, info)
+		}
+	}
+}
+
+func (c *APITrafficController) Shutdown(ctx context.Context) {
+	close(c.done)
+	// Ensure listener goroutine stops
+	close(c.rateLimitUpdates)
+	c.logger.DebugContext(ctx, "traffic controller shutdown complete")
 }

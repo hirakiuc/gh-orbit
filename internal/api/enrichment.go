@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -24,21 +25,21 @@ const (
 
 // EnrichmentEngine handles fetching and caching of notification details.
 type EnrichmentEngine struct {
-	client GitHubClient
-	db     EnrichmentRepository
+	client github.Client
+	db     types.EnrichmentRepository
 	logger *slog.Logger
-	cache  map[string]EnrichmentResult
+	cache  map[string]types.EnrichmentResult
 	mu     sync.RWMutex
 	sf     singleflight.Group
 	done   chan struct{}
 }
 
-func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(ctx context.Context, client github.Client, database types.EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
 	e := &EnrichmentEngine{
 		client: client,
 		db:     database,
 		logger: logger,
-		cache:  make(map[string]EnrichmentResult),
+		cache:  make(map[string]types.EnrichmentResult),
 		done:   make(chan struct{}),
 	}
 	
@@ -49,191 +50,123 @@ func NewEnrichmentEngine(ctx context.Context, client GitHubClient, database Enri
 	return e
 }
 
-// FetchDetail retrieves detailed content for a notification, using cache if available and fresh.
-func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (EnrichmentResult, error) {
-	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "enrichment.fetch_detail",
-		trace.WithAttributes(
-			attribute.String("url", u),
-			attribute.String("type", subjectType),
-		),
-	)
-	defer span.End()
-
-	// 1. Semantic Cache Validation (Optimistic Read)
-	e.mu.RLock()
-	res, ok := e.cache[u]
-	e.mu.RUnlock()
-
-	if ok {
-		age := time.Since(res.FetchedAt)
-		
-		// Tiered Validation
-		if age <= StatusTTL && res.ResourceState != "" {
-			if e.logger.Enabled(ctx, slog.LevelDebug) {
-				e.logger.DebugContext(ctx, "enrichment: cache hit (valid)", "url", u, "age", age)
-			}
-			span.SetAttributes(attribute.Bool("cache_hit", true))
-			return res, nil
-		}
-
-		if age > StatusTTL {
-			e.logger.DebugContext(ctx, "enrichment: status expired, forcing refresh", 
-				"url", u, 
-				"age", fmt.Sprintf("%.0fs", age.Seconds()),
-				"threshold", fmt.Sprintf("%.0fs", StatusTTL.Seconds()))
-			span.SetAttributes(attribute.String("cache_status", "expired"))
-		}
-	}
-
-	// 2. Use singleflight to merge simultaneous requests for the same URL
-	val, err, shared := e.sf.Do(u, func() (any, error) {
-		return e.fetchDetailRaw(ctx, u, subjectType)
-	})
-
-	if shared {
-		e.logger.DebugContext(ctx, "enrichment: request merged via singleflight", "url", u)
-		span.SetAttributes(attribute.Bool("singleflight_merged", true))
-	}
-
-	if err != nil {
-		return EnrichmentResult{}, err
-	}
-	return val.(EnrichmentResult), nil
+func (e *EnrichmentEngine) Shutdown(ctx context.Context) {
+	close(e.done)
+	e.logger.DebugContext(ctx, "enrichment engine shutdown complete")
 }
 
-func (e *EnrichmentEngine) fetchDetailRaw(ctx context.Context, u string, subjectType string) (EnrichmentResult, error) {
-	tracer := config.GetTracer()
-	_, span := tracer.Start(ctx, "enrichment.api_fetch")
-	defer span.End()
+// FetchDetail retrieves detailed information for a notification from GitHub.
+func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (types.EnrichmentResult, error) {
+	// 1. Check local cache
+	e.mu.RLock()
+	if res, ok := e.cache[u]; ok {
+		if time.Since(res.FetchedAt) < ContentTTL {
+			e.mu.RUnlock()
+			return res, nil
+		}
+	}
+	e.mu.RUnlock()
 
-	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.DebugContext(ctx, "enrichment: cache miss or invalid, fetching from API", "url", u, "type", subjectType)
+	// 2. Execute Fetch with singleflight to avoid redundant API calls
+	val, err, _ := e.sf.Do(u, func() (any, error) {
+		tracer := config.GetTracer()
+		ctx, span := tracer.Start(ctx, "enrichment.fetch_detail",
+			trace.WithAttributes(
+				attribute.String("url", u),
+				attribute.String("type", subjectType),
+			),
+		)
+		defer span.End()
+
+		var res types.EnrichmentResult
+		var err error
+
+		switch subjectType {
+		case "PullRequest", "Issue":
+			res, err = e.fetchREST(ctx, u)
+		default:
+			// Releases and others don't have descriptions in REST API without extra calls
+			res = types.EnrichmentResult{HTMLURL: u, FetchedAt: time.Now()}
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 3. Update cache
+		e.mu.Lock()
+		e.cache[u] = res
+		e.mu.Unlock()
+
+		return res, nil
+	})
+
+	if err != nil {
+		return types.EnrichmentResult{}, err
 	}
 
-	// Strip base URL if present to use with REST client
-	path := strings.TrimPrefix(u, e.client.BaseURL())
+	return val.(types.EnrichmentResult), nil
+}
 
+func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (types.EnrichmentResult, error) {
 	var data struct {
-		State   string `json:"state"`
-		Merged  bool   `json:"merged"`
-		Draft   bool   `json:"draft"`
 		Body    string `json:"body"`
 		HTMLURL string `json:"html_url"`
 		User    struct {
 			Login string `json:"login"`
 		} `json:"user"`
-		Commit struct {
-			Message string `json:"message"`
-			Author  struct {
-				Name string `json:"name"`
-			} `json:"author"`
-		} `json:"commit"`
+		State string `json:"state"`
 	}
 
-	// Best Practice: Use DoWithContext for context propagation in go-gh REST
-	err := e.client.REST().DoWithContext(ctx, "GET", path, nil, &data)
+	// Use internal REST client for authenticated requests
+	// go-gh handles the relative path vs absolute URL automatically.
+	err := e.client.REST().DoWithContext(ctx, "GET", u, nil, &data)
 	if err != nil {
-		return EnrichmentResult{}, fmt.Errorf("failed to fetch detail from %s: %w", u, err)
+		return types.EnrichmentResult{}, fmt.Errorf("REST fetch failed: %w", err)
 	}
 
-	res := EnrichmentResult{
-		Body:      data.Body,
-		Author:    data.User.Login,
-		HTMLURL:   data.HTMLURL,
-		FetchedAt: time.Now(),
-	}
-
-	// Calculate Resource State
+	resourceState := ""
 	if data.State != "" {
-		if data.Merged {
-			res.ResourceState = "Merged"
-		} else if data.Draft {
-			res.ResourceState = "Draft"
-		} else {
-			if len(data.State) > 0 {
-				res.ResourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
-			}
-		}
+		resourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
 	}
 
-	switch subjectType {
-	case "Commit":
-		if res.Body == "" {
-			res.Body = data.Commit.Message
-		}
-		if res.Author == "" {
-			res.Author = data.Commit.Author.Name
-		}
-	}
-
-	// Only cache if we have meaningful data
-	if res.ResourceState != "" || res.Body != "" {
-		e.mu.Lock()
-		e.cache[u] = res
-		e.mu.Unlock()
-	}
-
-	return res, nil
+	return types.EnrichmentResult{
+		Body:          data.Body,
+		HTMLURL:       data.HTMLURL,
+		Author:        data.User.Login,
+		ResourceState: resourceState,
+		FetchedAt:     time.Now(),
+	}, nil
 }
 
-// FetchHybridBatch resolves statuses for multiple items using GraphQL for efficiency.
-func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]EnrichmentResult {
-	if len(notifications) == 0 {
-		return nil
-	}
+// FetchHybridBatch retrieves metadata for multiple items using GQL for efficiency.
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []types.NotificationWithState) map[string]types.EnrichmentResult {
+	results := make(map[string]types.EnrichmentResult)
+	var nodeIDs []string
 
-	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "enrichment.hybrid_batch",
-		trace.WithAttributes(attribute.Int("count", len(notifications))),
-	)
-	defer span.End()
-
-	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.DebugContext(ctx, "enrichment: starting hybrid batch fetch", "count", len(notifications))
-	}
-
-	results := make(map[string]EnrichmentResult)
-	
-	var knownIDs []string
-	var discoveryURLs []string
-	
 	for _, n := range notifications {
 		if n.SubjectNodeID != "" {
-			knownIDs = append(knownIDs, n.SubjectNodeID)
-		} else {
-			discoveryURLs = append(discoveryURLs, n.SubjectURL)
+			nodeIDs = append(nodeIDs, n.SubjectNodeID)
 		}
 	}
 
-	// 1. Fetch Known IDs via nodes()
-	if len(knownIDs) > 0 {
-		e.fetchByNodeIDs(ctx, knownIDs, results)
+	if len(nodeIDs) == 0 {
+		return results
 	}
 
-	// 2. Fetch Discovery URLs via individual REST calls (fallback)
-	for _, u := range discoveryURLs {
-		select {
-		case <-ctx.Done():
-			return results
-		default:
-			for _, n := range notifications {
-				if n.SubjectURL == u {
-					res, err := e.FetchDetail(ctx, u, n.SubjectType)
-					if err == nil {
-						results[n.GitHubID] = res
-						_ = e.db.EnrichNotification(ctx, n.GitHubID, res.Body, res.Author, res.HTMLURL, res.ResourceState)
-					}
-					break
-				}
-			}
+	// Fetch states in batches of 50 (GQL limit)
+	for i := 0; i < len(nodeIDs); i += 50 {
+		end := i + 50
+		if end > len(nodeIDs) {
+			end = len(nodeIDs)
 		}
+		e.fetchByNodeIDs(ctx, nodeIDs[i:end], results)
 	}
-	
+
 	return results
 }
 
-func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]EnrichmentResult) {
+func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, results map[string]types.EnrichmentResult) {
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "enrichment.gql_batch")
 	defer span.End()
@@ -306,7 +239,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			}
 			
 			// Populate results for immediate TUI refresh
-			results[node.ID] = EnrichmentResult{
+			results[node.ID] = types.EnrichmentResult{
 				ResourceState: state,
 				FetchedAt:     time.Now(),
 			}
@@ -332,18 +265,14 @@ func (e *EnrichmentEngine) pruningWorker(ctx context.Context) {
 	}
 }
 
-// Shutdown stops the background workers.
-func (e *EnrichmentEngine) Shutdown(_ context.Context) {
-	close(e.done)
-}
 func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	count := 0
-	for k, v := range e.cache {
-		if time.Since(v.FetchedAt) > ContentTTL {
-			delete(e.cache, k)
+	for u, res := range e.cache {
+		if time.Since(res.FetchedAt) > ContentTTL {
+			delete(e.cache, u)
 			count++
 		}
 	}
@@ -352,5 +281,3 @@ func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 		e.logger.DebugContext(ctx, "enrichment: pruned expired cache entries", "count", count)
 	}
 }
-
-

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,13 +18,13 @@ const DefaultPollInterval = 60 // seconds
 
 // SyncEngine orchestrates the synchronization of notifications.
 type SyncEngine struct {
-	fetcher Fetcher
-	db      SyncRepository
+	fetcher github.Fetcher
+	db      types.SyncRepository
 	alerts  Alerter
 	logger  *slog.Logger
 }
 
-func NewSyncEngine(fetcher Fetcher, database SyncRepository, alerts Alerter, logger *slog.Logger) *SyncEngine {
+func NewSyncEngine(fetcher github.Fetcher, database types.SyncRepository, alerts Alerter, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
 		fetcher: fetcher,
 		db:      database,
@@ -33,7 +34,7 @@ func NewSyncEngine(fetcher Fetcher, database SyncRepository, alerts Alerter, log
 }
 
 // Fetcher returns the underlying Fetcher instance.
-func (s *SyncEngine) Fetcher() Fetcher {
+func (s *SyncEngine) Fetcher() github.Fetcher {
 	return s.fetcher
 }
 
@@ -46,16 +47,14 @@ func (s *SyncEngine) Shutdown(ctx context.Context) {
 }
 
 // BridgeStatus returns the functional state of the alert bridge.
-func (s *SyncEngine) BridgeStatus() BridgeStatus {
+func (s *SyncEngine) BridgeStatus() types.BridgeStatus {
 	if s.alerts == nil {
-		return StatusUnknown
+		return types.StatusUnknown
 	}
 	return s.alerts.BridgeStatus()
 }
 
-// Sync performs a full synchronization cycle for notifications.
-// If force is true, it bypasses the PollInterval check.
-// It returns the remaining rate limit if known.
+// Sync executes a single synchronization cycle.
 func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (types.RateLimitInfo, error) {
 	// Prepare alert service for a new cycle (detects Silent Initial Baseline)
 	if s.alerts != nil {

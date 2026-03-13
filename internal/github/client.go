@@ -109,6 +109,13 @@ func (c *ghClient) CurrentUser(ctx context.Context) (*User, error) {
 
 		c.ReportRateLimit(ParseRateLimitInfo(resp.Header))
 
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
+			return nil, &models.RateLimitError{
+				Resource:   "core",
+				RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+			}
+		}
+
 		var user User
 		if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 			return nil, err
@@ -134,7 +141,16 @@ func (c *ghClient) MarkThreadAsRead(ctx context.Context, threadID string) error 
 		if err != nil {
 			return err
 		}
-		_ = resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
+
+		c.ReportRateLimit(ParseRateLimitInfo(resp.Header))
+
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
+			return &models.RateLimitError{
+				Resource:   "core",
+				RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+			}
+		}
 		return nil
 	}
 

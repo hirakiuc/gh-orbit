@@ -20,7 +20,6 @@ func NewInterpreter(m *Model) *Interpreter {
 	return &Interpreter{model: m}
 }
 
-// Execute converts a single Action into its corresponding tea.Cmd.
 func (i *Interpreter) Execute(action Action) tea.Cmd {
 	if action == nil {
 		return nil

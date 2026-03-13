@@ -1,5 +1,3 @@
-//go:build darwin
-
 package api
 
 import (
@@ -7,73 +5,61 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
+
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
-var appleScriptReplacer = strings.NewReplacer(
-	"\\", "\\\\",
-	"\"", "\\\"",
-)
-
-type macosNotifier struct {
-	logger   *slog.Logger
-	executor CommandExecutor
+// NewPlatformNotifier returns the native macOS notifier.
+func NewPlatformNotifier(ctx context.Context, executor types.CommandExecutor, logger *slog.Logger) types.Notifier {
+	return NewDarwinNotifier(executor, logger)
 }
 
-// NewPlatformNotifier returns a robust macOS notifier using osascript.
-func NewPlatformNotifier(ctx context.Context, executor CommandExecutor, logger *slog.Logger) Notifier {
-	return &macosNotifier{
-		logger:   logger,
+// DarwinNotifier implements native macOS notifications via osascript.
+type DarwinNotifier struct {
+	executor types.CommandExecutor
+	logger   *slog.Logger
+	status   types.BridgeStatus
+}
+
+func NewDarwinNotifier(executor types.CommandExecutor, logger *slog.Logger) *DarwinNotifier {
+	return &DarwinNotifier{
 		executor: executor,
+		logger:   logger,
+		status:   types.StatusHealthy,
 	}
 }
 
-func (m *macosNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
-	// Security: Escape all user-provided strings to prevent AppleScript injection.
-	safeTitle := appleScriptReplacer.Replace(title)
-	safeSubtitle := appleScriptReplacer.Replace(subtitle)
-	safeBody := appleScriptReplacer.Replace(body)
-
-	// Use System Events for reliable background delivery
-	script := fmt.Sprintf(
-		"tell application \"System Events\" to display notification \"%s\" with title \"%s\" subtitle \"%s\" sound name \"Glass\"",
-		safeBody,
-		safeTitle,
-		safeSubtitle,
+func (n *DarwinNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
+	script := fmt.Sprintf(`display notification "%s" with title "%s" subtitle "%s"`,
+		escapeAppleScript(body),
+		escapeAppleScript(title),
+		escapeAppleScript(subtitle),
 	)
 
-	// Fire-and-Forget: Spawning a goroutine ensures AlertService is never blocked by osascript.
-	go func() {
-		// Use request context (WithoutCancel) to ensure delivery even if the main loop advances,
-		// but tie it to the system-level timeout.
-		cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-
-		if err := m.executor.Run(cmdCtx, "osascript", "-e", script); err != nil {
-			m.logger.WarnContext(cmdCtx, "macos: notification delivery failed", "error", err)
-		}
-	}()
-
-	return nil
+	return n.executor.Run(ctx, "osascript", "-e", script)
 }
 
-func (m *macosNotifier) Shutdown(ctx context.Context) {}
-
-func (m *macosNotifier) Status() BridgeStatus {
-	return StatusHealthy
+func (n *DarwinNotifier) Shutdown(ctx context.Context) {
+	n.logger.DebugContext(ctx, "darwin notifier shutdown complete")
 }
 
-// CheckFocusMode performs a soft-failure probe for active macOS Focus modes.
-func CheckFocusMode(executor CommandExecutor) string {
-	// NSStatusItem Visible FocusModes is a reliable indicator in modern macOS
+func (n *DarwinNotifier) Status() types.BridgeStatus {
+	return n.status
+}
+
+// CheckFocusMode detects if "Do Not Disturb" or other focus modes are active.
+func CheckFocusMode(executor types.CommandExecutor) string {
+	// macOS Sequoia/Sonoma: uses 'dnd -status' via osascript (approximated)
 	out, err := executor.Execute(context.Background(), "defaults", "read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes")
 	if err != nil {
-		return "Unknown (Permissions restricted)"
+		return "Unknown"
 	}
-	
-	val := strings.TrimSpace(string(out))
-	if val == "1" {
-		return "Active (Notifications may be suppressed)"
+	if strings.TrimSpace(string(out)) == "1" {
+		return "Active"
 	}
 	return "Inactive"
+}
+
+func escapeAppleScript(s string) string {
+	return strings.ReplaceAll(s, `"`, `\"`)
 }

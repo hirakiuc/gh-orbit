@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
-	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 func (m *Model) View() tea.View {
@@ -89,16 +89,16 @@ func (m *Model) renderFooter() string {
 	bridgeStyle := m.styles.StatusNormal
 	
 	switch m.bridgeStatus {
-	case api.StatusUnsupported:
+	case types.StatusUnsupported:
 		bridge = "[FALLBACK]"
 		bridgeStyle = m.styles.PriorityMed
-	case api.StatusPermissionsDenied:
+	case types.StatusPermissionsDenied:
 		bridge = "[NO PERMS]"
 		bridgeStyle = m.styles.StatusError
-	case api.StatusBroken:
+	case types.StatusBroken:
 		bridge = "[BROKEN]"
 		bridgeStyle = m.styles.StatusError
-	case api.StatusUnknown:
+	case types.StatusUnknown:
 		bridge = "[PROBING]"
 		bridgeStyle = m.styles.Help
 	}

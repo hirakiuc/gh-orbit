@@ -1,10 +1,21 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
+
+// RateLimitError provides detailed context for GitHub API quota exhaustion.
+type RateLimitError struct {
+	Resource   string
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("github: rate limit exceeded for %s (retry after %v)", e.Resource, e.RetryAfter)
+}
 
 // RateLimitInfo encapsulates GitHub API quota metadata.
 type RateLimitInfo struct {

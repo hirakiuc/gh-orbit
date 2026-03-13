@@ -2,46 +2,39 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/gen2brain/beeep"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
-type beeepNotifier struct {
+// BeeepNotifier implements cross-platform notifications using the beeep library.
+type BeeepNotifier struct {
 	logger *slog.Logger
+	status types.BridgeStatus
 }
 
-// NewBeeepNotifier returns a cross-platform notifier using the beeep library.
-func NewBeeepNotifier(logger *slog.Logger) Notifier {
-	return &beeepNotifier{
+func NewBeeepNotifier(logger *slog.Logger) *BeeepNotifier {
+	return &BeeepNotifier{
 		logger: logger,
+		status: types.StatusHealthy,
 	}
 }
 
-func (b *beeepNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
-	b.logger.DebugContext(ctx, "delivering notification via beeep fallback", "title", title)
-	
-	// Beeep doesn't natively support subtitles on all platforms, so we combine them.
-	fullTitle := title
+func (n *BeeepNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
+	// beeep doesn't support subtitle separately, we join it with body
+	msg := body
 	if subtitle != "" {
-		fullTitle = fmt.Sprintf("%s: %s", title, subtitle)
+		msg = subtitle + ": " + body
 	}
 
-	// Beeep.Notify is already asynchronous on most platforms, but we follow our fire-and-forget pattern.
-	go func() {
-		// Use request context (WithoutCancel) to satisfy G118 while ensuring delivery.
-		backgroundCtx := context.WithoutCancel(ctx)
-		if err := beeep.Notify(fullTitle, body, ""); err != nil {
-			b.logger.WarnContext(backgroundCtx, "beeep notification failed", "error", err)
-		}
-	}()
-
-	return nil
+	return beeep.Alert(title, msg, "")
 }
 
-func (b *beeepNotifier) Shutdown(ctx context.Context) {}
+func (n *BeeepNotifier) Shutdown(ctx context.Context) {
+	n.logger.DebugContext(ctx, "beeep notifier shutdown complete")
+}
 
-func (b *beeepNotifier) Status() BridgeStatus {
-	return StatusHealthy
+func (n *BeeepNotifier) Status() types.BridgeStatus {
+	return n.status
 }

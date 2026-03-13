@@ -3,7 +3,6 @@ package types
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,14 +16,7 @@ var (
 )
 
 // RateLimitError provides detailed context for GitHub API quota exhaustion.
-type RateLimitError struct {
-	Resource   string
-	RetryAfter time.Duration
-}
-
-func (e *RateLimitError) Error() string {
-	return fmt.Sprintf("github: rate limit exceeded for %s (retry after %v)", e.Resource, e.RetryAfter)
-}
+type RateLimitError = models.RateLimitError
 
 // Re-export model types for convenience
 type Notification = models.Notification
