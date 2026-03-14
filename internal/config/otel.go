@@ -55,7 +55,7 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
-			semconv.SchemaURL,
+			"", // Omit schema URL to avoid conflicts with Default resource
 			semconv.ServiceName("gh-orbit"),
 			semconv.ServiceVersion(version),
 		),
