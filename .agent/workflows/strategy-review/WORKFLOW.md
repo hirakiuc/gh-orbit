@@ -29,7 +29,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 
 ### Phase A: Local Iteration (The Workbench)
 1. **[Worker] Selection**: Pick a target Issue from **Project #7** or `make roadmap`.
-2. **[Worker] Initialization**: Run `make task ID=<issue-id>` to automate the workbench setup.
+2. **[Worker] Initialization**: Run `make task ID="<issue-id>"` to automate the workbench setup.
    - *Note*: This resets **Revision** to 1 in `.agent/proposal.md`.
 3. **[User] Trigger**: The user instructs the Reviewer to start the review.
 4. **[Reviewer] Audit**: Read `.agent/issue.md` and `.agent/proposal.md`, then execute the `feedback` workflow.
@@ -41,9 +41,9 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 
 ### Phase B: GitHub Synchronization (The Record)
 8. **[Worker] Publish**: Post the *final, signed-off* content of `.agent/proposal.md` as a comment on the GitHub Issue.
-   - `gh issue comment <ID> --body-file .agent/proposal.md`
+   - `gh issue comment "<ID>" --body-file .agent/proposal.md`
 9. **[Worker] Branching**: Create the development branch linked to the issue.
-   - `gh issue develop <ID>`
+   - `gh issue develop "<ID>"`
 10. **[Worker] Implementation**: Execute the plan on the new branch.
 
 ## Rationale
