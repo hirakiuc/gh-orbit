@@ -21,7 +21,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 ### 2. Reviewer (Auditor)
 - **Responsibility**: Critiques the proposal for security, testability, and architecture.
 - **Workflow**: MUST execute the `.agent/workflows/feedback.md` workflow.
-- **Context**: MUST read `.agent/issue.md` to understand the goal before reviewing the proposal.
+- **Context Discovery**: MUST look for the "Reviewer Hint" in `.agent/proposal.md` and read the referenced context in `.agent/issue.md` before auditing.
 - **Output**: Results MUST be persisted to `.agent/feedback.md`.
 
 ---

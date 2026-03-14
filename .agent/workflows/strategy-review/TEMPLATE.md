@@ -3,6 +3,8 @@
 **Revision**: 1
 
 ## 1. Objective
+*Reviewer Hint: Read `.agent/issue.md` for the original GitHub Issue context before auditing this proposal.*
+
 High-level goal and problem statement.
 
 ## 2. Technical Strategy
