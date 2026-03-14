@@ -16,7 +16,7 @@
 3. **Verify**: Run `make build test lint` to establish a baseline.
 4. **Implement**: Follow the Strategy Review Workflow in `.agents/workflows/strategy-review/WORKFLOW.md`.
 5. **Validate**: Run `make generate test lint` after every major change.
-5. **Audit**: Run `gh orbit doctor` to verify environment health.
+6. **Audit**: Run `gh orbit doctor` to verify environment health.
 
 ### 2.2 Proactiveness & Agreements
 
