@@ -13,16 +13,16 @@ Use the `go-gh` library to interact with the GitHub API. This is the idiomatic w
 
 ```go
 import (
- "github.com/cli/go-gh/v2"
- "github.com/cli/go-gh/v2/pkg/api"
+    "github.com/cli/go-gh/v2"
+    "github.com/cli/go-gh/v2/pkg/api"
 )
 
 func main() {
- client, err := gh.RESTClient(nil)
- if err != nil {
-  log.Fatal(err)
- }
- // Use the client to make authenticated requests
+    client, err := gh.RESTClient(nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+    // Use the client to make authenticated requests
 }
 ```
 
