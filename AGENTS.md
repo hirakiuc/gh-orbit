@@ -14,7 +14,7 @@
 1. **Sync**: `git pull origin main` before starting any task.
 2. **Triage**: Run `make roadmap` to establish the current project state and pick the next target.
 3. **Verify**: Run `make build test lint` to establish a baseline.
-4. **Implement**: Follow the Strategy Review Workflow in `.agent/workflows/strategy-review/WORKFLOW.md`.
+4. **Implement**: Follow the Strategy Review Workflow in `.agents/workflows/strategy-review/WORKFLOW.md`.
 5. **Validate**: Run `make generate test lint` after every major change.
 5. **Audit**: Run `gh orbit doctor` to verify environment health.
 
