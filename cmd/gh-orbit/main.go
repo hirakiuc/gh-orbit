@@ -233,8 +233,11 @@ func runSync() error {
 	if err != nil {
 		return err
 	}
-	defer env.span.End()
 	defer func() { _ = env.logCleanup() }()
+	if env.otelCleanup != nil {
+		defer env.otelCleanup()
+	}
+	defer env.span.End()
 
 	res, err := initResources(ctx, env.logger)
 	if err != nil {
@@ -265,8 +268,11 @@ func runTUI() error {
 	if err != nil {
 		return err
 	}
-	defer env.span.End()
 	defer func() { _ = env.logCleanup() }()
+	if env.otelCleanup != nil {
+		defer env.otelCleanup()
+	}
+	defer env.span.End()
 
 	res, err := initResources(ctx, env.logger)
 	if err != nil {
@@ -367,7 +373,7 @@ func initResources(ctx context.Context, logger *slog.Logger) (*appResources, err
 }
 
 func launchTUI(ctx context.Context, env *environment, res *appResources) error {
-	lifecycle := api.NewAppLifecycle()
+	lifecycle := api.NewAppLifecycle(ctx)
 	defer lifecycle.Shutdown()
 
 	executor := api.NewOSCommandExecutor()

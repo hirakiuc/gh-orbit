@@ -14,8 +14,8 @@ type AppLifecycle struct {
 }
 
 // NewAppLifecycle creates a new lifecycle manager linked to system signals.
-func NewAppLifecycle() *AppLifecycle {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewAppLifecycle(parent context.Context) *AppLifecycle {
+	ctx, cancel := context.WithCancel(parent)
 
 	l := &AppLifecycle{
 		ctx:    ctx,
