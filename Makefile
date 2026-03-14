@@ -79,7 +79,7 @@ task:
 	@if [ -z "$(ID)" ]; then echo "Usage: make task ID=<issue-number>"; exit 1; fi
 	@echo "Initializing workbench for Issue #$(ID)..."
 	@rm -f .agents/issue.md .agents/proposal.md .agents/feedback.md
-	@gh issue view "$(ID)" --comments > .agents/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
+	@gh issue view "$(ID)" --json title,body,state,labels,milestone --template 'Title: {{.title}}\n\nBody: {{.body}}\n\nLabels: {{range .labels}}{{.name}} {{end}}\nMilestone: {{if .milestone}}{{.milestone.title}}{{else}}None{{end}}\nState: {{.state}}\n' > .agents/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
 	@cp .agents/workflows/strategy-review/TEMPLATE.md .agents/proposal.md
 	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/proposal.md
 	@echo "Workbench ready: .agents/issue.md and .agents/proposal.md initialized."
