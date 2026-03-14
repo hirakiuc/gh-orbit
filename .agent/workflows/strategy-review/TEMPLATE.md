@@ -5,6 +5,9 @@
 ## 1. Objective
 High-level goal and problem statement.
 
+### GitHub Issue Description
+> [Cache the original GitHub Issue description here to provide context for the Reviewer without additional API calls.]
+
 ## 2. Technical Strategy
 - **Architecture**: Impact on TUI, repository, or sync engine.
 - **Components**: [e.g., TUI, API, DB, Lifecycle, IPC]
