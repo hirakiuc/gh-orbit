@@ -1,32 +1,32 @@
-# Ignore all of .agent by default
-.agent/*
+# Ignore all of .agents by default
+.agents/*
 
 # Allow only specific persistent skills and workflows
-!.agent/skills/
-.agent/skills/*
-!.agent/skills/gh-extension-expert/
-.agent/skills/gh-extension-expert/*
-!.agent/skills/gh-extension-expert/SKILL.md
-!.agent/skills/gh-extension-expert/references/
-.agent/skills/gh-extension-expert/references/*
-!.agent/skills/gh-extension-expert/references/*.md
-#!.agent/skills/zenoh-expert/
-#.agent/skills/zenoh-expert/*
-#!.agent/skills/zenoh-expert/SKILL.md
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/gh-extension-expert/
+.agents/skills/gh-extension-expert/*
+!.agents/skills/gh-extension-expert/SKILL.md
+!.agents/skills/gh-extension-expert/references/
+.agents/skills/gh-extension-expert/references/*
+!.agents/skills/gh-extension-expert/references/*.md
+#!.agents/skills/zenoh-expert/
+#.agents/skills/zenoh-expert/*
+#!.agents/skills/zenoh-expert/SKILL.md
 
-!.agent/workflows/
-.agent/workflows/*.md
-!.agent/workflows/strategy-review/
-!.agent/workflows/strategy-review/*.md
+!.agents/workflows/
+.agents/workflows/*.md
+!.agents/workflows/strategy-review/
+!.agents/workflows/strategy-review/*.md
 
 # Explicitly ignore proposals and other transient agent files
-.agent/proposals/
-.agent/implementation_plan.md
-.agent/issue.md
-.agent/proposal.md
-.agent/feedback.md
+.agents/proposals/
+.agents/implementation_plan.md
+.agents/issue.md
+.agents/proposal.md
+.agents/feedback.md
 
-# End of .agent rules
+# End of .agents rules
 
 # Ignore serena files
 .serena/
