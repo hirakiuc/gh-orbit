@@ -25,18 +25,18 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 - **Output**: Results MUST be persisted to `.agent/feedback.md`.
 
 ---
-
 ## Procedure (The Hybrid Loop)
 
 ### Phase A: Local Iteration (The Workbench)
 1. **[Worker] Selection**: Pick a target Issue from **Project #7** or `make roadmap`.
-2. **[Worker] Context**: Fetch the GitHub Issue and save it to `.agent/issue.md`.
-3. **[Worker] Draft**: Initialize or overwrite `.agent/proposal.md` using `TEMPLATE.md`. 
-   - *Self-Correction*: Ensure the correct GitHub Issue ID and Revision number are included.
-4. **[User] Trigger**: The user instructs the Reviewer to start the review.
-5. **[Reviewer] Audit**: Read `.agent/issue.md` and `.agent/proposal.md`, then execute the `feedback` workflow.
-6. **[Worker] Refine**: Update `.agent/proposal.md` and increment the **Revision** number based on feedback.
+2. **[Worker] Initialization**: Run `make task ID=<issue-id>` to automate the workbench setup.
+   - *Note*: This resets **Revision** to 1 in `.agent/proposal.md`.
+3. **[User] Trigger**: The user instructs the Reviewer to start the review.
+4. **[Reviewer] Audit**: Read `.agent/issue.md` and `.agent/proposal.md`, then execute the `feedback` workflow.
+5. **[Reviewer] Persist**: Save findings to `.agent/feedback.md` and notify the Worker.
+6. **[Worker] Refine**: Update `.agent/proposal.md` and **increment the Revision number** based on feedback.
 7. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker. 
+
    - *Escape Hatch*: The User can provide direct approval if a stalemate occurs.
 
 ### Phase B: GitHub Synchronization (The Record)

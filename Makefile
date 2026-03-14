@@ -67,6 +67,15 @@ roadmap:
 	@echo "--- Active Issues by Milestone ---"
 	@gh issue list --search "state:open" --json milestone,number,title --jq '.[] | "[\(.milestone.title)] #\(.number) \(.title)"' | sort
 
+task:
+	@if [ -z "$(ID)" ]; then echo "Usage: make task ID=<issue-number>"; exit 1; fi
+	@echo "Initializing workbench for Issue #$(ID)..."
+	@rm -f .agent/issue.md .agent/proposal.md .agent/feedback.md
+	@gh issue view $(ID) --comments > .agent/issue.md
+	@cp .agent/workflows/strategy-review/TEMPLATE.md .agent/proposal.md
+	@sed -i '' 's/\[ID\]/$(ID)/g' .agent/proposal.md
+	@echo "Workbench ready: .agent/issue.md and .agent/proposal.md initialized."
+
 clean:
 	rm -rf bin/
 	rm -rf internal/api/mocks/
