@@ -10,6 +10,15 @@
 !.agents/skills/gh-extension-expert/references/
 .agents/skills/gh-extension-expert/references/*
 !.agents/skills/gh-extension-expert/references/*.md
+
+!.agents/skills/worker-role/
+.agents/skills/worker-role/*
+!.agents/skills/worker-role/SKILL.md
+
+!.agents/skills/reviewer-role/
+.agents/skills/reviewer-role/*
+!.agents/skills/reviewer-role/SKILL.md
+
 #!.agents/skills/zenoh-expert/
 #.agents/skills/zenoh-expert/*
 #!.agents/skills/zenoh-expert/SKILL.md
