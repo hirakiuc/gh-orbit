@@ -22,6 +22,9 @@
 # Explicitly ignore proposals and other transient agent files
 .agent/proposals/
 .agent/implementation_plan.md
+.agent/issue.md
+.agent/proposal.md
+.agent/feedback.md
 
 # End of .agent rules
 
