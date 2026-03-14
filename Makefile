@@ -3,7 +3,15 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.11.3
 
-.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage coverage-summary artifacts
+# OS-specific sed handling
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    SED_INPLACE := sed -i ''
+else
+    SED_INPLACE := sed -i
+endif
+
+.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage coverage-summary artifacts roadmap task
 
 all: build
 
@@ -59,6 +67,22 @@ generate:
 serena:
 	@echo "Starting Serena MCP server..."
 	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+
+roadmap:
+	@echo "--- Project Roadmap (GitHub Milestones) ---"
+	@gh api repos/:owner/:repo/milestones --jq '.[] | "[\(.number)] \(.title) (\(.state)) - \(.open_issues) open, \(.closed_issues) closed"'
+	@echo ""
+	@echo "--- Active Issues by Milestone ---"
+	@gh issue list --search "state:open" --json milestone,number,title --jq '.[] | "[\(.milestone.title)] #\(.number) \(.title)"' | sort
+
+task:
+	@if [ -z "$(ID)" ]; then echo "Usage: make task ID=<issue-number>"; exit 1; fi
+	@echo "Initializing workbench for Issue #$(ID)..."
+	@rm -f .agent/issue.md .agent/proposal.md .agent/feedback.md
+	@gh issue view "$(ID)" --comments > .agent/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
+	@cp .agent/workflows/strategy-review/TEMPLATE.md .agent/proposal.md
+	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agent/proposal.md
+	@echo "Workbench ready: .agent/issue.md and .agent/proposal.md initialized."
 
 clean:
 	rm -rf bin/
