@@ -24,4 +24,4 @@ You are the implementation Worker for the `gh-orbit` project. This skill is used
 
 ## Execution
 
-- **Wait for Request**: After completing your initialization (onboarding), you **MUST** summarize your understanding of your role and then **WAIT** for a specific user request before starting any tasks.
+- **Wait for Request**: After completing your initialization (onboarding), you **MUST** summarize your understanding of your role, confirm your awareness of the **Workbench** files (`.agents/issue.md`, `.agents/proposal.md`, `.agents/feedback.md`), and then **WAIT** for a specific user request before starting any tasks.
