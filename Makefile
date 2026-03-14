@@ -60,6 +60,13 @@ serena:
 	@echo "Starting Serena MCP server..."
 	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server
 
+roadmap:
+	@echo "--- Project Roadmap (GitHub Milestones) ---"
+	@gh api repos/:owner/:repo/milestones --jq '.[] | "[\(.number)] \(.title) (\(.state)) - \(.open_issues) open, \(.closed_issues) closed"'
+	@echo ""
+	@echo "--- Active Issues by Milestone ---"
+	@gh issue list --search "state:open" --json milestone,number,title --jq '.[] | "[\(.milestone.title)] #\(.number) \(.title)"' | sort
+
 clean:
 	rm -rf bin/
 	rm -rf internal/api/mocks/
