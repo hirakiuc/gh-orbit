@@ -13,11 +13,13 @@ To minimize coordination overhead between agents, this workflow uses two static 
 ### 1. Worker (Author)
 - **Responsibility**: Researches the codebase and drafts the implementation plan.
 - **Goal**: Propose a surgical solution that adheres to `AGENTS.md` and `GEMINI.md`.
+- **Knowledge Acquisition**: Actively research required knowledge online. If information remains insufficient, **Ask the User**.
 - **Primary Tool**: `.agent/proposal.md` (Overwritten per task).
 
 ### 2. Reviewer (Auditor)
 - **Responsibility**: Critiques the proposal for security, testability, and architecture.
 - **Workflow**: MUST execute the `.agent/workflows/feedback.md` workflow.
+- **Context**: MUST retrieve the target GitHub Issue description for full context before reviewing.
 - **Output**: Results MUST be persisted to `.agent/feedback.md`.
 
 ---
@@ -27,12 +29,13 @@ To minimize coordination overhead between agents, this workflow uses two static 
 ### Phase A: Local Iteration (The Workbench)
 1. **[Worker] Selection**: Pick a target Issue from **Project #7** or `make roadmap`.
 2. **[Worker] Draft**: Initialize or overwrite `.agent/proposal.md` using `TEMPLATE.md`. 
-   - *Self-Correction*: Ensure the correct GitHub Issue ID is included in the header.
-3. **[Worker] Request Review**: Signal the Reviewer to audit `.agent/proposal.md`.
+   - *Self-Correction*: Ensure the correct GitHub Issue ID and Revision number are included.
+3. **[User] Trigger**: The user instructs the Reviewer to start the review.
 4. **[Reviewer] Audit**: Execute the `feedback` workflow against `.agent/proposal.md`.
 5. **[Reviewer] Persist**: Save findings to `.agent/feedback.md` and notify the Worker.
-6. **[Worker] Refine**: Update `.agent/proposal.md` based on `.agent/feedback.md`.
-7. **[Reviewer] Sign-off**: Once satisfied, provide the exact marker in the proposal: **SIGN-OFF**.
+6. **[Worker] Refine**: Update `.agent/proposal.md` and increment the **Revision** number based on feedback.
+7. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker. 
+   - *Escape Hatch*: The User can provide direct approval if a stalemate occurs.
 
 ### Phase B: GitHub Synchronization (The Record)
 8. **[Worker] Publish**: Post the *final, signed-off* content of `.agent/proposal.md` as a comment on the GitHub Issue.
@@ -45,3 +48,4 @@ To minimize coordination overhead between agents, this workflow uses two static 
 - **Zero-Config Coordination**: Agents always know exactly which files to read/write without human intervention.
 - **Clean Workspace**: Only the active task's design state exists locally.
 - **Permanent Archive**: The GitHub Issue provides the historical design context, allowing local cleanup.
+- **Robustness**: Online research and User-led triggers ensure agents don't hallucinate or loop infinitely.
