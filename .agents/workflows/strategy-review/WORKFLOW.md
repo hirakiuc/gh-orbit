@@ -31,7 +31,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 ### Phase A: Local Iteration (The Workbench)
 1. **[Worker] Selection**: Pick a target Issue from **Project #7** or `make roadmap`.
 2. **[Worker] Initialization**: Run `make task ID="<issue-id>"` to automate the workbench setup.
-   - *Note*: This resets **Revision** to 1 in `.agents/proposal.md`.
+   - *Note*: This **resets Revision to 1** in `.agents/proposal.md`.
 3. **[User] Trigger**: The user instructs the Reviewer to start the review.
 4. **[Reviewer] Audit**: Read `.agents/issue.md` and `.agents/proposal.md`, then execute the `feedback` workflow.
 5. **[Reviewer] Persist**: Save findings to `.agents/feedback.md` and notify the Worker.
