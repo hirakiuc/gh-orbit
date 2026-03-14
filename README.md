@@ -2,6 +2,9 @@
 
 **Manage your GitHub notifications without leaving the terminal.**
 
+> [!IMPORTANT]
+> This project is currently under active development. There is no official support provided at this time.
+
 `gh-orbit` is a GitHub CLI extension that provides a high-performance TUI for triaging notifications. It's designed for speed, security, and "Zero-Config" ease of use.
 
 ---
