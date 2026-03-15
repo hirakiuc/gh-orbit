@@ -66,7 +66,7 @@ generate:
 
 serena:
 	@echo "Starting Serena MCP server..."
-	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server --transport streamable-http --host localhost --port 9121 --project . --context ide-assistant
 
 roadmap:
 	@echo "--- Project Roadmap (GitHub Milestones) ---"
