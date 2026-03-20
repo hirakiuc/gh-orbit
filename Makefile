@@ -3,6 +3,11 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.11.3
 
+# Sandbox-native development environment
+PROJECT_TMP ?= $(CURDIR)/tmp
+export GOCACHE ?= $(PROJECT_TMP)/go-cache
+export GOLANGCI_LINT_CACHE ?= $(PROJECT_TMP)/lint-cache
+
 # OS-specific sed handling
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
@@ -11,31 +16,35 @@ else
     SED_INPLACE := sed -i
 endif
 
-.PHONY: all build release-build test lint vulncheck fmt clean help generate serena coverage coverage-summary artifacts roadmap task
+.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task
 
 all: build
 
-build:
+# Ensure sandbox directory structure
+$(PROJECT_TMP):
+	@mkdir -p $(PROJECT_TMP)
+
+build: $(PROJECT_TMP)
 	go build -o bin/$(BINARY_NAME) $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		echo "Ad-hoc signing binary for macOS..."; \
 		codesign -f -s - bin/$(BINARY_NAME); \
 	fi
 
-coverage:
-	go test -coverprofile=coverage.out ./...
-	grep -vE "mock_|types/|cmd/gh-orbit" coverage.out > coverage.filtered.out
-	go tool cover -html=coverage.filtered.out -o coverage.html
-	@echo "Coverage report generated at coverage.html (filtered)"
+coverage: $(PROJECT_TMP)
+	go test -coverprofile=$(PROJECT_TMP)/coverage.out ./...
+	grep -vE "mock_|types/|cmd/gh-orbit" $(PROJECT_TMP)/coverage.out > $(PROJECT_TMP)/coverage.filtered.out
+	go tool cover -html=$(PROJECT_TMP)/coverage.filtered.out -o $(PROJECT_TMP)/coverage.html
+	@echo "Coverage report generated at $(PROJECT_TMP)/coverage.html (filtered)"
 
 coverage-summary: coverage
-	go tool cover -func=coverage.filtered.out
+	go tool cover -func=$(PROJECT_TMP)/coverage.filtered.out
 
-artifacts:
+artifacts: $(PROJECT_TMP)
 	@mkdir -p artifacts
 	go test -v -artifacts ./...
 
-release-build:
+release-build: $(PROJECT_TMP)
 	GOOS=darwin GOARCH=amd64 go build -o bin/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then codesign -f -s - bin/$(BINARY_NAME)-darwin-amd64; fi
 	GOOS=darwin GOARCH=arm64 go build -o bin/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
@@ -44,20 +53,20 @@ release-build:
 	GOOS=linux GOARCH=arm64 go build -o bin/$(BINARY_NAME)-linux-arm64 $(CMD_PATH)
 	GOOS=windows GOARCH=amd64 go build -o bin/$(BINARY_NAME)-windows-amd64.exe $(CMD_PATH)
 
-test:
+test: $(PROJECT_TMP)
 	go test -v ./...
 
-lint:
+lint: $(PROJECT_TMP)
 	golangci-lint run ./...
 	$(MAKE) lint-docs
 
 lint-docs:
 	markdownlint-cli2
 
-vulncheck:
+vulncheck: $(PROJECT_TMP)
 	govulncheck ./...
 
-fmt:
+fmt: $(PROJECT_TMP)
 	gofumpt -l -w .
 
 generate:
@@ -84,7 +93,12 @@ task:
 	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/proposal.md
 	@echo "Workbench ready: .agents/issue.md and .agents/proposal.md initialized."
 
-clean:
+clean-tmp:
+	@echo "Cleaning up local sandbox directory..."
+	rm -rf $(PROJECT_TMP)/*
+	@touch $(PROJECT_TMP)/.gitkeep
+
+clean: clean-tmp
 	rm -rf bin/
 	rm -rf internal/api/mocks/
 	go clean
@@ -100,3 +114,4 @@ help:
 	@echo "  vulncheck     - Run govulncheck for security"
 	@echo "  fmt           - Format code with gofumpt"
 	@echo "  clean         - Remove build artifacts"
+	@echo "  clean-tmp     - Remove project-local sandbox files"
