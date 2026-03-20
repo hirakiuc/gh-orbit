@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/buildinfo"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -179,7 +180,7 @@ func (a *AlertService) RefreshBridgeHealth(ctx context.Context) (types.BridgeSta
 		Status:        string(types.StatusHealthy),
 		OSVersion:     osVersion,
 		BinaryPath:    execPath,
-		BinaryVersion: "1.0.0",
+		BinaryVersion: buildinfo.Version,
 		UpdatedAt:     time.Now(),
 	})
 

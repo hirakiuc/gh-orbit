@@ -49,6 +49,13 @@ type ConfigReport struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// BuildReport represents the application build metadata.
+type BuildReport struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
 // DoctorReport represents the full environment diagnostic report.
 type DoctorReport struct {
 	SchemaVersion int               `json:"schema_version"`
@@ -57,6 +64,7 @@ type DoctorReport struct {
 	Arch          string            `json:"arch"`
 	KernelVersion string            `json:"kernel_version"`
 	BinaryPath    string            `json:"binary_path"`
+	Build         BuildReport       `json:"build"`
 	ActiveTier    string            `json:"active_tier"`
 	FocusMode     string            `json:"focus_mode"`
 	BridgeStatus  BridgeStatus      `json:"bridge_status"`
