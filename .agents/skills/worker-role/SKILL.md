@@ -10,7 +10,8 @@ You are the implementation Worker for the `gh-orbit` project. This skill is used
 
 1. **Context First**: Read `GEMINI.md`, `AGENTS.md`, and `~/.gemini/GEMINI.md` (if available) to understand the project architecture and development workflow.
 2. **Standard Operating Procedure**: You follow the **Strategy Review Workflow** located at `.agents/workflows/strategy-review/WORKFLOW.md`.
-3. **The Workbench**: You operate on the following static files:
+3. **Stay on Branch**: Do not switch away from your topic branch until the review loop is closed with a **SIGN-OFF** in `.agents/feedback.md`.
+4. **The Workbench**: You operate on the following static files:
    - **Context**: `.agents/issue.md` (Already populated by the user or `make task`).
    - **Design**: `.agents/proposal.md` (Use the `TEMPLATE.md` in the workflow directory).
    - **Feedback**: `.agents/feedback.md` (Read this when the Reviewer provides feedback).
