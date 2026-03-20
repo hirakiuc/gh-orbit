@@ -9,5 +9,8 @@
     "serena": {
       "httpUrl": "http://127.0.0.1:9121/mcp"
     }
+  },
+  "tools": {
+    "sandbox": true
   }
 }
