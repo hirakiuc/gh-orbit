@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -145,10 +144,9 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 			"count", len(notifications))
 
 		var newlyDiscoveredIDs []string
-		var upsertErrs []error
-
+		var triageNotifications []triage.Notification
 		for _, n := range notifications {
-			err := s.db.UpsertNotification(ctx, triage.Notification{
+			triageNotifications = append(triageNotifications, triage.Notification{
 				GitHubID:           n.ID,
 				SubjectTitle:       n.Subject.Title,
 				SubjectURL:         n.Subject.URL,
@@ -159,11 +157,14 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 				HTMLURL:            "", // Will be enriched in later phases if needed
 				UpdatedAt:          n.UpdatedAt,
 			})
-			if err != nil {
-				upsertErrs = append(upsertErrs, fmt.Errorf("failed to save notification %s: %w", n.ID, err))
-				continue
-			}
+		}
 
+		if err := s.db.UpsertNotifications(ctx, triageNotifications); err != nil {
+			s.logger.ErrorContext(ctx, "sync: failed to batch upsert notifications", "error", err)
+			return rlInfo, err
+		}
+
+		for _, n := range notifications {
 			// We only trigger alerts for notifications arriving AFTER the established baseline
 			// AND that we haven't notified for yet.
 			state, err := s.db.GetNotification(ctx, n.ID)
@@ -179,10 +180,6 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 				// Mark as "processed" even if alert failed (to prevent infinite retry storm)
 				newlyDiscoveredIDs = append(newlyDiscoveredIDs, n.ID)
 			}
-		}
-
-		if len(upsertErrs) > 0 {
-			return rlInfo, errors.Join(upsertErrs...)
 		}
 
 		// Batch mark as notified to preserve baseline state

@@ -123,7 +123,7 @@ type ErrMsg struct{ Err error }
 type SyncRepository interface {
 	GetSyncMeta(ctx context.Context, userID, key string) (*models.SyncMeta, error)
 	UpdateSyncMeta(ctx context.Context, s models.SyncMeta) error
-	UpsertNotification(ctx context.Context, n triage.Notification) error
+	UpsertNotifications(ctx context.Context, notifications []triage.Notification) error
 	GetNotification(ctx context.Context, id string) (*triage.NotificationWithState, error)
 	MarkNotifiedBatch(ctx context.Context, ids []string) error
 }

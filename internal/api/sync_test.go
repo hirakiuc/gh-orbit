@@ -42,7 +42,7 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(meta, nil).Once()
 		mockAlerter.EXPECT().SyncStart(mock.Anything).Return().Once()
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, meta, false).Return(notifs, meta, models.RateLimitInfo{}, nil).Once()
-		mockRepo.EXPECT().UpsertNotification(mock.Anything, mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().UpsertNotifications(mock.Anything, mock.Anything).Return(nil).Once()
 		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&triage.NotificationWithState{
 			State: triage.State{IsNotified: false},
 		}, nil).Once()

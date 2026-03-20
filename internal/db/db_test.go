@@ -35,7 +35,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 		UpdatedAt:          time.Now(),
 	}
 
-	err = db.UpsertNotification(ctx, notif)
+	err = db.UpsertNotifications(ctx, []triage.Notification{notif})
 	require.NoError(t, err)
 
 	// Verify retrieval
@@ -47,6 +47,43 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	assert.Equal(t, 0, ns.Priority)
 	assert.Equal(t, "entry", ns.Status)
 	assert.False(t, ns.IsReadLocally)
+}
+
+func TestUpsertNotificationsBatch(t *testing.T) {
+	logger := slog.Default()
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	notifs := []triage.Notification{
+		{
+			GitHubID:           "1",
+			SubjectTitle:       "PR 1",
+			SubjectType:        "PullRequest",
+			RepositoryFullName: "owner/repo",
+			UpdatedAt:          time.Now(),
+		},
+		{
+			GitHubID:           "2",
+			SubjectTitle:       "PR 2",
+			SubjectType:        "PullRequest",
+			RepositoryFullName: "owner/repo",
+			UpdatedAt:          time.Now(),
+		},
+	}
+
+	err = db.UpsertNotifications(ctx, notifs)
+	require.NoError(t, err)
+
+	// Verify both exist
+	n1, err := db.GetNotification(ctx, "1")
+	require.NoError(t, err)
+	assert.Equal(t, "PR 1", n1.SubjectTitle)
+
+	n2, err := db.GetNotification(ctx, "2")
+	require.NoError(t, err)
+	assert.Equal(t, "PR 2", n2.SubjectTitle)
 }
 
 func TestUpsertPreservesLocalState(t *testing.T) {
@@ -62,7 +99,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	require.NoError(t, db.UpsertNotification(ctx, notif))
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{notif}))
 
 	// Manually set some triage state
 	err = db.UpdateOrbitState(ctx, triage.State{
@@ -74,7 +111,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	require.NoError(t, err)
 
 	// Upsert again (as if from a new poll)
-	require.NoError(t, db.UpsertNotification(ctx, notif))
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{notif}))
 
 	// Verify triage state was NOT overwritten
 	ns, err := db.GetNotification(ctx, id)
@@ -94,12 +131,14 @@ func TestMarkNotifiedBatch(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ids := []string{"1", "2", "3"}
+	var batch []triage.Notification
 	for _, id := range ids {
-		require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
+		batch = append(batch, triage.Notification{
 			GitHubID:  id,
 			UpdatedAt: time.Now(),
-		}))
+		})
 	}
+	require.NoError(t, db.UpsertNotifications(ctx, batch))
 
 	// Batch mark
 	require.NoError(t, db.MarkNotifiedBatch(ctx, ids))
@@ -121,10 +160,10 @@ func TestRepository_Actions(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "action-test"
-	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
 		GitHubID:  id,
 		UpdatedAt: time.Now(),
-	}))
+	}}))
 
 	// 1. Set Priority
 	require.NoError(t, db.SetPriority(ctx, id, 2))
@@ -181,10 +220,10 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "enrich-test"
-	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
 		GitHubID:  id,
 		UpdatedAt: time.Now(),
-	}))
+	}}))
 
 	// 1. Enrich Notification (Combined body, author, etc)
 	require.NoError(t, db.EnrichNotification(ctx, id, "Some body", "author", "https://github.com/u", "OPEN"))
@@ -282,11 +321,11 @@ func TestRepository_UpdateByNodeID(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	id := "node-test"
-	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
 		GitHubID:      id,
 		SubjectNodeID: "node-123",
 		UpdatedAt:     time.Now(),
-	}))
+	}}))
 
 	// 1. Update Resource State by Node ID
 	require.NoError(t, db.UpdateResourceStateByNodeID(ctx, "node-123", "MERGED"))
@@ -402,8 +441,8 @@ func TestListNotifications(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{GitHubID: "1", UpdatedAt: time.Now()}))
-	require.NoError(t, db.UpsertNotification(ctx, triage.Notification{GitHubID: "2", UpdatedAt: time.Now()}))
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{GitHubID: "1", UpdatedAt: time.Now()}}))
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{GitHubID: "2", UpdatedAt: time.Now()}}))
 
 	list, err := db.ListNotifications(ctx)
 	require.NoError(t, err)
