@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -324,6 +325,39 @@ func TestMigration_AtomicMove(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "Source directory should be cleaned up")
 }
 
+func TestMigration_ExistingDest(t *testing.T) {
+	logger := slog.Default()
+	ctx := context.Background()
+
+	srcDir := t.TempDir()
+	destDir := t.TempDir() + "/target"
+
+	// 1. Create dummy data in source
+	fPath := srcDir + "/test.db"
+	require.NoError(t, os.WriteFile(fPath, []byte("sqlite-data"), 0o600))
+
+	// 2. Simulate doctor bug: create an empty destination directory
+	require.NoError(t, os.MkdirAll(destDir, 0700))
+
+	// 3. Perform atomic move
+	err := performAtomicMove(ctx, logger, srcDir, destDir)
+	require.NoError(t, err, "Migration should succeed even if destDir exists")
+
+	// 4. Verify
+	_, err = os.Stat(destDir + "/test.db")
+	assert.NoError(t, err, "File should exist in destination")
+
+	_, err = os.Stat(srcDir)
+	assert.True(t, os.IsNotExist(err), "Source directory should be cleaned up")
+
+	// Ensure no backup directories are left behind (approximately)
+	entries, err := os.ReadDir(filepath.Dir(destDir))
+	require.NoError(t, err)
+	for _, entry := range entries {
+		assert.False(t, entry.IsDir() && filepath.HasPrefix(entry.Name(), "target.bak."), "Backup directory should be cleaned up: %s", entry.Name())
+	}
+}
+
 func TestMigration_HashAndCopy(t *testing.T) {
 	// Test computeDirHash and copyDir
 	dir := t.TempDir()
@@ -345,11 +379,13 @@ func TestOpen_Success(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
-	// Mock userHome to use temp dir
+	// Mock userHome and XDG env for temp isolation
 	tmpHome := t.TempDir()
 	originalUserHome := userHome
 	userHome = func() (string, error) { return tmpHome, nil }
 	t.Cleanup(func() { userHome = originalUserHome })
+
+	t.Setenv("XDG_DATA_HOME", tmpHome)
 
 	// Test Open
 	db, err := Open(ctx, logger)
