@@ -257,9 +257,13 @@ type detailLoadedMsg struct {
 	ResourceState string
 }
 
-type actionCompleteMsg struct{}
-type clearStatusMsg struct{}
-type viewportEnrichMsg struct{}
+type (
+	actionCompleteMsg struct{}
+	clearStatusMsg    struct{}
+	viewportEnrichMsg struct{}
+)
 
-type pollTickMsg struct{ ID uint64 }
-type clockTickMsg struct{ ID uint64 }
+type (
+	pollTickMsg  struct{ ID uint64 }
+	clockTickMsg struct{ ID uint64 }
+)

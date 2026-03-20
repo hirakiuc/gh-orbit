@@ -41,12 +41,12 @@ type APITrafficController struct {
 	low  chan *apiTask
 
 	// Rate Limit State
-	rlInfo           atomic.Pointer[models.RateLimitInfo]
-	lockoutUntil     atomic.Pointer[time.Time]
+	rlInfo       atomic.Pointer[models.RateLimitInfo]
+	lockoutUntil atomic.Pointer[time.Time]
 
 	// Workers
-	workerLimit   int32
-	done          chan struct{}
+	workerLimit int32
+	done        chan struct{}
 
 	rateLimitUpdates chan models.RateLimitInfo
 }
@@ -180,7 +180,7 @@ func (c *APITrafficController) runTask(t *apiTask) {
 
 	// Dynamic Throttling: Skip low-priority enrichment if quota is critical
 	if t.priority == PriorityEnrich && c.Remaining() < 500 {
-		c.logger.WarnContext(t.ctx, "traffic controller: skipping enrichment due to low quota", 
+		c.logger.WarnContext(t.ctx, "traffic controller: skipping enrichment due to low quota",
 			"task_id", t.id, "remaining", c.Remaining(), "threshold", 500)
 		t.resp <- nil
 		return

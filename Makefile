@@ -16,9 +16,12 @@ else
     SED_INPLACE := sed -i
 endif
 
-.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task
+.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task check
 
 all: build
+
+# Unified quality check
+check: fmt lint test
 
 # Ensure sandbox directory structure
 $(PROJECT_TMP):
@@ -115,3 +118,4 @@ help:
 	@echo "  fmt           - Format code with gofumpt"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  clean-tmp     - Remove project-local sandbox files"
+	@echo "  check         - Run fmt, lint, and test (fail-fast)"
