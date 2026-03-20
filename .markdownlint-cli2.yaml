@@ -10,6 +10,7 @@ globs:
   - "!.entire/**"
   - "!.git/**"
   - "!node_modules/**"
+  - "!tmp/**"
 
 # Rule configurations (Inherited from defaults, can be overridden here)
 config:
