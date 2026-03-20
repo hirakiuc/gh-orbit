@@ -351,6 +351,8 @@ func TestOpen_Success(t *testing.T) {
 	userHome = func() (string, error) { return tmpHome, nil }
 	t.Cleanup(func() { userHome = originalUserHome })
 
+	t.Setenv("XDG_DATA_HOME", tmpHome)
+
 	// Test Open
 	db, err := Open(ctx, logger)
 	require.NoError(t, err)

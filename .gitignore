@@ -37,6 +37,10 @@
 
 # End of .agents rules
 
+# Temporary directory
+/tmp/*
+!/tmp/.gitkeep
+
 # Ignore serena files
 .serena/
 
