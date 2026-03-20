@@ -4,7 +4,7 @@
 # Glob expressions to include/exclude
 globs:
   - "**/*.md"
-  - "!.agent/**"
+  - "!.agents/**"
   - "!.serena/**"
   - "!.gemini/**"
   - "!.entire/**"
