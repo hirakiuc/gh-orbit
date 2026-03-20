@@ -25,7 +25,7 @@ func TestAppLifecycle_ContextInheritance(t *testing.T) {
 	// Verify cancellation propagation
 	parentCtx, cancel := context.WithCancel(context.Background())
 	l2 := NewAppLifecycle(parentCtx)
-	
+
 	cancel()
 
 	select {
