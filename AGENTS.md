@@ -37,7 +37,19 @@
 - **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow.
 - **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`.
 
-## 3. Implementation Patterns
+## 3. Sandbox & Environment Constraints
+
+This project enforces a restricted sandbox for AI agents (e.g., via macOS Seatbelt).
+
+- **Mandatory ./tmp usage**: All caching, build artifacts, and transient files MUST reside in the project-local `./tmp` directory.
+- **Environment Redirection**: When executing shell commands, you must ensure that tool-specific caches are redirected:
+  - **Go**: `GOCACHE=$(pwd)/tmp/go-cache`
+  - **Linters**: `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
+  - **System Tmp**: `TMPDIR=$(pwd)/tmp`
+- **Rationale**: This ensures that agent file modifications are isolated to the project's boundary and remain compliant with global security policies.
+- **Troubleshooting**: If you encounter "Operation not permitted" or "Permission denied" when running a shell command, it is a signal that you are attempting an action outside the sandbox. Adjust your command to use project-local paths or consult the `Makefile` for pre-configured targets.
+
+## 4. Implementation Patterns
 
 - **Dependency Injection**: Always use interface-based DI for service orchestration.
 - **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
@@ -47,7 +59,7 @@
   - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
 - Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
 
-## 4. Reliability & Precision Rules
+## 5. Reliability & Precision Rules
 
 - **API Verification**: Always run `go doc <package>.<symbol>` before implementing calls to external libraries (especially `v2+` versions) to ensure 100% signature and behavior accuracy.
 - **Surgical Refactoring**: For large controller or logic files (>200 lines, e.g., `update.go`), prioritize the use of `replace` or `insert_after_symbol` instead of `write_file` to prevent accidental feature regressions (logic erasure).

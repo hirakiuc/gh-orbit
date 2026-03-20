@@ -24,3 +24,15 @@ Mandatory adherence to the [Strategy Review Workflow](.agent/workflows/strategy-
 ### 2.4 Reviewer Plan Mode
 
 When acting as a Reviewer, you should use `enter_plan_mode` for the research and analysis phase. Use this phase to read source files and perform online research (`google_web_search`, `web_fetch`) for latest best practices. Since Plan Mode prevents all file writes, you must finalize your analysis and then transition to active mode strictly to write your findings to `.agents/feedback.md`.
+
+### 2.5 Sandbox & macOS Seatbelt
+
+This project is configured with a restricted sandbox for AI tools (macOS Seatbelt). 
+
+- **Operation not permitted**: If you encounter this error (or "Permission denied") when running shell commands, it is likely due to sandbox constraints. Do not attempt to work around these by modifying system paths.
+- **Mandatory ./tmp usage**: You MUST use the project's `./tmp` directory for all caches and transient files.
+- **Environment Variables**: Always prepend or export the following when running build or test tools:
+  - `GOCACHE=$(pwd)/tmp/go-cache`
+  - `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
+  - `TMPDIR=$(pwd)/tmp`
+- **Prefer Makefile**: Use `make` targets (e.g., `make build`, `make test`, `make lint`) as they are already configured to respect these sandbox-friendly paths.
