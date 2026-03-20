@@ -30,7 +30,12 @@
 ### 2.3 Branch Persistence
 
 - **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction to do so. This ensures you remain in the correct context for iterating on reviewer feedback.
-- **Completion**: A task is only considered complete when the pull request is merged or the user directs you to move to a new task.
+- Completion: A task is only considered complete when the pull request is merged or the user directs you to move to a new task.
+
+### 2.4 Role Boundaries
+
+- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow.
+- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`.
 
 ## 3. Implementation Patterns
 
