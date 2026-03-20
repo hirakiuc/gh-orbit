@@ -252,6 +252,10 @@ func (m *Model) applyFilters() {
 			}
 		}
 
+		if keep && !m.isNotificationWithinVisibleAge(n, time.Now()) {
+			keep = false
+		}
+
 		if keep {
 			filtered = append(filtered, item{notification: n})
 		}
@@ -278,6 +282,23 @@ func (m *Model) applyFilters() {
 			}
 		}
 	}
+}
+
+func (m *Model) isNotificationWithinVisibleAge(n triage.NotificationWithState, now time.Time) bool {
+	maxVisibleAgeDays := m.maxVisibleNotificationAgeDays()
+	if maxVisibleAgeDays == 0 || n.UpdatedAt.IsZero() {
+		return true
+	}
+
+	cutoff := now.AddDate(0, 0, -maxVisibleAgeDays)
+	return !n.UpdatedAt.Before(cutoff)
+}
+
+func (m *Model) maxVisibleNotificationAgeDays() int {
+	if m.config == nil {
+		return 0
+	}
+	return m.config.Notifications.MaxVisibleAgeDays
 }
 
 func (m *Model) toggleResourceFilter(resType, label string) {

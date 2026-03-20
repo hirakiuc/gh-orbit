@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // keyPress is a helper to create a KeyPressMsg for tests.
@@ -113,6 +115,7 @@ func TestModel_Transition_Navigation(t *testing.T) {
 			GitHubID:    "1",
 			SubjectURL:  "https://api.github.com/repos/o/r/pulls/1",
 			SubjectType: "PullRequest",
+			UpdatedAt:   time.Now(),
 		},
 	}
 	m.allNotifications = []triage.NotificationWithState{notif}
@@ -179,8 +182,8 @@ func TestModel_Transition_Enrichment(t *testing.T) {
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notifs := []triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "1", IsEnriched: false}},
-		{Notification: triage.Notification{GitHubID: "2", IsEnriched: false}},
+		{Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()}},
+		{Notification: triage.Notification{GitHubID: "2", IsEnriched: false, UpdatedAt: time.Now()}},
 	}
 	m.allNotifications = notifs
 	m.applyFilters()
@@ -222,6 +225,85 @@ func TestModel_Transition_Filtering(t *testing.T) {
 	// 2. Toggle off
 	_ = m.Transition(msg, 0)
 	assert.Equal(t, "", m.listView.resourceFilter)
+}
+
+func TestModel_ApplyFilters_HidesNotificationsOlderThanConfiguredDays(t *testing.T) {
+	m := newTestModel(t)
+	m.listView.activeTab = TabAll
+	m.config.Notifications.MaxVisibleAgeDays = 365
+
+	oldNotification := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "old",
+			SubjectType: "PullRequest",
+			UpdatedAt:   daysAgo(366),
+		},
+	}
+	recentNotification := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "recent",
+			SubjectType: "PullRequest",
+			UpdatedAt:   daysAgo(30),
+		},
+	}
+
+	m.allNotifications = []triage.NotificationWithState{oldNotification, recentNotification}
+	m.applyFilters()
+
+	require.Len(t, m.listView.list.Items(), 1)
+	item, ok := m.listView.list.Items()[0].(item)
+	require.True(t, ok)
+	assert.Equal(t, "recent", item.notification.GitHubID)
+}
+
+func TestModel_ApplyFilters_ZeroVisibleAgeDaysDisablesCutoff(t *testing.T) {
+	m := newTestModel(t)
+	m.listView.activeTab = TabAll
+	m.config.Notifications.MaxVisibleAgeDays = 0
+
+	m.allNotifications = []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "old", SubjectType: "PullRequest", UpdatedAt: daysAgo(900)}},
+		{Notification: triage.Notification{GitHubID: "recent", SubjectType: "PullRequest", UpdatedAt: daysAgo(30)}},
+	}
+	m.applyFilters()
+
+	assert.Len(t, m.listView.list.Items(), 2)
+}
+
+func TestModel_ApplyFilters_UsesGitHubUpdatedAtInsteadOfRecentLocalActivity(t *testing.T) {
+	m := newTestModel(t)
+	m.listView.activeTab = TabAll
+	m.config.Notifications.MaxVisibleAgeDays = 365
+
+	oldButRecentlyTouched := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:      "old",
+			SubjectType:   "PullRequest",
+			UpdatedAt:     daysAgo(500),
+			IsEnriched:    true,
+			EnrichedAt:    sql.NullTime{Time: time.Now(), Valid: true},
+			ResourceState: "OPEN",
+		},
+		State: triage.State{
+			Priority:      3,
+			IsReadLocally: true,
+		},
+	}
+	recentNotification := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "recent",
+			SubjectType: "PullRequest",
+			UpdatedAt:   daysAgo(10),
+		},
+	}
+
+	m.allNotifications = []triage.NotificationWithState{oldButRecentlyTouched, recentNotification}
+	m.applyFilters()
+
+	require.Len(t, m.listView.list.Items(), 1)
+	item, ok := m.listView.list.Items()[0].(item)
+	require.True(t, ok)
+	assert.Equal(t, "recent", item.notification.GitHubID)
 }
 
 func TestHelpers(t *testing.T) {
