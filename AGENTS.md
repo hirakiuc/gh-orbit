@@ -37,7 +37,19 @@
 - **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow.
 - **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`.
 
-## 3. Implementation Patterns
+## 3. Sandbox & Environment Constraints
+
+This project enforces a restricted sandbox for AI agents (e.g., via macOS Seatbelt).
+
+- **Mandatory ./tmp usage**: All caching, build artifacts, and transient files MUST reside in the project-local `./tmp` directory.
+- **Environment Redirection**: When executing shell commands, you must ensure that tool-specific caches are redirected:
+  - **Go**: `GOCACHE=$(pwd)/tmp/go-cache`
+  - **Linters**: `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
+  - **System Tmp**: `TMPDIR=$(pwd)/tmp`
+- **Rationale**: This ensures that agent file modifications are isolated to the project's boundary and remain compliant with global security policies.
+- **Troubleshooting**: If you encounter "Operation not permitted" or "Permission denied" when running a shell command, it is a signal that you are attempting an action outside the sandbox. Adjust your command to use project-local paths or consult the `Makefile` for pre-configured targets.
+
+## 4. Implementation Patterns
 
 - **Dependency Injection**: Always use interface-based DI for service orchestration.
 - **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
