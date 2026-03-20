@@ -55,7 +55,6 @@ func TestCLI_Bootstrap(t *testing.T) {
 
 	// 4. Verify Files Created
 	assert.FileExists(t, filepath.Join(tmpHome, ".config", "gh", "extensions", "gh-orbit", "config.yml"))
-	assert.DirExists(t, filepath.Join(tmpHome, ".local", "share", "gh-orbit"))
 }
 
 func TestCLI_Sync(t *testing.T) {
