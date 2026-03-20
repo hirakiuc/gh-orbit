@@ -69,6 +69,9 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 		default:
 			badge = styles.StateSkeleton.UnsetBlink().Render(fmt.Sprintf(" %s ", s))
 		}
+	} else {
+		// Placeholder for empty ResourceState to maintain consistent column alignment
+		badge = styles.StateSkeleton.Render(" ◌ PEND  ")
 	}
 
 	// 6. Priority Badge
