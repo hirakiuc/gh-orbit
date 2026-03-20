@@ -1,4 +1,9 @@
 {
+  "general": {
+    "plan": {
+      "directory": "./tmp/plans"
+    }
+  },
   "mcp": {
     "allowed": ["serena"]
   },
