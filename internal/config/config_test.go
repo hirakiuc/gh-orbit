@@ -33,6 +33,22 @@ func TestConfig_Validate(t *testing.T) {
 		assert.Contains(t, err.Error(), "notifications.sync_interval must be between 10 and 3600")
 	})
 
+	t.Run("Invalid MaxVisibleAgeDays (Too Low)", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Notifications.MaxVisibleAgeDays = -1
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "notifications.max_visible_age_days must be between 0 and 3650 days")
+	})
+
+	t.Run("Invalid MaxVisibleAgeDays (Too High)", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Notifications.MaxVisibleAgeDays = 3651
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "notifications.max_visible_age_days must be between 0 and 3650 days")
+	})
+
 	t.Run("Invalid DebounceMS", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Enrichment.DebounceMS = 10
@@ -99,6 +115,23 @@ notifications:
 		assert.False(t, cfg.Notifications.Enabled)
 		// Verify default was preserved for missing field
 		assert.Equal(t, 60, cfg.Notifications.SyncInterval)
+		assert.Equal(t, 365, cfg.Notifications.MaxVisibleAgeDays)
+	})
+
+	t.Run("Successful Load with Explicit MaxVisibleAgeDays", func(t *testing.T) {
+		content := `
+version: 1
+notifications:
+  enabled: true
+  max_visible_age_days: 30
+`
+		err := os.WriteFile(expectedPath, []byte(content), 0o600)
+		require.NoError(t, err)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.Equal(t, 30, cfg.Notifications.MaxVisibleAgeDays)
 	})
 }
 

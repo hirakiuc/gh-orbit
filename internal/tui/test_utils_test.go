@@ -22,7 +22,7 @@ type TestingT interface {
 
 // newTestModel creates a model with basic mocks.
 func newTestModel(t TestingT) *Model {
-	cfg := &config.Config{}
+	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	userID := "test-user"
 
@@ -71,6 +71,7 @@ func newTestModel(t TestingT) *Model {
 				SubjectTitle:       "Default Title",
 				RepositoryFullName: "owner/repo",
 				SubjectType:        "",
+				UpdatedAt:          time.Now(),
 			},
 		},
 	}
@@ -78,6 +79,10 @@ func newTestModel(t TestingT) *Model {
 
 	m.ui.SetSize(80, 24)
 	return m
+}
+
+func daysAgo(days int) time.Time {
+	return time.Now().AddDate(0, 0, -days)
 }
 
 // stripANSI is a simple utility to remove ANSI codes for content-based assertions.

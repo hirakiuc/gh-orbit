@@ -28,11 +28,12 @@ type EnrichmentConfig struct {
 
 // NotificationsConfig represents the settings for system alerts.
 type NotificationsConfig struct {
-	Enabled      bool     `yaml:"enabled"`
-	Mute         bool     `yaml:"mute"`
-	SyncInterval int      `yaml:"sync_interval"`
-	Reasons      []string `yaml:"reasons"`
-	IgnoreRepos  []string `yaml:"ignore_repos"`
+	Enabled           bool     `yaml:"enabled"`
+	Mute              bool     `yaml:"mute"`
+	SyncInterval      int      `yaml:"sync_interval"`
+	MaxVisibleAgeDays int      `yaml:"max_visible_age_days"`
+	Reasons           []string `yaml:"reasons"`
+	IgnoreRepos       []string `yaml:"ignore_repos"`
 }
 
 // DefaultConfig returns the default configuration values.
@@ -40,11 +41,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: 1,
 		Notifications: NotificationsConfig{
-			Enabled:      true,
-			Mute:         false,
-			SyncInterval: 60,
-			Reasons:      []string{"assign", "mention", "review_requested"},
-			IgnoreRepos:  []string{},
+			Enabled:           true,
+			Mute:              false,
+			SyncInterval:      60,
+			MaxVisibleAgeDays: 365,
+			Reasons:           []string{"assign", "mention", "review_requested"},
+			IgnoreRepos:       []string{},
 		},
 		Enrichment: EnrichmentConfig{
 			DebounceMS:  250,
@@ -64,6 +66,9 @@ func (c *Config) Validate() error {
 	// 2. Notifications Validation
 	if c.Notifications.SyncInterval < 10 || c.Notifications.SyncInterval > 3600 {
 		return fmt.Errorf("notifications.sync_interval must be between 10 and 3600 seconds, got %d", c.Notifications.SyncInterval)
+	}
+	if c.Notifications.MaxVisibleAgeDays < 0 || c.Notifications.MaxVisibleAgeDays > 3650 {
+		return fmt.Errorf("notifications.max_visible_age_days must be between 0 and 3650 days, got %d", c.Notifications.MaxVisibleAgeDays)
 	}
 
 	// 3. Enrichment Validation
