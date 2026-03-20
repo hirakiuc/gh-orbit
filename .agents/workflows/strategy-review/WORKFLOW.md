@@ -1,3 +1,6 @@
+---
+description: Mandatory strategy review workflow for all non-trivial changes in the gh-orbit project.
+---
 # Strategy Review Workflow (Agentic & Role-Based)
 
 *Mandatory planning phase for all non-trivial changes to ensure architectural alignment and local speed.*
@@ -21,6 +24,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 - **Goal**: Propose a surgical solution that adheres to `AGENTS.md` and `GEMINI.md`.
 - **Knowledge Acquisition**: Actively research required knowledge online. If information remains insufficient, **Ask the User**.
 - **Primary Tool**: `.agents/proposal.md` (Overwritten per task).
+- **Proof of Correctness**: MUST define a reproduction plan or test contract in Section 4 of the proposal.
 
 ### 2. Reviewer (Auditor)
 
@@ -60,3 +64,4 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 - **Clean Workspace**: Only the active task's design state exists locally.
 - **Permanent Archive**: The GitHub Issue provides the historical design context, allowing local cleanup.
 - **Robustness**: Online research and User-led triggers ensure agents don't hallucinate or loop infinitely.
+- **Verification Integrity**: Mandatory "Proof of Correctness" ensures that testing is part of the architectural design.
