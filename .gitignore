@@ -71,6 +71,7 @@
 go.work
 
 ### Vim ###
+.nvimlog
 # Swap
 [._]*.s[a-v][a-z]
 !*.svg  # comment out if you don't need vector files
