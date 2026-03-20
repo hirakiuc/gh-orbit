@@ -24,8 +24,13 @@
   - Destructive operations (e.g., clearing local database).
   - Strategic changes that deviate from the Implementation Plan.
   - Adding new external dependencies.
-- **Attribution**: All commits must include:
+- Attribution: All commits must include:
     `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
+
+### 2.3 Branch Persistence
+
+- **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction to do so. This ensures you remain in the correct context for iterating on reviewer feedback.
+- **Completion**: A task is only considered complete when the pull request is merged or the user directs you to move to a new task.
 
 ## 3. Implementation Patterns
 
