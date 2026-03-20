@@ -783,17 +783,17 @@ func (_c *MockRepository_UpdateSyncMeta_Call) RunAndReturn(run func(context.Cont
 	return _c
 }
 
-// UpsertNotification provides a mock function with given fields: ctx, n
-func (_m *MockRepository) UpsertNotification(ctx context.Context, n triage.Notification) error {
-	ret := _m.Called(ctx, n)
+// UpsertNotifications provides a mock function with given fields: ctx, notifications
+func (_m *MockRepository) UpsertNotifications(ctx context.Context, notifications []triage.Notification) error {
+	ret := _m.Called(ctx, notifications)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpsertNotification")
+		panic("no return value specified for UpsertNotifications")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, triage.Notification) error); ok {
-		r0 = rf(ctx, n)
+	if rf, ok := ret.Get(0).(func(context.Context, []triage.Notification) error); ok {
+		r0 = rf(ctx, notifications)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -801,31 +801,31 @@ func (_m *MockRepository) UpsertNotification(ctx context.Context, n triage.Notif
 	return r0
 }
 
-// MockRepository_UpsertNotification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertNotification'
-type MockRepository_UpsertNotification_Call struct {
+// MockRepository_UpsertNotifications_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertNotifications'
+type MockRepository_UpsertNotifications_Call struct {
 	*mock.Call
 }
 
-// UpsertNotification is a helper method to define mock.On call
+// UpsertNotifications is a helper method to define mock.On call
 //   - ctx context.Context
-//   - n triage.Notification
-func (_e *MockRepository_Expecter) UpsertNotification(ctx interface{}, n interface{}) *MockRepository_UpsertNotification_Call {
-	return &MockRepository_UpsertNotification_Call{Call: _e.mock.On("UpsertNotification", ctx, n)}
+//   - notifications []triage.Notification
+func (_e *MockRepository_Expecter) UpsertNotifications(ctx interface{}, notifications interface{}) *MockRepository_UpsertNotifications_Call {
+	return &MockRepository_UpsertNotifications_Call{Call: _e.mock.On("UpsertNotifications", ctx, notifications)}
 }
 
-func (_c *MockRepository_UpsertNotification_Call) Run(run func(ctx context.Context, n triage.Notification)) *MockRepository_UpsertNotification_Call {
+func (_c *MockRepository_UpsertNotifications_Call) Run(run func(ctx context.Context, notifications []triage.Notification)) *MockRepository_UpsertNotifications_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(triage.Notification))
+		run(args[0].(context.Context), args[1].([]triage.Notification))
 	})
 	return _c
 }
 
-func (_c *MockRepository_UpsertNotification_Call) Return(_a0 error) *MockRepository_UpsertNotification_Call {
+func (_c *MockRepository_UpsertNotifications_Call) Return(_a0 error) *MockRepository_UpsertNotifications_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockRepository_UpsertNotification_Call) RunAndReturn(run func(context.Context, triage.Notification) error) *MockRepository_UpsertNotification_Call {
+func (_c *MockRepository_UpsertNotifications_Call) RunAndReturn(run func(context.Context, []triage.Notification) error) *MockRepository_UpsertNotifications_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -27,7 +27,7 @@ When acting as a Reviewer, you should use `enter_plan_mode` for the research and
 
 ### 2.5 Sandbox & macOS Seatbelt
 
-This project is configured with a restricted sandbox for AI tools (macOS Seatbelt). 
+This project is configured with a restricted sandbox for AI tools (macOS Seatbelt).
 
 - **Operation not permitted**: If you encounter this error (or "Permission denied") when running shell commands, it is likely due to sandbox constraints. Do not attempt to work around these by modifying system paths.
 - **Mandatory ./tmp usage**: You MUST use the project's `./tmp` directory for all caches and transient files.

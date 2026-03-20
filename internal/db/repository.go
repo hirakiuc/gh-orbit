@@ -11,52 +11,18 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
-// UpsertMetadata inserts or updates core notification metadata from API polling.
-func (db *DB) UpsertMetadata(ctx context.Context, n triage.Notification) error {
+// EnrichNotification updates a notification with detailed content (body, author).
+// It also propagates the state to all notifications sharing the same subject_node_id for consistency.
+func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 1. Upsert notification metadata (API fields only)
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO notifications (
-			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, subject_node_id, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(github_id) DO UPDATE SET
-			subject_title = excluded.subject_title,
-			subject_url = excluded.subject_url,
-			subject_type = excluded.subject_type,
-			reason = excluded.reason,
-			repository_full_name = excluded.repository_full_name,
-			html_url = excluded.html_url,
-			subject_node_id = COALESCE(NULLIF(excluded.subject_node_id, ''), notifications.subject_node_id),
-			updated_at = excluded.updated_at
-	`, n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason, n.RepositoryFullName, n.HTMLURL, n.SubjectNodeID, n.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to upsert metadata: %w", err)
-	}
-
-	// 2. Ensure orbit_state exists
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
-		VALUES (?, 0, 'entry', FALSE)
-		ON CONFLICT(notification_id) DO NOTHING
-	`, n.GitHubID)
-	if err != nil {
-		return fmt.Errorf("failed to ensure orbit state: %w", err)
-	}
-
-	return tx.Commit()
-}
-
-// EnrichNotification updates a notification with detailed content (body, author).
-// It also propagates the state to all notifications sharing the same subject_node_id for consistency.
-func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState string) error {
 	// 1. Get the subject_node_id for this notification
 	var nodeID string
-	err := db.QueryRowContext(ctx, "SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
+	err = tx.QueryRowContext(ctx, "SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
 	}
@@ -64,7 +30,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 	now := time.Now()
 
 	// 2. Update the primary target
-	_, err = db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		UPDATE notifications
 		SET body = ?,
 		    author_login = ?,
@@ -80,7 +46,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 
 	// 3. Propagate to peers sharing the same subject (visual continuity win!)
 	if nodeID != "" {
-		_, err = db.ExecContext(ctx, `
+		_, err = tx.ExecContext(ctx, `
 			UPDATE notifications
 			SET resource_state = ?,
 			    body = CASE WHEN body = '' THEN ? ELSE body END,
@@ -94,7 +60,7 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 // UpdateResourceStateByNodeID updates the live status of all resources sharing a GraphQL ID.
@@ -122,9 +88,61 @@ func (db *DB) UpdateSubjectNodeID(ctx context.Context, id, nodeID string) error 
 	return err
 }
 
-// UpsertNotification is a compatibility helper that performs a metadata upsert.
-func (db *DB) UpsertNotification(ctx context.Context, n triage.Notification) error {
-	return db.UpsertMetadata(ctx, n)
+// UpsertNotifications performs batch upsert of notifications in a single transaction.
+func (db *DB) UpsertNotifications(ctx context.Context, notifications []triage.Notification) error {
+	if len(notifications) == 0 {
+		return nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmtNotifications, err := tx.PrepareContext(ctx, `
+		INSERT INTO notifications (
+			github_id, subject_title, subject_url, subject_type, reason, repository_full_name, html_url, subject_node_id, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(github_id) DO UPDATE SET
+			subject_title = excluded.subject_title,
+			subject_url = excluded.subject_url,
+			subject_type = excluded.subject_type,
+			reason = excluded.reason,
+			repository_full_name = excluded.repository_full_name,
+			html_url = excluded.html_url,
+			subject_node_id = COALESCE(NULLIF(excluded.subject_node_id, ''), notifications.subject_node_id),
+			updated_at = excluded.updated_at
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare notifications stmt: %w", err)
+	}
+	defer func() { _ = stmtNotifications.Close() }()
+
+	stmtState, err := tx.PrepareContext(ctx, `
+		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
+		VALUES (?, 0, 'entry', FALSE)
+		ON CONFLICT(notification_id) DO NOTHING
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare orbit_state stmt: %w", err)
+	}
+	defer func() { _ = stmtState.Close() }()
+
+	for _, n := range notifications {
+		if _, err := stmtNotifications.ExecContext(ctx,
+			n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason,
+			n.RepositoryFullName, n.HTMLURL, n.SubjectNodeID, n.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("failed to upsert metadata for %s: %w", n.GitHubID, err)
+		}
+
+		if _, err := stmtState.ExecContext(ctx, n.GitHubID); err != nil {
+			return fmt.Errorf("failed to ensure orbit state for %s: %w", n.GitHubID, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 func baseNotificationSelect() string {

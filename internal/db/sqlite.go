@@ -47,7 +47,7 @@ func Open(ctx context.Context, logger *slog.Logger) (*DB, error) {
 	logger.InfoContext(ctx, "opening database", "path", primaryPath)
 
 	// modernc.org/sqlite driver
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)", primaryPath)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_txlock=immediate", primaryPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -281,7 +281,7 @@ var userHome = func() (string, error) {
 
 // OpenInMemory opens an in-memory SQLite database for testing.
 func OpenInMemory(ctx context.Context, logger *slog.Logger) (*DB, error) {
-	dsn := "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"
+	dsn := "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open in-memory database: %w", err)
