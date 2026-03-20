@@ -21,6 +21,10 @@ Strictly follow the shell safety protocols defined in [.agent/rules/shell-safety
 
 Mandatory adherence to the [Strategy Review Workflow](.agent/workflows/strategy-review/WORKFLOW.md) before any changes to `internal/` or `cmd/`.
 
+### 2.4 Reviewer Plan Mode
+
+When acting as a Reviewer, you should use `enter_plan_mode` for the research and analysis phase. Use this phase to read source files and perform online research (`google_web_search`, `web_fetch`) for latest best practices. Since Plan Mode prevents all file writes, you must finalize your analysis and then transition to active mode strictly to write your findings to `.agents/feedback.md`.
+
 ### 2.5 Sandbox & macOS Seatbelt
 
 This project is configured with a restricted sandbox for AI tools (macOS Seatbelt). 
