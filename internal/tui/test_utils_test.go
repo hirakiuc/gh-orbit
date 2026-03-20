@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// TestingT is a common interface for *testing.T and *testing.B
+// TestingT is a common interface for *testing.T and *testing.B.
 type TestingT interface {
 	mock.TestingT
 	Cleanup(func())

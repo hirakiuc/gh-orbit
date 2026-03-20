@@ -19,103 +19,16 @@ type RenderContext struct {
 // Layout: [Indicator][Icon][Unread][Badge] [Title] [ID] [Priority]
 func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) string {
 	const minTitleWidth = 10
-	const selectionIndicatorWidth = 2
-	styles := ctx.Styles
+	indicator := renderSelectionIndicator(ctx.Styles, ctx.IsSelected)
+	icon := renderNotificationIcon(n.SubjectType)
+	unread := renderUnreadIndicator(ctx.Styles, n.IsReadLocally)
+	badge := renderResourceStateBadge(ctx, n.ResourceState)
+	idStr := renderResourceID(ctx.Styles, n.SubjectURL)
+	priority := renderPriorityBadge(ctx.Styles, n.Priority)
+	titleWidth := calculateAvailableTitleWidth(ctx.Width, minTitleWidth, icon, unread, badge, idStr, priority)
+	title := renderNotificationTitle(ctx, n, titleWidth)
 
-	// 1. Selection Indicator
-	indicator := "  "
-	if ctx.IsSelected {
-		indicator = styles.Cursor.Render("▌ ")
-	}
-
-	// 2. Icon Selection
-	icon := "  "
-	switch n.SubjectType {
-	case "PullRequest":
-		icon = " "
-	case "Issue":
-		icon = " "
-	case "Discussion":
-		icon = " "
-	case "Release":
-		icon = " "
-	}
-
-	// 3. Unread Indicator
-	unread := renderUnreadIndicator(styles, n.IsReadLocally)
-
-	// 4. Resource ID Extraction
-	id := ""
-	if lastIdx := strings.LastIndex(n.SubjectURL, "/"); lastIdx != -1 {
-		id = "#" + n.SubjectURL[lastIdx+1:]
-	}
-	idStr := styles.SelectedDescription.Render(id)
-
-	// 5. Status Badge Logic
-	badge := ""
-	if ctx.IsFetching {
-		badge = styles.StateSkeleton.Render(" ◌ FETCH ")
-	} else if n.ResourceState != "" {
-		s := strings.ToUpper(n.ResourceState)
-		switch s {
-		case "OPEN":
-			badge = styles.StateOpen.Render("  OPEN ")
-		case "CLOSED":
-			badge = styles.StateClosed.Render("  CLOSED ")
-		case "MERGED":
-			badge = styles.StateMerged.Render("  MERGED ")
-		case "DRAFT":
-			badge = styles.StateDraft.Render("  DRAFT ")
-		default:
-			badge = styles.StateSkeleton.UnsetBlink().Render(fmt.Sprintf(" %s ", s))
-		}
-	} else {
-		// Placeholder for empty ResourceState to maintain consistent column alignment
-		badge = styles.StateSkeleton.Render(" ◌ PEND  ")
-	}
-
-	// 6. Priority Badge
-	priorityBadge := ""
-	switch n.Priority {
-	case 3:
-		priorityBadge = styles.PriorityHigh.Render(" [!!!]")
-	case 2:
-		priorityBadge = styles.PriorityMed.Render(" [!!]")
-	case 1:
-		priorityBadge = styles.PriorityLow.Render(" [!]")
-	}
-
-	// 7. Dynamic Width Calculation (Subtract-from-Total)
-	// We sum the visual width of all fixed components.
-	// Note: We add a small safety buffer (5 cells) to account for multi-byte glyphs (Nerd Fonts)
-	// which may render as 2 cells in some environments despite lipgloss.Width() reporting 1.
-	fixedWidth := selectionIndicatorWidth + lipgloss.Width(icon) + lipgloss.Width(unread) + lipgloss.Width(idStr) + 7 // +2 for spaces, +5 safety
-	if badge != "" {
-		fixedWidth += lipgloss.Width(badge) + 1
-	}
-	if priorityBadge != "" {
-		fixedWidth += lipgloss.Width(priorityBadge)
-	}
-
-	availableTitleWidth := ctx.Width - fixedWidth
-	if availableTitleWidth < minTitleWidth {
-		availableTitleWidth = minTitleWidth
-	}
-
-	// 8. Title Styling & Truncation
-	titleStr := n.SubjectTitle
-	titleStyle := styles.Unread
-	if n.IsReadLocally {
-		titleStyle = styles.SelectedDescription
-	}
-	if ctx.IsSelected {
-		titleStyle = styles.SelectedTitle
-	}
-	title := titleStyle.Width(availableTitleWidth).MaxWidth(availableTitleWidth).Render(titleStr)
-
-	// 9. Assembly
-	// We use exact spacing to ensure width remains within ctx.Width
-	return fmt.Sprintf("%s%s%s%s%s%s%s", indicator, icon, unread, badge, title, idStr, priorityBadge)
+	return fmt.Sprintf("%s%s%s%s%s%s%s", indicator, icon, unread, badge, title, idStr, priority)
 }
 
 func renderUnreadIndicator(styles Styles, isRead bool) string {
@@ -123,4 +36,101 @@ func renderUnreadIndicator(styles Styles, isRead bool) string {
 		return "  "
 	}
 	return styles.Unread.Render("• ")
+}
+
+func renderSelectionIndicator(styles Styles, isSelected bool) string {
+	if isSelected {
+		return styles.Cursor.Render("▌ ")
+	}
+	return "  "
+}
+
+func renderNotificationIcon(subjectType string) string {
+	switch subjectType {
+	case "PullRequest":
+		return " "
+	case "Issue":
+		return " "
+	case "Discussion":
+		return " "
+	case "Release":
+		return " "
+	default:
+		return "  "
+	}
+}
+
+func renderResourceID(styles Styles, subjectURL string) string {
+	id := ""
+	if lastIdx := strings.LastIndex(subjectURL, "/"); lastIdx != -1 {
+		id = "#" + subjectURL[lastIdx+1:]
+	}
+	return styles.SelectedDescription.Render(id)
+}
+
+func renderResourceStateBadge(ctx RenderContext, resourceState string) string {
+	styles := ctx.Styles
+	if ctx.IsFetching {
+		return styles.StateSkeleton.Render(" ◌ FETCH ")
+	}
+	if resourceState == "" {
+		return styles.StateSkeleton.Render(" ◌ PEND  ")
+	}
+
+	s := strings.ToUpper(resourceState)
+	switch s {
+	case "OPEN":
+		return styles.StateOpen.Render("  OPEN ")
+	case "CLOSED":
+		return styles.StateClosed.Render("  CLOSED ")
+	case "MERGED":
+		return styles.StateMerged.Render("  MERGED ")
+	case "DRAFT":
+		return styles.StateDraft.Render("  DRAFT ")
+	default:
+		return styles.StateSkeleton.UnsetBlink().Render(fmt.Sprintf(" %s ", s))
+	}
+}
+
+func renderPriorityBadge(styles Styles, priority int) string {
+	switch priority {
+	case 3:
+		return styles.PriorityHigh.Render(" [!!!]")
+	case 2:
+		return styles.PriorityMed.Render(" [!!]")
+	case 1:
+		return styles.PriorityLow.Render(" [!]")
+	default:
+		return ""
+	}
+}
+
+func calculateAvailableTitleWidth(totalWidth, minTitleWidth int, icon, unread, badge, idStr, priority string) int {
+	const selectionIndicatorWidth = 2
+	const layoutSafetyBuffer = 7 // 2 spaces + 5 extra cells for multi-width glyphs.
+
+	fixedWidth := selectionIndicatorWidth + lipgloss.Width(icon) + lipgloss.Width(unread) + lipgloss.Width(idStr) + layoutSafetyBuffer
+	if badge != "" {
+		fixedWidth += lipgloss.Width(badge) + 1
+	}
+	if priority != "" {
+		fixedWidth += lipgloss.Width(priority)
+	}
+
+	availableTitleWidth := totalWidth - fixedWidth
+	if availableTitleWidth < minTitleWidth {
+		return minTitleWidth
+	}
+	return availableTitleWidth
+}
+
+func renderNotificationTitle(ctx RenderContext, n triage.NotificationWithState, width int) string {
+	titleStyle := ctx.Styles.Unread
+	if n.IsReadLocally {
+		titleStyle = ctx.Styles.SelectedDescription
+	}
+	if ctx.IsSelected {
+		titleStyle = ctx.Styles.SelectedTitle
+	}
+	return titleStyle.Width(width).MaxWidth(width).Render(n.SubjectTitle)
 }
