@@ -3,6 +3,15 @@ BINARY_NAME=gh-orbit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.11.3
 
+# Build metadata
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+LDFLAGS=-ldflags "-X github.com/hirakiuc/gh-orbit/internal/buildinfo.Version=$(VERSION) \
+                  -X github.com/hirakiuc/gh-orbit/internal/buildinfo.Commit=$(COMMIT) \
+                  -X github.com/hirakiuc/gh-orbit/internal/buildinfo.Date=$(DATE)"
+
 # Sandbox-native development environment
 PROJECT_TMP ?= $(CURDIR)/tmp
 export GOCACHE ?= $(PROJECT_TMP)/go-cache
@@ -28,7 +37,7 @@ $(PROJECT_TMP):
 	@mkdir -p $(PROJECT_TMP)
 
 build: $(PROJECT_TMP)
-	go build -o bin/$(BINARY_NAME) $(CMD_PATH)
+	go build $(LDFLAGS) -o bin/$(BINARY_NAME) $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		echo "Ad-hoc signing binary for macOS..."; \
 		codesign -f -s - bin/$(BINARY_NAME); \
@@ -48,13 +57,13 @@ artifacts: $(PROJECT_TMP)
 	go test -v -artifacts ./...
 
 release-build: $(PROJECT_TMP)
-	GOOS=darwin GOARCH=amd64 go build -o bin/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then codesign -f -s - bin/$(BINARY_NAME)-darwin-amd64; fi
-	GOOS=darwin GOARCH=arm64 go build -o bin/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then codesign -f -s - bin/$(BINARY_NAME)-darwin-arm64; fi
-	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY_NAME)-linux-amd64 $(CMD_PATH)
-	GOOS=linux GOARCH=arm64 go build -o bin/$(BINARY_NAME)-linux-arm64 $(CMD_PATH)
-	GOOS=windows GOARCH=amd64 go build -o bin/$(BINARY_NAME)-windows-amd64.exe $(CMD_PATH)
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 $(CMD_PATH)
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64 $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe $(CMD_PATH)
 
 test: $(PROJECT_TMP)
 	go test -v ./...

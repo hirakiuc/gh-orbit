@@ -124,6 +124,9 @@ func (m *Model) renderFooter() string {
 		}
 	}
 
+	// 5. Version Information
+	vStr := m.styles.SelectedDescription.Render(" " + m.version + " ")
+
 	footer := lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		statusMsg,
@@ -131,7 +134,7 @@ func (m *Model) renderFooter() string {
 		filters,
 		" ",
 		rlStatus,
-		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-4, lipgloss.Right, health),
+		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-6, lipgloss.Right, vStr+" "+health),
 	)
 
 	return footer

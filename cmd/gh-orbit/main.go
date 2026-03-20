@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/buildinfo"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/github"
@@ -22,7 +23,6 @@ import (
 )
 
 var (
-	version  = "dev"
 	logLevel = "info"
 	verbose  = false
 	testMode = false
@@ -30,8 +30,9 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "gh-orbit",
-		Short: "A local-first triage tool for GitHub notifications.",
+		Use:     "gh-orbit",
+		Short:   "A local-first triage tool for GitHub notifications.",
+		Version: buildinfo.Version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Validate Global Flags
 			return nil
@@ -40,6 +41,8 @@ func main() {
 			return runTUI()
 		},
 	}
+
+	rootCmd.SetVersionTemplate(fmt.Sprintf("gh-orbit %%s (%s) build %s\n", buildinfo.Commit, buildinfo.Date))
 
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Logging level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output (OTel tracing)")
@@ -118,7 +121,12 @@ func runDoctor() error {
 		OS:            runtime.GOOS,
 		Arch:          runtime.GOARCH,
 		KernelVersion: osVersion,
-		BridgeStatus:  types.StatusUnknown,
+		Build: types.BuildReport{
+			Version: buildinfo.Version,
+			Commit:  buildinfo.Commit,
+			Date:    buildinfo.Date,
+		},
+		BridgeStatus: types.StatusUnknown,
 	}
 
 	// 2. Persistence
@@ -189,7 +197,10 @@ func runDoctor() error {
 func printDoctorReport(r types.DoctorReport) {
 	fmt.Println("🤖 gh-orbit doctor report")
 	fmt.Println("==========================")
-	fmt.Printf("OS:     %s (%s)\n", r.OS, r.Arch)
+	fmt.Printf("Version: %s\n", r.Build.Version)
+	fmt.Printf("Commit:  %s\n", r.Build.Commit)
+	fmt.Printf("Build:   %s\n", r.Build.Date)
+	fmt.Printf("OS:      %s (%s)\n", r.OS, r.Arch)
 	fmt.Printf("Kernel: %s\n", r.KernelVersion)
 	fmt.Printf("Focus:  %s\n", r.FocusMode)
 	fmt.Printf("Status: %s\n", r.BridgeStatus)
@@ -303,7 +314,7 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 	var otelCleanup func()
 	if verbose {
 		var otelErr error
-		_, otelCleanup, otelErr = config.SetupOTel(ctx, version)
+		_, otelCleanup, otelErr = config.SetupOTel(ctx, buildinfo.Version)
 		if otelErr != nil {
 			logger.WarnContext(ctx, "failed to initialize OpenTelemetry", "error", otelErr)
 		}
@@ -313,7 +324,7 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "session",
 		trace.WithAttributes(
-			attribute.String("version", version),
+			attribute.String("version", buildinfo.Version),
 			attribute.String("os", runtime.GOOS),
 			attribute.String("arch", runtime.GOARCH),
 		),
@@ -402,7 +413,7 @@ func launchTUI(ctx context.Context, env *environment, res *appResources) error {
 		alerts,
 		tui.WithExecutor(executor),
 		tui.WithTheme(true),
-		tui.WithVersion(version),
+		tui.WithVersion(buildinfo.Version),
 	)
 
 	// Use tea.WithAltScreen() correctly if available in v2 or similar option
