@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -337,7 +338,7 @@ func TestMigration_ExistingDest(t *testing.T) {
 	require.NoError(t, os.WriteFile(fPath, []byte("sqlite-data"), 0o600))
 
 	// 2. Simulate doctor bug: create an empty destination directory
-	require.NoError(t, os.MkdirAll(destDir, 0700))
+	require.NoError(t, os.MkdirAll(destDir, 0o700))
 
 	// 3. Perform atomic move
 	err := performAtomicMove(ctx, logger, srcDir, destDir)
@@ -354,7 +355,7 @@ func TestMigration_ExistingDest(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Dir(destDir))
 	require.NoError(t, err)
 	for _, entry := range entries {
-		assert.False(t, entry.IsDir() && filepath.HasPrefix(entry.Name(), "target.bak."), "Backup directory should be cleaned up: %s", entry.Name())
+		assert.False(t, entry.IsDir() && strings.HasPrefix(entry.Name(), "target.bak."), "Backup directory should be cleaned up: %s", entry.Name())
 	}
 }
 
