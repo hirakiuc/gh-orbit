@@ -40,6 +40,8 @@
 # Temporary directory
 /tmp/*
 !/tmp/.gitkeep
+/tmp/plans/*
+!/tmp/plans/.gitkeep
 
 # Ignore serena files
 .serena/
