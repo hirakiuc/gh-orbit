@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"syscall"
+	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	_ "modernc.org/sqlite"
@@ -175,14 +176,27 @@ func performAtomicMove(ctx context.Context, logger *slog.Logger, srcDir, destDir
 		return err
 	}
 	if err := os.Rename(tmpDest, destDir); err != nil {
-		var linkErr *os.LinkError
-		if errors.As(err, &linkErr) {
-			// Cross-partition move might fail even after copy if Rename is used on the parent.
-			// However, since we already copied to tmpDest (which is in destDir's parent),
-			// Rename should work. If not, we do a final copy-swap.
-			logger.WarnContext(ctx, "atomic rename failed, falling back to final copy-swap", "error", err)
+		if os.IsExist(err) || errors.Is(err, syscall.EEXIST) {
+			// Destination exists (e.g. empty dir created by doctor)
+			// Implementation of Backup-Rename-Cleanup
+			backupDest := fmt.Sprintf("%s.bak.%d", destDir, time.Now().UnixNano())
+			logger.WarnContext(ctx, "destination directory exists, performing backup-swap", "path", destDir, "backup", backupDest)
+
+			if err := os.Rename(destDir, backupDest); err != nil {
+				return fmt.Errorf("failed to backup existing destination: %w", err)
+			}
+
+			if err := os.Rename(tmpDest, destDir); err != nil {
+				// Try to restore if swap fails
+				_ = os.Rename(backupDest, destDir)
+				return fmt.Errorf("atomic swap after backup failed: %w", err)
+			}
+
+			// Cleanup backup on success
+			_ = os.RemoveAll(backupDest)
+		} else {
+			return fmt.Errorf("atomic swap failed: %w", err)
 		}
-		return fmt.Errorf("atomic swap failed: %w", err)
 	}
 
 	// Cleanup Legacy

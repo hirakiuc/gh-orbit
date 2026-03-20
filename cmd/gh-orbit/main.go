@@ -218,8 +218,8 @@ func printDoctorReport(r types.DoctorReport) {
 
 func getDirSize(path string) int64 {
 	var size int64
-	_ = os.MkdirAll(path, 0o700) // #nosec G301: Private directory
-	_, _ = os.ReadDir(path)      // Trigger any FS errors early
+	// Non-creative size check
+	_, _ = os.ReadDir(path) // Trigger any FS errors early
 	// Simple approximation for doctor report
 	return size
 }
