@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Note: stripANSI is already defined in test_utils.go
+// Note: stripANSI is already defined in test_utils_test.go.
 
 func TestRenderNotificationRow_States(t *testing.T) {
 	ctx := RenderContext{

@@ -52,100 +52,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) transitionGlobal(msg tea.Msg) []Action {
-	var actions []Action
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.ui.SetSize(msg.Width, msg.Height)
-
-		m.headerHeight = lipgloss.Height(m.renderHeader())
-		m.footerHeight = lipgloss.Height(m.renderFooter())
-		availableHeight := m.height - m.headerHeight - m.footerHeight
-
-		m.listView.list.SetSize(msg.Width, availableHeight)
-
-		m.detailView.viewport.SetWidth(msg.Width - 4)
-		m.detailView.viewport.SetHeight(availableHeight - 2)
-		m.updateMarkdownRenderer()
-
+		m.handleWindowSize(msg)
 	case tea.BackgroundColorMsg:
-		m.isDark = msg.IsDark()
-		m.styles = DefaultStyles(m.isDark)
-		m.listView.list.Styles.Title = m.styles.Title
-		m.listView.delegate = newItemDelegate(m.styles, m.keys)
-		m.listView.list.SetDelegate(m.listView.delegate)
-		m.updateMarkdownRenderer()
-		m.ui.SetStyles(m.styles)
-
+		m.handleBackgroundColor(msg)
 	case notificationsLoadedMsg:
-		m.allNotifications = msg.notifications
-		m.applyFilters()
-		if m.state == StateDetail {
-			m.refreshDetailView()
-		}
-		if msg.IsInitial {
-			actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
-			actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
-		}
-
+		return m.handleNotificationsLoaded(msg)
 	case priorityUpdatedMsg:
-		m.allNotifications = msg.notifications
-		m.applyFilters()
-		actions = append(actions, ActionShowToast{Message: msg.toast})
-
+		return m.handlePriorityUpdated(msg)
 	case syncCompleteMsg:
-		m.ui.SetSyncing(false)
-		// Rate limit update is an imperative effect, but tracked in model
-		m.LastSyncAt = time.Now()
-		m.RateLimit = msg.rateLimit
-		actions = append(actions, ActionUpdateRateLimit{Info: msg.rateLimit})
-		actions = append(actions, ActionLoadNotifications{}) // Reload after sync
-
+		return m.handleSyncComplete(msg)
 	case detailLoadedMsg:
-		m.ui.SetFetching(false)
-		for idx, n := range m.allNotifications {
-			if n.GitHubID == msg.GitHubID {
-				m.allNotifications[idx].Body = msg.Body
-				m.allNotifications[idx].AuthorLogin = msg.Author
-				m.allNotifications[idx].HTMLURL = msg.HTMLURL
-				m.allNotifications[idx].ResourceState = msg.ResourceState
-				m.allNotifications[idx].IsEnriched = true
-				break
-			}
-		}
-		if m.state == StateDetail {
-			m.applyFilters() // This updates the items in the list from the modified allNotifications
-			m.refreshDetailView()
-		} else {
-			m.applyFilters()
-		}
-
+		m.handleDetailLoaded(msg)
 	case pollTickMsg:
-		if msg.ID == m.heartbeatID {
-			if time.Since(m.LastSyncAt).Seconds() >= float64(m.PollInterval) {
-				actions = append(actions, ActionSyncNotifications{Force: false})
-				m.ui.SetSyncing(true)
-			}
-			actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
-		}
-
+		return m.handlePollTick(msg)
 	case clockTickMsg:
-		if msg.ID == m.clockID {
-			actions = append(actions, ActionScheduleTick{TickType: TickClock, Interval: m.clockInterval})
-		}
-
+		return m.handleClockTick(msg)
 	case viewportEnrichMsg:
-		actions = append(actions, ActionEnrichItems{Notifications: m.getVisibleNotifications()})
-
+		return []Action{ActionEnrichItems{Notifications: m.getVisibleNotifications()}}
 	case types.ErrMsg:
-		m.err = msg.Err
-		m.ui.SetSyncing(false)
-		m.ui.SetFetching(false)
+		m.handleTransitionError(msg)
 	}
 
-	return actions
+	return nil
 }
 
 func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
@@ -202,101 +132,12 @@ func (m *Model) handleQuitTransition() []Action {
 }
 
 func (m *Model) transitionList(msg tea.Msg) []Action {
-	var actions []Action
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if m.listView.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch {
-		case msg.String() == "ctrl+c":
-			actions = append(actions, ActionQuit{})
-		case key.Matches(msg, m.keys.Quit):
-			if !m.listView.list.Help.ShowAll {
-				return m.handleQuitTransition()
-			}
-		case key.Matches(msg, m.keys.Sync):
-			if !m.ui.syncing {
-				actions = append(actions, ActionSyncNotifications{Force: true})
-				m.ui.SetSyncing(true)
-			}
-		case key.Matches(msg, m.keys.ToggleDetail):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				m.state = StateDetail
-				if !i.notification.IsEnriched {
-					m.ui.SetFetching(true)
-					actions = append(actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{i.notification}})
-				}
-				m.refreshDetailView()
-			}
-		case key.Matches(msg, m.keys.ToggleRead):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				newState := !i.notification.IsReadLocally
-				actions = append(actions, ActionMarkRead{ID: i.notification.GitHubID, Read: newState})
-				toast := "Marked as unread"
-				if newState {
-					toast = "Marked as read"
-				}
-				actions = append(actions, ActionShowToast{Message: toast})
-			}
-		case key.Matches(msg, m.keys.NextTab):
-			m.listView.activeTab = (m.listView.activeTab + 1) % 4
-			m.applyFilters()
-		case key.Matches(msg, m.keys.PrevTab):
-			m.listView.activeTab = (m.listView.activeTab - 1 + 4) % 4
-			m.applyFilters()
-		case key.Matches(msg, m.keys.Tab1):
-			m.listView.activeTab = TabInbox
-			m.applyFilters()
-		case key.Matches(msg, m.keys.Tab2):
-			m.listView.activeTab = TabUnread
-			m.applyFilters()
-		case key.Matches(msg, m.keys.Tab3):
-			m.listView.activeTab = TabTriaged
-			m.applyFilters()
-		case key.Matches(msg, m.keys.Tab4):
-			m.listView.activeTab = TabAll
-			m.applyFilters()
-		case key.Matches(msg, m.keys.OpenBrowser):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				actions = append(actions, ActionViewWeb{Notification: i.notification})
-			}
-		case key.Matches(msg, m.keys.CheckoutPR):
-			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
-				number := extractNumberFromURL(i.notification.SubjectURL)
-				if number != "" {
-					actions = append(actions, ActionCheckoutPR{Repository: i.notification.RepositoryFullName, Number: number})
-				}
-			}
-		case key.Matches(msg, m.keys.FilterPR):
-			m.toggleResourceFilter("PullRequest", "PRs")
-		case key.Matches(msg, m.keys.FilterIssue):
-			m.toggleResourceFilter("Issue", "Issues")
-		case key.Matches(msg, m.keys.FilterDiscussion):
-			m.toggleResourceFilter("Discussion", "Discussions")
-		case key.Matches(msg, m.keys.PriorityUp):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				newP := (i.notification.Priority + 1) % 4
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: newP})
-				actions = append(actions, ActionShowToast{Message: m.getPriorityToast(newP)})
-			}
-		case key.Matches(msg, m.keys.PriorityDown):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				newP := (i.notification.Priority - 1 + 4) % 4
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: newP})
-				actions = append(actions, ActionShowToast{Message: m.getPriorityToast(newP)})
-			}
-		case key.Matches(msg, m.keys.PriorityNone):
-			if i, ok := m.listView.list.SelectedItem().(item); ok {
-				actions = append(actions, ActionSetPriority{ID: i.notification.GitHubID, Priority: 0})
-				actions = append(actions, ActionShowToast{Message: "Priority cleared"})
-			}
-		}
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok || m.listView.list.FilterState() == list.Filtering {
+		return nil
 	}
 
-	return actions
+	return m.handleListKey(keyMsg)
 }
 
 func (m *Model) getPriorityToast(p int) string {
@@ -447,5 +288,259 @@ func (m *Model) toggleResourceFilter(resType, label string) {
 		m.listView.resourceFilter = resType
 		m.ui.SetResourceFilter(label)
 	}
+	m.applyFilters()
+}
+
+func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
+	m.width = msg.Width
+	m.height = msg.Height
+	m.ui.SetSize(msg.Width, msg.Height)
+
+	m.headerHeight = lipgloss.Height(m.renderHeader())
+	m.footerHeight = lipgloss.Height(m.renderFooter())
+	availableHeight := m.height - m.headerHeight - m.footerHeight
+
+	m.listView.list.SetSize(msg.Width, availableHeight)
+	m.detailView.viewport.SetWidth(msg.Width - 4)
+	m.detailView.viewport.SetHeight(availableHeight - 2)
+	m.updateMarkdownRenderer()
+}
+
+func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
+	m.isDark = msg.IsDark()
+	m.styles = DefaultStyles(m.isDark)
+	m.listView.list.Styles.Title = m.styles.Title
+	m.listView.delegate = newItemDelegate(m.styles, m.keys)
+	m.listView.list.SetDelegate(m.listView.delegate)
+	m.updateMarkdownRenderer()
+	m.ui.SetStyles(m.styles)
+}
+
+func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
+	m.allNotifications = msg.notifications
+	m.applyFilters()
+	if m.state == StateDetail {
+		m.refreshDetailView()
+	}
+	if !msg.IsInitial {
+		return nil
+	}
+	return []Action{
+		ActionEnrichItems{Notifications: m.getVisibleNotifications()},
+		ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval},
+	}
+}
+
+func (m *Model) handlePriorityUpdated(msg priorityUpdatedMsg) []Action {
+	m.allNotifications = msg.notifications
+	m.applyFilters()
+	return []Action{ActionShowToast{Message: msg.toast}}
+}
+
+func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
+	m.ui.SetSyncing(false)
+	m.LastSyncAt = time.Now()
+	m.RateLimit = msg.rateLimit
+	return []Action{
+		ActionUpdateRateLimit{Info: msg.rateLimit},
+		ActionLoadNotifications{},
+	}
+}
+
+func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
+	m.ui.SetFetching(false)
+	for idx, n := range m.allNotifications {
+		if n.GitHubID != msg.GitHubID {
+			continue
+		}
+		m.allNotifications[idx].Body = msg.Body
+		m.allNotifications[idx].AuthorLogin = msg.Author
+		m.allNotifications[idx].HTMLURL = msg.HTMLURL
+		m.allNotifications[idx].ResourceState = msg.ResourceState
+		m.allNotifications[idx].IsEnriched = true
+		break
+	}
+
+	m.applyFilters()
+	if m.state == StateDetail {
+		m.refreshDetailView()
+	}
+}
+
+func (m *Model) handlePollTick(msg pollTickMsg) []Action {
+	if msg.ID != m.heartbeatID {
+		return nil
+	}
+
+	actions := []Action{ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval}}
+	if time.Since(m.LastSyncAt).Seconds() < float64(m.PollInterval) {
+		return actions
+	}
+
+	m.ui.SetSyncing(true)
+	return append(actions, ActionSyncNotifications{Force: false})
+}
+
+func (m *Model) handleClockTick(msg clockTickMsg) []Action {
+	if msg.ID != m.clockID {
+		return nil
+	}
+	return []Action{ActionScheduleTick{TickType: TickClock, Interval: m.clockInterval}}
+}
+
+func (m *Model) handleTransitionError(msg types.ErrMsg) {
+	m.err = msg.Err
+	m.ui.SetSyncing(false)
+	m.ui.SetFetching(false)
+}
+
+func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
+	switch {
+	case msg.String() == "ctrl+c":
+		return []Action{ActionQuit{}}
+	case key.Matches(msg, m.keys.Quit):
+		if !m.listView.list.Help.ShowAll {
+			return m.handleQuitTransition()
+		}
+	case key.Matches(msg, m.keys.Sync):
+		return m.handleSyncKey()
+	case key.Matches(msg, m.keys.ToggleDetail):
+		return m.handleToggleDetailKey()
+	case key.Matches(msg, m.keys.ToggleRead):
+		return m.handleToggleReadKey()
+	case key.Matches(msg, m.keys.NextTab):
+		m.cycleTab(1)
+	case key.Matches(msg, m.keys.PrevTab):
+		m.cycleTab(-1)
+	case key.Matches(msg, m.keys.Tab1):
+		m.setActiveTab(TabInbox)
+	case key.Matches(msg, m.keys.Tab2):
+		m.setActiveTab(TabUnread)
+	case key.Matches(msg, m.keys.Tab3):
+		m.setActiveTab(TabTriaged)
+	case key.Matches(msg, m.keys.Tab4):
+		m.setActiveTab(TabAll)
+	case key.Matches(msg, m.keys.OpenBrowser):
+		return m.handleOpenBrowserKey()
+	case key.Matches(msg, m.keys.CheckoutPR):
+		return m.handleCheckoutPRKey()
+	case key.Matches(msg, m.keys.FilterPR):
+		m.toggleResourceFilter("PullRequest", "PRs")
+	case key.Matches(msg, m.keys.FilterIssue):
+		m.toggleResourceFilter("Issue", "Issues")
+	case key.Matches(msg, m.keys.FilterDiscussion):
+		m.toggleResourceFilter("Discussion", "Discussions")
+	case key.Matches(msg, m.keys.PriorityUp):
+		return m.handlePriorityKey(1)
+	case key.Matches(msg, m.keys.PriorityDown):
+		return m.handlePriorityKey(-1)
+	case key.Matches(msg, m.keys.PriorityNone):
+		return m.handleClearPriorityKey()
+	}
+	return nil
+}
+
+func (m *Model) handleSyncKey() []Action {
+	if m.ui.syncing {
+		return nil
+	}
+	m.ui.SetSyncing(true)
+	return []Action{ActionSyncNotifications{Force: true}}
+}
+
+func (m *Model) handleToggleDetailKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+
+	m.state = StateDetail
+	actions := []Action{}
+	if !n.IsEnriched {
+		m.ui.SetFetching(true)
+		actions = append(actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{n}})
+	}
+	m.refreshDetailView()
+	return actions
+}
+
+func (m *Model) handleToggleReadKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+
+	newState := !n.IsReadLocally
+	toast := "Marked as unread"
+	if newState {
+		toast = "Marked as read"
+	}
+
+	return []Action{
+		ActionMarkRead{ID: n.GitHubID, Read: newState},
+		ActionShowToast{Message: toast},
+	}
+}
+
+func (m *Model) handleOpenBrowserKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+	return []Action{ActionViewWeb{Notification: n}}
+}
+
+func (m *Model) handleCheckoutPRKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok || n.SubjectType != "PullRequest" {
+		return nil
+	}
+
+	number := extractNumberFromURL(n.SubjectURL)
+	if number == "" {
+		return nil
+	}
+	return []Action{ActionCheckoutPR{Repository: n.RepositoryFullName, Number: number}}
+}
+
+func (m *Model) handlePriorityKey(delta int) []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+
+	newPriority := (n.Priority + delta + 4) % 4
+	return []Action{
+		ActionSetPriority{ID: n.GitHubID, Priority: newPriority},
+		ActionShowToast{Message: m.getPriorityToast(newPriority)},
+	}
+}
+
+func (m *Model) handleClearPriorityKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+	return []Action{
+		ActionSetPriority{ID: n.GitHubID, Priority: 0},
+		ActionShowToast{Message: "Priority cleared"},
+	}
+}
+
+func (m *Model) selectedNotification() (triage.NotificationWithState, bool) {
+	i, ok := m.listView.list.SelectedItem().(item)
+	if !ok {
+		return triage.NotificationWithState{}, false
+	}
+	return i.notification, true
+}
+
+func (m *Model) cycleTab(delta int) {
+	m.listView.activeTab = (m.listView.activeTab + delta + 4) % 4
+	m.applyFilters()
+}
+
+func (m *Model) setActiveTab(tab int) {
+	m.listView.activeTab = tab
 	m.applyFilters()
 }
