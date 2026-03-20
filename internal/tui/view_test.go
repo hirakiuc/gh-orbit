@@ -50,6 +50,43 @@ func TestRenderNotificationRow_States(t *testing.T) {
 	assert.LessOrEqual(t, len(plain), testWidth, "Row must not exceed available width")
 }
 
+func TestRenderNotificationRow_EmptyState(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+
+	notifOpen := triage.NotificationWithState{
+		Notification: triage.Notification{
+			SubjectType:   "PullRequest",
+			SubjectTitle:  "Title",
+			SubjectURL:    "https://github.com/o/r/pull/123",
+			ResourceState: "OPEN",
+		},
+	}
+
+	notifEmpty := triage.NotificationWithState{
+		Notification: triage.Notification{
+			SubjectType:   "PullRequest",
+			SubjectTitle:  "Title",
+			SubjectURL:    "https://github.com/o/r/pull/124",
+			ResourceState: "", // Empty state should use placeholder
+		},
+	}
+
+	outOpen := RenderNotificationRow(ctx, notifOpen)
+	outEmpty := RenderNotificationRow(ctx, notifEmpty)
+
+	plainOpen := stripANSI(outOpen)
+	plainEmpty := stripANSI(outEmpty)
+
+	t.Logf("Row with OPEN:  [%s]", plainOpen)
+	t.Logf("Row with EMPTY: [%s]", plainEmpty)
+
+	assert.Contains(t, plainEmpty, "PEND", "Should contain PEND placeholder")
+	assert.Equal(t, len(plainOpen), len(plainEmpty), "Row lengths must be equal for consistent alignment")
+}
+
 func TestRenderHeader(t *testing.T) {
 	m := newTestModel(t)
 	m.width = 100
