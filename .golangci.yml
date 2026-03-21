@@ -15,7 +15,20 @@ linters:
     - gosec
     - bodyclose
     - copyloopvar
+    - gocognit
+    - cyclop
+    - maintidx
+    - funlen
   settings:
     misspell:
       locale: US
+    gocognit:
+      min-complexity: 15
+    cyclop:
+      max-complexity: 10
+    maintidx:
+      under: 20
+    funlen:
+      lines: 60
+      statements: 40
 
