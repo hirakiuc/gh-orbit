@@ -52,8 +52,9 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 
 ### Phase B: GitHub Synchronization (The Record)
 
-1. **[Worker] Publish**: Post the *final, signed-off* content of `.agents/proposal.md` as a comment on the GitHub Issue.
-   - `gh issue comment "<ID>" --body-file .agents/proposal.md`
+1. **[Worker] Publish**: ONLY after receiving a **SIGN-OFF**, synthesize the final technical context of `.agents/proposal.md` into a clean architectural record using the `FINAL_RECORD_TEMPLATE.md`.
+   - Post this record as a comment on the GitHub Issue: `gh issue comment "<ID>" --body "<SYNTHESIZED_RECORD>"`
+   - *Note*: Ensure all procedural noise (Revision, Reviewer Hints, Review History) is omitted to maintain a professional project history.
 2. **[Worker] Branching**: Create the development branch linked to the issue.
    - `gh issue develop "<ID>"`
 3. **[Worker] Implementation**: Execute the plan on the new branch.

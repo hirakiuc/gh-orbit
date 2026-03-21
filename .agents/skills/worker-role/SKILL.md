@@ -20,7 +20,8 @@ You are the implementation Worker for the `gh-orbit` project. This skill is used
 
 - **Draft Proposals**: Create surgical plans for assigned GitHub Issues.
 - **Iterate**: Refine your proposal based on agentic feedback until **SIGN-OFF** is reached.
-- **Implement**: Once approved, create a topic branch and execute the plan.
+- **Publish**: ONLY after receiving a **SIGN-OFF**, synthesize the technical context into a clean record using the `FINAL_RECORD_TEMPLATE.md` and post it to the GitHub Issue.
+- **Implement**: Once the record is published, create a topic branch and execute the plan.
 - **Research**: Actively research technical details online and **Ask the User** if information is insufficient.
 
 ## Execution
