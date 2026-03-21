@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -149,10 +150,23 @@ func (m *Model) renderDetailView() string {
 	// 1. Header (Title + Metadata)
 	title := m.styles.DetailHeader.Render(i.notification.SubjectTitle)
 
-	meta := fmt.Sprintf("%s • %s • %s",
+	decision := ""
+	if i.notification.ReviewDecision != "" {
+		decisionStyle := m.styles.Subscribed
+		switch i.notification.ReviewDecision {
+		case "APPROVED":
+			decisionStyle = m.styles.Assign
+		case "CHANGES_REQUESTED", "REVIEW_REQUIRED":
+			decisionStyle = m.styles.ActionRequired
+		}
+		decision = " • " + decisionStyle.Render(strings.ReplaceAll(i.notification.ReviewDecision, "_", " "))
+	}
+
+	meta := fmt.Sprintf("%s • %s • %s%s",
 		i.notification.RepositoryFullName,
 		i.notification.AuthorLogin,
-		i.notification.ResourceState)
+		i.notification.ResourceState,
+		decision)
 
 	header := lipgloss.JoinVertical(lipgloss.Left, title, m.styles.SelectedDescription.Render(meta))
 

@@ -58,4 +58,6 @@ var migrations = []string{
 		binary_version TEXT NOT NULL,
 		updated_at DATETIME NOT NULL
 	);`,
+	// Version 10: Add review_decision for PR approval status
+	`ALTER TABLE notifications ADD COLUMN review_decision TEXT DEFAULT '';`,
 }

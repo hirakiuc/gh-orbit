@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,9 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		var err error
 
 		switch subjectType {
-		case "PullRequest", "Issue":
+		case "PullRequest":
+			res, err = e.fetchPullRequestGQL(ctx, u)
+		case "Issue":
 			res, err = e.fetchREST(ctx, u)
 		default:
 			// Releases and others don't have descriptions in REST API without extra calls
@@ -108,6 +111,81 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 	}
 
 	return val.(models.EnrichmentResult), nil
+}
+
+func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (models.EnrichmentResult, error) {
+	owner, repo := github.ExtractOwnerRepoFromURL(u)
+	numberStr := github.ExtractNumberFromURL(u)
+
+	if owner == "" || repo == "" || numberStr == "" {
+		return e.fetchREST(ctx, u)
+	}
+
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		return e.fetchREST(ctx, u)
+	}
+
+	queryString := `
+		query($owner: String!, $repo: String!, $number: Int!) {
+			repository(owner: $owner, name: $repo) {
+				pullRequest(number: $number) {
+					body
+					url
+					author { login }
+					state
+					merged
+					isDraft
+					reviewDecision
+				}
+			}
+		}
+	`
+	variables := map[string]any{
+		"owner":  owner,
+		"repo":   repo,
+		"number": number,
+	}
+
+	var data struct {
+		Repository struct {
+			PullRequest struct {
+				Body   string `json:"body"`
+				URL    string `json:"url"`
+				Author struct {
+					Login string `json:"login"`
+				} `json:"author"`
+				State          string `json:"state"`
+				Merged         bool   `json:"merged"`
+				IsDraft        bool   `json:"isDraft"`
+				ReviewDecision string `json:"reviewDecision"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	}
+
+	err = e.client.GQL().DoWithContext(ctx, queryString, variables, &data)
+	if err != nil {
+		return models.EnrichmentResult{}, fmt.Errorf("GQL fetch failed: %w", err)
+	}
+
+	pr := data.Repository.PullRequest
+	state := ""
+	if pr.Merged {
+		state = "Merged"
+	} else if pr.IsDraft {
+		state = "Draft"
+	} else if pr.State != "" {
+		state = strings.ToUpper(pr.State[:1]) + strings.ToLower(pr.State[1:])
+	}
+
+	return models.EnrichmentResult{
+		Body:           pr.Body,
+		HTMLURL:        pr.URL,
+		Author:         pr.Author.Login,
+		ResourceState:  state,
+		ReviewDecision: pr.ReviewDecision,
+		FetchedAt:      time.Now(),
+	}, nil
 }
 
 func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.EnrichmentResult, error) {
@@ -176,7 +254,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
-				... on PullRequest { id, state, merged, isDraft }
+				... on PullRequest { id, state, merged, isDraft, reviewDecision }
 				... on Issue { id, state }
 			}
 			rateLimit { cost, remaining }
@@ -186,10 +264,11 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 
 	var data struct {
 		Nodes []struct {
-			ID      string `json:"id"`
-			State   string `json:"state"`
-			Merged  bool   `json:"merged"`
-			IsDraft bool   `json:"isDraft"`
+			ID             string `json:"id"`
+			State          string `json:"state"`
+			Merged         bool   `json:"merged"`
+			IsDraft        bool   `json:"isDraft"`
+			ReviewDecision string `json:"reviewDecision"`
 		} `json:"nodes"`
 		RateLimit struct {
 			Cost      int `json:"cost"`
@@ -237,15 +316,16 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 			state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
 		}
 
-		if state != "" {
-			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state); err != nil {
+		if state != "" || node.ReviewDecision != "" {
+			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state, node.ReviewDecision); err != nil {
 				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
 			}
 
 			// Populate results for immediate TUI refresh
 			results[node.ID] = models.EnrichmentResult{
-				ResourceState: state,
-				FetchedAt:     time.Now(),
+				ResourceState:  state,
+				ReviewDecision: node.ReviewDecision,
+				FetchedAt:      time.Now(),
 			}
 		}
 	}

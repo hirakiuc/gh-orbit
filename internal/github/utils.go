@@ -2,12 +2,80 @@ package github
 
 import (
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
 )
+
+var (
+	RePRNumber = regexp.MustCompile(`^[0-9]+$`)
+	ReTagName  = regexp.MustCompile(`^[a-zA-Z0-9-._/]+$`)
+	ReRepoName = regexp.MustCompile(`^[a-zA-Z0-9-._]+/[a-zA-Z0-9-._]+$`)
+)
+
+// ExtractNumberFromURL parses the last segment of a GitHub API URL as a number (Issue/PR).
+func ExtractNumberFromURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+
+	// Example: https://api.github.com/repos/owner/repo/pulls/123
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) > 0 {
+		last := segments[len(segments)-1]
+		if RePRNumber.MatchString(last) {
+			return last
+		}
+	}
+	return ""
+}
+
+// ExtractTagFromURL parses the last segment of a GitHub API URL as a tag (Release).
+func ExtractTagFromURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+
+	// Example: https://api.github.com/repos/owner/repo/releases/123
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) > 0 {
+		last := segments[len(segments)-1]
+		if ReTagName.MatchString(last) {
+			return last
+		}
+	}
+	return ""
+}
+
+// ExtractOwnerRepoFromURL extracts owner and repo from a GitHub API URL.
+func ExtractOwnerRepoFromURL(u string) (string, string) {
+	if u == "" {
+		return "", ""
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "", ""
+	}
+
+	// Example: https://api.github.com/repos/owner/repo/pulls/123
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) >= 3 && segments[0] == "repos" {
+		return segments[1], segments[2]
+	}
+	return "", ""
+}
 
 // ParseRateLimitInfo extracts GitHub-specific rate limit headers into a standard structure.
 func ParseRateLimitInfo(h http.Header) models.RateLimitInfo {

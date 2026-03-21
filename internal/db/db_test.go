@@ -226,7 +226,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	}}))
 
 	// 1. Enrich Notification (Combined body, author, etc)
-	require.NoError(t, db.EnrichNotification(ctx, id, "Some body", "author", "https://github.com/u", "OPEN"))
+	require.NoError(t, db.EnrichNotification(ctx, id, "Some body", "author", "https://github.com/u", "OPEN", "APPROVED"))
 
 	// Verify
 	ns, err := db.GetNotification(ctx, id)
@@ -237,6 +237,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	assert.Equal(t, "author", ns.AuthorLogin)
 	assert.Equal(t, "https://github.com/u", ns.HTMLURL)
 	assert.Equal(t, "OPEN", ns.ResourceState)
+	assert.Equal(t, "APPROVED", ns.ReviewDecision)
 	assert.True(t, ns.IsEnriched)
 }
 
@@ -328,11 +329,12 @@ func TestRepository_UpdateByNodeID(t *testing.T) {
 	}}))
 
 	// 1. Update Resource State by Node ID
-	require.NoError(t, db.UpdateResourceStateByNodeID(ctx, "node-123", "MERGED"))
+	require.NoError(t, db.UpdateResourceStateByNodeID(ctx, "node-123", "MERGED", "APPROVED"))
 	ns, err := db.GetNotification(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.Equal(t, "MERGED", ns.ResourceState)
+	assert.Equal(t, "APPROVED", ns.ReviewDecision)
 
 	// 2. Update Subject Node ID
 	require.NoError(t, db.UpdateSubjectNodeID(ctx, id, "node-456"))
