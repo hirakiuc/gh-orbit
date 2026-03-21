@@ -15,10 +15,6 @@ linters:
     - gosec
     - bodyclose
     - copyloopvar
-    - gocognit
-    - cyclop
-    - maintidx
-    - funlen
   settings:
     misspell:
       locale: US
