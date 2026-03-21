@@ -48,9 +48,10 @@ type BridgeHealth struct {
 
 // EnrichmentResult holds the fetched details for a notification.
 type EnrichmentResult struct {
-	Body          string
-	HTMLURL       string
-	Author        string
-	ResourceState string
-	FetchedAt     time.Time
+	Body           string
+	HTMLURL        string
+	Author         string
+	ResourceState  string
+	ReviewDecision string
+	FetchedAt      time.Time
 }

@@ -22,6 +22,39 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 
 	mockClient.EXPECT().BaseURL().Return("https://api.github.com/").Maybe()
 	mockClient.EXPECT().REST().Return(mockREST).Maybe()
+	mockGQL := mocks.NewMockGraphQLClient(t)
+	mockClient.EXPECT().GQL().Return(mockGQL).Maybe()
+
+	t.Run("Successful Fetch (PullRequest) via GQL", func(t *testing.T) {
+		mockGQL.EXPECT().DoWithContext(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, query string, variables map[string]any, response interface{}) {
+			// Simulate GQL response
+			res := response.(*struct {
+				Repository struct {
+					PullRequest struct {
+						Body   string `json:"body"`
+						URL    string `json:"url"`
+						Author struct {
+							Login string `json:"login"`
+						} `json:"author"`
+						State          string `json:"state"`
+						Merged         bool   `json:"merged"`
+						IsDraft        bool   `json:"isDraft"`
+						ReviewDecision string `json:"reviewDecision"`
+					} `json:"pullRequest"`
+				} `json:"repository"`
+			})
+			res.Repository.PullRequest.Body = "PR Body"
+			res.Repository.PullRequest.ReviewDecision = "APPROVED"
+		}).Return(nil).Once()
+
+		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		t.Cleanup(func() { engine.Shutdown(ctx) })
+
+		res, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest")
+		assert.NoError(t, err)
+		assert.Equal(t, "PR Body", res.Body)
+		assert.Equal(t, "APPROVED", res.ReviewDecision)
+	})
 
 	t.Run("Successful Fetch (Issue)", func(t *testing.T) {
 		mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "url", nil, mock.Anything).Return(nil).Once()

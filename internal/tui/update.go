@@ -378,6 +378,7 @@ func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 		m.allNotifications[idx].AuthorLogin = msg.Author
 		m.allNotifications[idx].HTMLURL = msg.HTMLURL
 		m.allNotifications[idx].ResourceState = msg.ResourceState
+		m.allNotifications[idx].ReviewDecision = msg.ReviewDecision
 		m.allNotifications[idx].IsEnriched = true
 		break
 	}

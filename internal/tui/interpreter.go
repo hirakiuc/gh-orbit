@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
 	"github.com/hirakiuc/gh-orbit/internal/api"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
@@ -123,7 +124,7 @@ func (i *Interpreter) executeOpenBrowser(u string) tea.Cmd {
 
 func (i *Interpreter) executeCheckoutPR(repo, number string) tea.Cmd {
 	// Validation logic moved from actions.go
-	if !reRepoName.MatchString(repo) || !rePRNumber.MatchString(number) {
+	if !github.ReRepoName.MatchString(repo) || !github.RePRNumber.MatchString(number) {
 		return func() tea.Msg {
 			return types.ErrMsg{Err: fmt.Errorf("invalid checkout parameters: %s#%s", repo, number)}
 		}
@@ -190,14 +191,14 @@ func (i *Interpreter) executeViewWeb(n triage.NotificationWithState) tea.Cmd {
 
 func (i *Interpreter) executeGHView(ghCmd, repo, arg string) tea.Cmd {
 	// Validation
-	if !reRepoName.MatchString(repo) {
+	if !github.ReRepoName.MatchString(repo) {
 		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid repo: %s", repo)} }
 	}
 	if ghCmd == "release" {
-		if !reTagName.MatchString(arg) {
+		if !github.ReTagName.MatchString(arg) {
 			return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid tag: %s", arg)} }
 		}
-	} else if !rePRNumber.MatchString(arg) {
+	} else if !github.RePRNumber.MatchString(arg) {
 		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid number: %s", arg)} }
 	}
 

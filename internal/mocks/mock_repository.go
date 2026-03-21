@@ -71,17 +71,17 @@ func (_c *MockRepository_ArchiveThread_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
-// EnrichNotification provides a mock function with given fields: ctx, id, body, author, htmlURL, resourceState
-func (_m *MockRepository) EnrichNotification(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string) error {
-	ret := _m.Called(ctx, id, body, author, htmlURL, resourceState)
+// EnrichNotification provides a mock function with given fields: ctx, id, body, author, htmlURL, resourceState, reviewDecision
+func (_m *MockRepository) EnrichNotification(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, reviewDecision string) error {
+	ret := _m.Called(ctx, id, body, author, htmlURL, resourceState, reviewDecision)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnrichNotification")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, string) error); ok {
-		r0 = rf(ctx, id, body, author, htmlURL, resourceState)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string) error); ok {
+		r0 = rf(ctx, id, body, author, htmlURL, resourceState, reviewDecision)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -101,13 +101,14 @@ type MockRepository_EnrichNotification_Call struct {
 //   - author string
 //   - htmlURL string
 //   - resourceState string
-func (_e *MockRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}) *MockRepository_EnrichNotification_Call {
-	return &MockRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, body, author, htmlURL, resourceState)}
+//   - reviewDecision string
+func (_e *MockRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, reviewDecision interface{}) *MockRepository_EnrichNotification_Call {
+	return &MockRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, body, author, htmlURL, resourceState, reviewDecision)}
 }
 
-func (_c *MockRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string)) *MockRepository_EnrichNotification_Call {
+func (_c *MockRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, reviewDecision string)) *MockRepository_EnrichNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(string), args[6].(string))
 	})
 	return _c
 }
@@ -117,7 +118,7 @@ func (_c *MockRepository_EnrichNotification_Call) Return(_a0 error) *MockReposit
 	return _c
 }
 
-func (_c *MockRepository_EnrichNotification_Call) RunAndReturn(run func(context.Context, string, string, string, string, string) error) *MockRepository_EnrichNotification_Call {
+func (_c *MockRepository_EnrichNotification_Call) RunAndReturn(run func(context.Context, string, string, string, string, string, string) error) *MockRepository_EnrichNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -688,17 +689,17 @@ func (_c *MockRepository_UpdateBridgeHealth_Call) RunAndReturn(run func(context.
 	return _c
 }
 
-// UpdateResourceStateByNodeID provides a mock function with given fields: ctx, nodeID, state
-func (_m *MockRepository) UpdateResourceStateByNodeID(ctx context.Context, nodeID string, state string) error {
-	ret := _m.Called(ctx, nodeID, state)
+// UpdateResourceStateByNodeID provides a mock function with given fields: ctx, nodeID, state, reviewDecision
+func (_m *MockRepository) UpdateResourceStateByNodeID(ctx context.Context, nodeID string, state string, reviewDecision string) error {
+	ret := _m.Called(ctx, nodeID, state, reviewDecision)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateResourceStateByNodeID")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, nodeID, state)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = rf(ctx, nodeID, state, reviewDecision)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -715,13 +716,14 @@ type MockRepository_UpdateResourceStateByNodeID_Call struct {
 //   - ctx context.Context
 //   - nodeID string
 //   - state string
-func (_e *MockRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}) *MockRepository_UpdateResourceStateByNodeID_Call {
-	return &MockRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state)}
+//   - reviewDecision string
+func (_e *MockRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}, reviewDecision interface{}) *MockRepository_UpdateResourceStateByNodeID_Call {
+	return &MockRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state, reviewDecision)}
 }
 
-func (_c *MockRepository_UpdateResourceStateByNodeID_Call) Run(run func(ctx context.Context, nodeID string, state string)) *MockRepository_UpdateResourceStateByNodeID_Call {
+func (_c *MockRepository_UpdateResourceStateByNodeID_Call) Run(run func(ctx context.Context, nodeID string, state string, reviewDecision string)) *MockRepository_UpdateResourceStateByNodeID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -731,7 +733,7 @@ func (_c *MockRepository_UpdateResourceStateByNodeID_Call) Return(_a0 error) *Mo
 	return _c
 }
 
-func (_c *MockRepository_UpdateResourceStateByNodeID_Call) RunAndReturn(run func(context.Context, string, string) error) *MockRepository_UpdateResourceStateByNodeID_Call {
+func (_c *MockRepository_UpdateResourceStateByNodeID_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockRepository_UpdateResourceStateByNodeID_Call {
 	_c.Call.Return(run)
 	return _c
 }
