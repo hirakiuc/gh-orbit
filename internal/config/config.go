@@ -143,6 +143,23 @@ func (c *Config) Validate() error {
 	// 4. TUI Validation
 	// Currently no range constraints for booleans, but maintains structure.
 
+	// 5. KeyMap Validation
+	if len(c.Keys.Sync) == 0 {
+		return fmt.Errorf("keys.sync must have at least one key defined")
+	}
+	if len(c.Keys.Quit) == 0 {
+		return fmt.Errorf("keys.quit must have at least one key defined")
+	}
+	if len(c.Keys.Back) == 0 {
+		return fmt.Errorf("keys.back must have at least one key defined")
+	}
+	if len(c.Keys.Help) == 0 {
+		return fmt.Errorf("keys.help must have at least one key defined")
+	}
+	if len(c.Keys.ToggleDetail) == 0 {
+		return fmt.Errorf("keys.toggle_detail must have at least one key defined")
+	}
+
 	return nil
 }
 
