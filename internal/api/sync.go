@@ -150,7 +150,7 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 				GitHubID:           n.ID,
 				SubjectTitle:       n.Subject.Title,
 				SubjectURL:         n.Subject.URL,
-				SubjectType:        n.Subject.Type,
+				SubjectType:        triage.SubjectType(n.Subject.Type),
 				Reason:             n.Reason,
 				RepositoryFullName: n.Repository.FullName,
 				SubjectNodeID:      n.Subject.NodeID,

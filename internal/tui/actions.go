@@ -118,9 +118,9 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	return m.MarkReadByID(i.notification.GitHubID, !i.notification.IsReadLocally)
 }
 
-func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
+func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		res, err := m.enrich.FetchDetail(ctx, u, subjectType)
+		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType))
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
@@ -132,11 +132,11 @@ func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
 		}
 
 		return detailLoadedMsg{
-			GitHubID:       id,
-			Body:           res.Body,
-			Author:         res.Author,
-			HTMLURL:        res.HTMLURL,
-			ResourceState:  res.ResourceState,
+			GitHubID:         id,
+			Body:             res.Body,
+			Author:           res.Author,
+			HTMLURL:          res.HTMLURL,
+			ResourceState:    res.ResourceState,
 			ResourceSubState: res.ResourceSubState,
 		}
 	})

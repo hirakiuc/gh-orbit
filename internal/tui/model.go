@@ -36,7 +36,7 @@ type ListModel struct {
 	list           list.Model
 	delegate       itemDelegate
 	activeTab      int
-	resourceFilter string // e.g. "PullRequest", "Issue"
+	resourceFilter triage.SubjectType // e.g. "PullRequest", "Issue"
 }
 
 // DetailModel encapsulates viewport-specific state.
@@ -258,11 +258,11 @@ type syncCompleteMsg struct {
 }
 
 type detailLoadedMsg struct {
-	GitHubID       string
-	Body           string
-	Author         string
-	HTMLURL        string
-	ResourceState  string
+	GitHubID         string
+	Body             string
+	Author           string
+	HTMLURL          string
+	ResourceState    string
 	ResourceSubState string
 }
 

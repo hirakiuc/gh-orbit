@@ -84,11 +84,13 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		var res models.EnrichmentResult
 		var err error
 
-		switch subjectType {
-		case "PullRequest":
+		switch triage.SubjectType(subjectType) {
+		case triage.SubjectPullRequest:
 			res, err = e.fetchPullRequestGQL(ctx, u)
-		case "Issue":
+		case triage.SubjectIssue:
 			res, err = e.fetchREST(ctx, u)
+		case triage.SubjectDiscussion:
+			res, err = e.fetchREST(ctx, u) // Discussions also supported via REST for basic details
 		default:
 			// Releases and others don't have descriptions in REST API without extra calls
 			res = models.EnrichmentResult{HTMLURL: u, FetchedAt: time.Now()}
@@ -150,9 +152,9 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 	var data struct {
 		Repository struct {
 			PullRequest struct {
-				Body             string `json:"body"`
-				HTMLURL          string `json:"url"`
-				Author           struct {
+				Body    string `json:"body"`
+				HTMLURL string `json:"url"`
+				Author  struct {
 					Login string `json:"login"`
 				} `json:"author"`
 				State            string `json:"state"`
@@ -261,6 +263,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
+				__typename
 				... on PullRequest { id, state, merged, isDraft, reviewDecision }
 				... on Issue { id, state, stateReason }
 				... on Discussion { id, closed, stateReason }
@@ -272,6 +275,7 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 
 	var data struct {
 		Nodes []struct {
+			Typename       string  `json:"__typename"`
 			ID             string  `json:"id"`
 			State          string  `json:"state"`
 			Merged         bool    `json:"merged"`
@@ -320,29 +324,32 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		state := ""
 		subState := ""
 
-		if node.Merged {
-			state = "Merged"
-		} else if node.IsDraft {
-			state = "Draft"
-		} else if node.State != "" {
-			state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
-		} else if node.ID != "" {
-			// Check if it's a Discussion (which uses 'closed' instead of 'state')
+		switch triage.SubjectType(node.Typename) {
+		case triage.SubjectPullRequest:
+			if node.Merged {
+				state = "Merged"
+			} else if node.IsDraft {
+				state = "Draft"
+			} else if node.State != "" {
+				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+			}
+			subState = node.ReviewDecision
+		case triage.SubjectIssue:
+			if node.State != "" {
+				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+			}
+			if node.StateReason != nil {
+				subState = *node.StateReason
+			}
+		case triage.SubjectDiscussion:
 			if node.Closed {
 				state = "Closed"
 			} else {
 				state = "Open"
 			}
-		}
-
-		// PullRequest sub-state
-		if node.ReviewDecision != "" {
-			subState = node.ReviewDecision
-		}
-
-		// Issue/Discussion sub-state
-		if node.StateReason != nil && *node.StateReason != "" {
-			subState = *node.StateReason
+			if node.StateReason != nil {
+				subState = *node.StateReason
+			}
 		}
 
 		if state != "" || subState != "" {

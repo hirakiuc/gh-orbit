@@ -110,7 +110,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 				actions = append(actions, ActionViewWeb{Notification: i.notification})
 			}
 		case key.Matches(msg, m.keys.CheckoutPR):
-			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.SubjectType == "PullRequest" {
+			if i, ok := m.listView.list.SelectedItem().(item); ok && i.notification.SubjectType == triage.SubjectPullRequest {
 				number := extractNumberFromURL(i.notification.SubjectURL)
 				if number != "" {
 					actions = append(actions, ActionCheckoutPR{Repository: i.notification.RepositoryFullName, Number: number})
@@ -301,7 +301,7 @@ func (m *Model) maxVisibleNotificationAgeDays() int {
 	return m.config.Notifications.MaxVisibleAgeDays
 }
 
-func (m *Model) toggleResourceFilter(resType, label string) {
+func (m *Model) toggleResourceFilter(resType triage.SubjectType, label string) {
 	if m.listView.resourceFilter == resType {
 		m.listView.resourceFilter = ""
 		m.ui.SetResourceFilter("")
@@ -447,11 +447,12 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 	case key.Matches(msg, m.keys.CheckoutPR):
 		return m.handleCheckoutPRKey()
 	case key.Matches(msg, m.keys.FilterPR):
-		m.toggleResourceFilter("PullRequest", "PRs")
+		m.toggleResourceFilter(triage.SubjectPullRequest, "PRs")
 	case key.Matches(msg, m.keys.FilterIssue):
-		m.toggleResourceFilter("Issue", "Issues")
+		m.toggleResourceFilter(triage.SubjectIssue, "Issues")
 	case key.Matches(msg, m.keys.FilterDiscussion):
-		m.toggleResourceFilter("Discussion", "Discussions")
+		m.toggleResourceFilter(triage.SubjectDiscussion, "Discussions")
+
 	case key.Matches(msg, m.keys.PriorityUp):
 		return m.handlePriorityKey(1)
 	case key.Matches(msg, m.keys.PriorityDown):
@@ -514,7 +515,7 @@ func (m *Model) handleOpenBrowserKey() []Action {
 
 func (m *Model) handleCheckoutPRKey() []Action {
 	n, ok := m.selectedNotification()
-	if !ok || n.SubjectType != "PullRequest" {
+	if !ok || n.SubjectType != triage.SubjectPullRequest {
 		return nil
 	}
 
