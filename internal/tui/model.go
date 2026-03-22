@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -75,6 +76,8 @@ type Model struct {
 	version          string
 	styles           Styles
 	keys             KeyMap
+	help             help.Model
+	showHelp         bool
 	allNotifications []triage.NotificationWithState
 	err              error
 	state            AppState
@@ -137,12 +140,19 @@ func NewModel(
 	opts ...Option,
 ) *Model {
 	styles := DefaultStyles(true)
-	keys := DefaultKeyMap()
+	keys := NewKeyMap(cfg)
 	delegate := newItemDelegate(styles, keys)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.Title = "GitHub Orbit"
 	l.Styles.Title = styles.Title
+	l.SetShowHelp(false)
+
+	h := help.New()
+	h.Styles.ShortKey = styles.Help
+	h.Styles.ShortDesc = styles.Help
+	h.Styles.FullKey = styles.Help
+	h.Styles.FullDesc = styles.Help
 
 	vp := viewport.New()
 	vp.MouseWheelEnabled = true
@@ -167,6 +177,7 @@ func NewModel(
 		userID:       userID,
 		styles:       styles,
 		keys:         keys,
+		help:         h,
 		state:        StateList,
 		PollInterval: cfg.Notifications.SyncInterval,
 		// Default intervals

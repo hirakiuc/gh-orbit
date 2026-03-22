@@ -18,6 +18,33 @@ type Config struct {
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Enrichment    EnrichmentConfig    `yaml:"enrichment"`
 	TUI           TUIConfig           `yaml:"tui"`
+	Keys          KeyMapConfig        `yaml:"keys"`
+}
+
+// KeyMapConfig defines the keyboard shortcuts for the TUI.
+type KeyMapConfig struct {
+	Sync             []string `yaml:"sync"`
+	PriorityUp       []string `yaml:"priority_up"`
+	PriorityDown     []string `yaml:"priority_down"`
+	PriorityNone     []string `yaml:"priority_none"`
+	Inbox            []string `yaml:"inbox"`
+	Unread           []string `yaml:"unread"`
+	Triaged          []string `yaml:"triaged"`
+	All              []string `yaml:"all"`
+	CopyURL          []string `yaml:"copy_url"`
+	ToggleRead       []string `yaml:"toggle_read"`
+	NextTab          []string `yaml:"next_tab"`
+	PrevTab          []string `yaml:"prev_tab"`
+	CheckoutPR       []string `yaml:"checkout_pr"`
+	ViewContextual   []string `yaml:"view_contextual"`
+	OpenBrowser      []string `yaml:"open_browser"`
+	ToggleDetail     []string `yaml:"toggle_detail"`
+	Back             []string `yaml:"back"`
+	Quit             []string `yaml:"quit"`
+	FilterPR         []string `yaml:"filter_pr"`
+	FilterIssue      []string `yaml:"filter_issue"`
+	FilterDiscussion []string `yaml:"filter_discussion"`
+	Help             []string `yaml:"help"`
 }
 
 // TUIConfig represents settings for the Terminal UI.
@@ -61,6 +88,30 @@ func DefaultConfig() *Config {
 		},
 		TUI: TUIConfig{
 			AutoReadOnOpen: false,
+		},
+		Keys: KeyMapConfig{
+			Sync:             []string{"r"},
+			PriorityUp:       []string{"shift+up", "K"},
+			PriorityDown:     []string{"shift+down", "J"},
+			PriorityNone:     []string{"0"},
+			Inbox:            []string{"1"},
+			Unread:           []string{"2"},
+			Triaged:          []string{"3"},
+			All:              []string{"4"},
+			CopyURL:          []string{"y"},
+			ToggleRead:       []string{"m"},
+			NextTab:          []string{"]", "tab"},
+			PrevTab:          []string{"[", "shift+tab"},
+			CheckoutPR:       []string{"c"},
+			ViewContextual:   []string{"v"},
+			OpenBrowser:      []string{"enter"},
+			ToggleDetail:     []string{" ", "space"},
+			Back:             []string{"esc", "backspace"},
+			Quit:             []string{"q"},
+			FilterPR:         []string{"p"},
+			FilterIssue:      []string{"i"},
+			FilterDiscussion: []string{"d"},
+			Help:             []string{"?"},
 		},
 	}
 }
