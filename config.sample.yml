@@ -1,0 +1,50 @@
+# gh-orbit Configuration Sample
+# Copy this file to ~/.config/gh/extensions/gh-orbit/config.yml to customize behavior.
+
+# Configuration schema version
+version: 1
+
+# Notification settings
+notifications:
+  # Enable/disable the background notification sync and system alerts.
+  enabled: true
+  
+  # Mute system alerts (macOS notifications) while still syncing data for the TUI.
+  mute: false
+  
+  # Interval in seconds between background syncs. 
+  # Valid range: 10 to 3600 seconds.
+  sync_interval: 60
+  
+  # Maximum age of notifications to display in the TUI.
+  # Valid range: 0 to 3650 days (0 means no cutoff).
+  max_visible_age_days: 365
+  
+  # List of notification reasons to include in the sync.
+  # Common reasons: assign, mention, review_requested, author, manual, subscribed.
+  reasons:
+    - assign
+    - mention
+    - review_requested
+  
+  # List of repository full names (org/repo) to ignore.
+  ignore_repos: []
+
+# Enrichment settings (metadata fetching for PRs/Issues)
+enrichment:
+  # Debounce time in milliseconds before triggering metadata enrichment.
+  # Valid range: 50 to 5000 ms.
+  debounce_ms: 250
+  
+  # Number of concurrent workers for metadata enrichment.
+  # Valid range: 1 to 10.
+  concurrency: 1
+  
+  # Number of nodes to fetch in a single GraphQL batch request.
+  batch_size: 20
+
+# TUI (Terminal UI) settings
+tui:
+  # Automatically mark a notification as read after opening it in the browser
+  # or checking out a Pull Request.
+  auto_read_on_open: false
