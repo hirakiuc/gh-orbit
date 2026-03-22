@@ -12,6 +12,11 @@ description: Standard template for Strategy Proposals in the gh-orbit project.
 
 High-level goal and problem statement.
 
+### 1.1 Discussion & Trade-offs
+*Worker: Use this section to flag architectural uncertainties, implementation trade-offs (e.g. Implementation A vs B), or alternative paths.*
+- **Point A**: [Description of uncertainty or trade-off]
+- **Point B**: [Description of uncertainty or trade-off]
+
 ## 2. Technical Strategy
 
 - **Architecture**: Impact on TUI, repository, or sync engine.

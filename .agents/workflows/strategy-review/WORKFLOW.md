@@ -12,6 +12,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 - **Active Proposal**: `.agents/proposal.md` (Live design workbench).
 - **Active Context**: `.agents/issue.md` (Cache for target GitHub Issue description).
 - **Active Feedback**: `.agents/feedback.md` (Live audit log from the Reviewer).
+- **Optional RFC**: `.agents/rfc.md` (Persistent log for high-level architectural discussion).
 
 ---
 
@@ -37,16 +38,36 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 
 ## Procedure (The Hybrid Loop)
 
-### Phase A: Local Iteration (The Workbench)
+### Phase A: Selection & Choice of Path
 
 1. **[Worker] Selection**: Pick a target Issue from **Project #7** or `make roadmap`.
 2. **[Worker] Initialization**: Run `make task ID="<issue-id>"` to automate the workbench setup.
    - *Note*: This **resets Revision to 1** in `.agents/proposal.md`.
-3. **[User] Trigger**: The user instructs the Reviewer to start the review.
-4. **[Reviewer] Audit**: Read `.agents/issue.md` and `.agents/proposal.md`, then execute the `feedback` workflow.
-5. **[Reviewer] Persist**: Save findings to `.agents/feedback.md` and notify the Worker.
-6. **[Worker] Refine**: Update `.agents/proposal.md` and **increment the Revision number** based on feedback.
-7. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker.
+3. **[Worker] Decision Gate**: Evaluate the task's complexity to choose the appropriate path:
+
+#### Path 1: The RFC Path (High Uncertainty / Systemic Change)
+**Use when**:
+- Architectural shifts or new external dependencies.
+- High Blast Radius (impacting 3+ packages or core interfaces).
+- Open design questions with multiple valid solutions.
+
+1. **[Worker] Draft RFC**: Share a high-level strategy summary. For complex cases, use `.agents/rfc.md` to maintain persistence.
+   - *Security Note*: Never include sensitive credentials or PII in RFC files or discussion logs.
+2. **[User/Reviewer] Alignment**: Discuss the RFC to reach high-level consensus.
+3. **[Worker] Transition**: Once aligned, move to **Path 2** to formalize the implementation.
+
+#### Path 2: The Proposal Path (Refined Implementation)
+**Use when**:
+- Features, bug fixes, or well-defined patterns.
+- Following a successful RFC alignment.
+
+1. **[Worker] Formalize**: Draft the formal `.agents/proposal.md` using the template.
+   - *Mandatory*: Explicitly address trade-offs in **Section 1.1 "Discussion & Trade-offs"**.
+2. **[User] Trigger**: The user instructs the Reviewer to start the review.
+3. **[Reviewer] Audit**: Read `.agents/issue.md` and `.agents/proposal.md`, then execute the `feedback` workflow.
+4. **[Reviewer] Persist**: Save findings to `.agents/feedback.md` and notify the Worker.
+5. **[Worker] Refine**: Update `.agents/proposal.md` and **increment the Revision number** based on feedback.
+6. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker.
 
    - *Escape Hatch*: The User can provide direct approval if a stalemate occurs.
 
@@ -66,3 +87,4 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 - **Permanent Archive**: The GitHub Issue provides the historical design context, allowing local cleanup.
 - **Robustness**: Online research and User-led triggers ensure agents don't hallucinate or loop infinitely.
 - **Verification Integrity**: Mandatory "Proof of Correctness" ensures that testing is part of the architectural design.
+- **Architectural Synergy**: The RFC phase ensures high-level alignment before committing to implementation details.

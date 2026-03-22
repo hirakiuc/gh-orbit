@@ -34,8 +34,8 @@
 
 ### 2.4 Role Boundaries
 
-- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow.
-- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`.
+- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow. **Mindset**: Proactively flags uncertainties and initiates RFC discussions for complex architectural shifts.
+- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`. **Mindset**: Acts as a collaborative architect, providing early feedback on RFCs and refining trade-offs in proposals.
 
 ## 3. Sandbox & Environment Constraints
 
