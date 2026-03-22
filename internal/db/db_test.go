@@ -237,7 +237,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	assert.Equal(t, "author", ns.AuthorLogin)
 	assert.Equal(t, "https://github.com/u", ns.HTMLURL)
 	assert.Equal(t, "OPEN", ns.ResourceState)
-	assert.Equal(t, "APPROVED", ns.ReviewDecision)
+	assert.Equal(t, "APPROVED", ns.ResourceSubState)
 	assert.True(t, ns.IsEnriched)
 }
 
@@ -334,7 +334,7 @@ func TestRepository_UpdateByNodeID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.Equal(t, "MERGED", ns.ResourceState)
-	assert.Equal(t, "APPROVED", ns.ReviewDecision)
+	assert.Equal(t, "APPROVED", ns.ResourceSubState)
 
 	// 2. Update Subject Node ID
 	require.NoError(t, db.UpdateSubjectNodeID(ctx, id, "node-456"))

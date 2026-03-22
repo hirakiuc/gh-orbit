@@ -50,8 +50,8 @@ type BridgeHealth struct {
 type EnrichmentResult struct {
 	Body           string
 	HTMLURL        string
-	Author         string
-	ResourceState  string
-	ReviewDecision string
-	FetchedAt      time.Time
+	Author           string
+	ResourceState    string
+	ResourceSubState string
+	FetchedAt        time.Time
 }

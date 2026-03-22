@@ -26,7 +26,7 @@ type Notification struct {
 	Body               string       `json:"body"`
 	AuthorLogin        string       `json:"author_login"`
 	ResourceState      string       `json:"resource_state"`
-	ReviewDecision     string       `json:"review_decision"`
+	ResourceSubState   string       `json:"resource_sub_state"`
 	SubjectNodeID      string       `json:"subject_node_id"`
 	IsEnriched         bool         `json:"is_enriched"`
 	EnrichedAt         sql.NullTime `json:"enriched_at"`

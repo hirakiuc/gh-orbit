@@ -13,7 +13,7 @@ import (
 
 // EnrichNotification updates a notification with detailed content (body, author).
 // It also propagates the state to all notifications sharing the same subject_node_id for consistency.
-func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, reviewDecision string) error {
+func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, resourceSubState string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -36,11 +36,11 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 		    author_login = ?,
 		    html_url = COALESCE(NULLIF(?, ''), html_url),
 		    resource_state = ?,
-		    review_decision = ?,
+		    resource_sub_state = ?,
 		    is_enriched = TRUE,
 		    enriched_at = ?
 		WHERE github_id = ?
-	`, body, author, htmlURL, resourceState, reviewDecision, now, id)
+	`, body, author, htmlURL, resourceState, resourceSubState, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to enrich notification: %w", err)
 	}
@@ -50,13 +50,13 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 		_, err = tx.ExecContext(ctx, `
 			UPDATE notifications
 			SET resource_state = ?,
-			    review_decision = ?,
+			    resource_sub_state = ?,
 			    body = CASE WHEN body = '' THEN ? ELSE body END,
 			    author_login = CASE WHEN author_login = '' THEN ? ELSE author_login END,
 			    is_enriched = CASE WHEN body != '' THEN TRUE ELSE is_enriched END,
 			    enriched_at = ?
 			WHERE subject_node_id = ? AND github_id != ?
-		`, resourceState, reviewDecision, body, author, now, nodeID, id)
+		`, resourceState, resourceSubState, body, author, now, nodeID, id)
 		if err != nil {
 			db.logger.WarnContext(ctx, "failed to propagate enrichment to peers", "node_id", nodeID, "error", err)
 		}
@@ -66,15 +66,15 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 }
 
 // UpdateResourceStateByNodeID updates the live status of all resources sharing a GraphQL ID.
-func (db *DB) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, reviewDecision string) error {
-	db.logger.DebugContext(ctx, "db: updating resource state by node_id", "node_id", nodeID, "state", state, "review_decision", reviewDecision)
+func (db *DB) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, resourceSubState string) error {
+	db.logger.DebugContext(ctx, "db: updating resource state by node_id", "node_id", nodeID, "state", state, "resource_sub_state", resourceSubState)
 	_, err := db.ExecContext(ctx, `
 		UPDATE notifications
 		SET resource_state = ?,
-		    review_decision = ?,
+		    resource_sub_state = ?,
 		    enriched_at = ?
 		WHERE subject_node_id = ?
-	`, state, reviewDecision, time.Now(), nodeID)
+	`, state, resourceSubState, time.Now(), nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to update resource state by node_id: %w", err)
 	}
@@ -152,7 +152,7 @@ func baseNotificationSelect() string {
 	return `
 		SELECT
 			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
-			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.review_decision, ''), COALESCE(n.subject_node_id, ''),
+			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.resource_sub_state, ''), COALESCE(n.subject_node_id, ''),
 			n.is_enriched, n.enriched_at, n.updated_at,
 			s.priority, s.status, s.is_read_locally, s.is_notified
 		FROM notifications n
@@ -167,7 +167,7 @@ func (db *DB) GetNotification(ctx context.Context, id string) (*triage.Notificat
 	var ns triage.NotificationWithState
 	err := row.Scan(
 		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
-		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ReviewDecision, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
+		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ResourceSubState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
 		&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
 	)
 	if err == sql.ErrNoRows {
@@ -193,7 +193,7 @@ func (db *DB) ListNotifications(ctx context.Context) ([]triage.NotificationWithS
 		var ns triage.NotificationWithState
 		err := rows.Scan(
 			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
-			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ReviewDecision, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
+			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ResourceSubState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
 			&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
 		)
 		if err != nil {

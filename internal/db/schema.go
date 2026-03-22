@@ -60,4 +60,7 @@ var migrations = []string{
 	);`,
 	// Version 10: Add review_decision for PR approval status
 	`ALTER TABLE notifications ADD COLUMN review_decision TEXT DEFAULT '';`,
+	// Version 11: Generalize review_decision to resource_sub_state
+	`ALTER TABLE notifications ADD COLUMN resource_sub_state TEXT DEFAULT '';
+	 UPDATE notifications SET resource_sub_state = review_decision;`,
 }

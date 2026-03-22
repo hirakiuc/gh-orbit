@@ -31,20 +31,20 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res := response.(*struct {
 				Repository struct {
 					PullRequest struct {
-						Body   string `json:"body"`
-						URL    string `json:"url"`
-						Author struct {
+						Body             string `json:"body"`
+						HTMLURL          string `json:"url"`
+						Author           struct {
 							Login string `json:"login"`
 						} `json:"author"`
 						State          string `json:"state"`
 						Merged         bool   `json:"merged"`
 						IsDraft        bool   `json:"isDraft"`
-						ReviewDecision string `json:"reviewDecision"`
+						ResourceSubState string `json:"reviewDecision"`
 					} `json:"pullRequest"`
 				} `json:"repository"`
 			})
 			res.Repository.PullRequest.Body = "PR Body"
-			res.Repository.PullRequest.ReviewDecision = "APPROVED"
+			res.Repository.PullRequest.ResourceSubState = "APPROVED"
 		}).Return(nil).Once()
 
 		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
@@ -53,7 +53,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		res, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest")
 		assert.NoError(t, err)
 		assert.Equal(t, "PR Body", res.Body)
-		assert.Equal(t, "APPROVED", res.ReviewDecision)
+		assert.Equal(t, "APPROVED", res.ResourceSubState)
 	})
 
 	t.Run("Successful Fetch (Issue)", func(t *testing.T) {

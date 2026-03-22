@@ -150,23 +150,25 @@ func (m *Model) renderDetailView() string {
 	// 1. Header (Title + Metadata)
 	title := m.styles.DetailHeader.Render(i.notification.SubjectTitle)
 
-	decision := ""
-	if i.notification.ReviewDecision != "" {
-		decisionStyle := m.styles.Subscribed
-		switch i.notification.ReviewDecision {
-		case "APPROVED":
-			decisionStyle = m.styles.Assign
-		case "CHANGES_REQUESTED", "REVIEW_REQUIRED":
-			decisionStyle = m.styles.ActionRequired
+	subState := ""
+	if i.notification.ResourceSubState != "" {
+		subStateStyle := m.styles.Subscribed
+		switch i.notification.ResourceSubState {
+		case "APPROVED", "COMPLETED", "RESOLVED":
+			subStateStyle = m.styles.Assign // Green
+		case "CHANGES_REQUESTED", "NOT_PLANNED", "DUPLICATE":
+			subStateStyle = m.styles.ActionRequired // Red
+		case "REVIEW_REQUIRED", "OUTDATED":
+			subStateStyle = m.styles.Subscribed // Gray
 		}
-		decision = " • " + decisionStyle.Render(strings.ReplaceAll(i.notification.ReviewDecision, "_", " "))
+		subState = " • " + subStateStyle.Render(strings.ReplaceAll(i.notification.ResourceSubState, "_", " "))
 	}
 
 	meta := fmt.Sprintf("%s • %s • %s%s",
 		i.notification.RepositoryFullName,
 		i.notification.AuthorLogin,
 		i.notification.ResourceState,
-		decision)
+		subState)
 
 	header := lipgloss.JoinVertical(lipgloss.Left, title, m.styles.SelectedDescription.Render(meta))
 
