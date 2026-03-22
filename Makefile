@@ -128,11 +128,13 @@ roadmap:
 task:
 	@if [ -z "$(ID)" ]; then echo "Usage: make task ID=<issue-number>"; exit 1; fi
 	@echo "Initializing workbench for Issue #$(ID)..."
-	@rm -f .agents/issue.md .agents/proposal.md .agents/feedback.md
+	@rm -f .agents/issue.md .agents/proposal.md .agents/feedback.md .agents/rfc.md
 	@gh issue view "$(ID)" --json title,body,state,labels,milestone --template 'Title: {{.title}}\n\nBody: {{.body}}\n\nLabels: {{range .labels}}{{.name}} {{end}}\nMilestone: {{if .milestone}}{{.milestone.title}}{{else}}None{{end}}\nState: {{.state}}\n' > .agents/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
 	@cp .agents/workflows/strategy-review/TEMPLATE.md .agents/proposal.md
 	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/proposal.md
-	@echo "Workbench ready: .agents/issue.md and .agents/proposal.md initialized."
+	@cp .agents/workflows/strategy-review/RFC_TEMPLATE.md .agents/rfc.md
+	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/rfc.md
+	@echo "Workbench ready: .agents/issue.md, .agents/proposal.md, and .agents/rfc.md initialized."
 
 clean-tmp:
 	@echo "Cleaning up local sandbox directory..."
