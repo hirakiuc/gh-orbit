@@ -17,6 +17,12 @@ type Config struct {
 	Version       int                 `yaml:"version"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Enrichment    EnrichmentConfig    `yaml:"enrichment"`
+	TUI           TUIConfig           `yaml:"tui"`
+}
+
+// TUIConfig represents settings for the Terminal UI.
+type TUIConfig struct {
+	AutoReadOnOpen bool `yaml:"auto_read_on_open"`
 }
 
 // EnrichmentConfig represents the settings for background metadata enrichment.
@@ -53,6 +59,9 @@ func DefaultConfig() *Config {
 			Concurrency: 1,
 			BatchSize:   20,
 		},
+		TUI: TUIConfig{
+			AutoReadOnOpen: false,
+		},
 	}
 }
 
@@ -79,6 +88,9 @@ func (c *Config) Validate() error {
 	if c.Enrichment.Concurrency < 1 || c.Enrichment.Concurrency > 10 {
 		return fmt.Errorf("enrichment.concurrency must be between 1 and 10, got %d", c.Enrichment.Concurrency)
 	}
+
+	// 4. TUI Validation
+	// Currently no range constraints for booleans, but maintains structure.
 
 	return nil
 }

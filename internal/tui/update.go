@@ -523,7 +523,12 @@ func (m *Model) handleCheckoutPRKey() []Action {
 	if number == "" {
 		return nil
 	}
-	return []Action{ActionCheckoutPR{Repository: n.RepositoryFullName, Number: number}}
+
+	return []Action{ActionCheckoutPR{
+		NotificationID: n.GitHubID,
+		Repository:     n.RepositoryFullName,
+		Number:         number,
+	}}
 }
 
 func (m *Model) handlePriorityKey(delta int) []Action {
