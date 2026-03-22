@@ -76,7 +76,7 @@ type Model struct {
 	version          string
 	styles           Styles
 	keys             KeyMap
-	help             help.Model
+	help             *help.Model
 	showHelp         bool
 	allNotifications []triage.NotificationWithState
 	err              error
@@ -177,7 +177,7 @@ func NewModel(
 		userID:       userID,
 		styles:       styles,
 		keys:         keys,
-		help:         h,
+		help:         &h,
 		state:        StateList,
 		PollInterval: cfg.Notifications.SyncInterval,
 		// Default intervals
