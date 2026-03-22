@@ -48,3 +48,37 @@ tui:
   # Automatically mark a notification as read after opening it in the browser
   # or checking out a Pull Request.
   auto_read_on_open: false
+
+# Keyboard Shortcuts
+# You can customize keys for any of the following actions.
+# Each entry is a list of strings (keys).
+keys:
+  # General Actions
+  help: ["?"]
+  sync: ["r"]
+  quit: ["q"]
+  back: ["esc", "backspace"]
+  copy_url: ["y"]
+  toggle_read: ["m"]
+  toggle_detail: [" ", "space"]
+  open_browser: ["enter"]
+  checkout_pr: ["c"]
+  view_contextual: ["v"]
+
+  # Tab Navigation
+  inbox: ["1"]
+  unread: ["2"]
+  triaged: ["3"]
+  all: ["4"]
+  next_tab: ["]", "tab"]
+  prev_tab: ["[", "shift+tab"]
+
+  # Priority Management
+  priority_up: ["shift+up", "K"]
+  priority_down: ["shift+down", "J"]
+  priority_none: ["0"]
+
+  # Resource Filtering
+  filter_pr: ["p"]
+  filter_issue: ["i"]
+  filter_discussion: ["d"]
