@@ -107,6 +107,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 			m.state = StateList
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
+			m.help.ShowAll = m.showHelp
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				actions = append(actions, ActionViewWeb{Notification: i.notification})
@@ -319,6 +320,9 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 	m.ui.SetSize(msg.Width, msg.Height)
+
+	m.help.SetWidth(msg.Width)
+
 	m.updateMarkdownRenderer()
 }
 
@@ -428,6 +432,7 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 		return m.handleToggleReadKey()
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
+		m.help.ShowAll = m.showHelp
 	case key.Matches(msg, m.keys.NextTab):
 		m.cycleTab(1)
 	case key.Matches(msg, m.keys.PrevTab):
