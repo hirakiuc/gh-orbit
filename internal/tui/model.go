@@ -36,7 +36,7 @@ type ListModel struct {
 	list           list.Model
 	delegate       itemDelegate
 	activeTab      int
-	resourceFilter string // e.g. "PullRequest", "Issue"
+	resourceFilter triage.SubjectType // e.g. "PullRequest", "Issue"
 }
 
 // DetailModel encapsulates viewport-specific state.
@@ -52,7 +52,7 @@ type notificationStore interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
 	MarkReadLocally(ctx context.Context, id string, isRead bool) error
 	SetPriority(ctx context.Context, id string, priority int) error
-	EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, reviewDecision string) error
+	EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, resourceSubState string) error
 }
 
 // Model represents the application state.
@@ -258,12 +258,12 @@ type syncCompleteMsg struct {
 }
 
 type detailLoadedMsg struct {
-	GitHubID       string
-	Body           string
-	Author         string
-	HTMLURL        string
-	ResourceState  string
-	ReviewDecision string
+	GitHubID         string
+	Body             string
+	Author           string
+	HTMLURL          string
+	ResourceState    string
+	ResourceSubState string
 }
 
 type (

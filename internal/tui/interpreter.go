@@ -160,19 +160,20 @@ func (i *Interpreter) executeViewWeb(n triage.NotificationWithState) tea.Cmd {
 	var cmd tea.Cmd
 	var toast string
 	switch n.SubjectType {
-	case "PullRequest":
+	case triage.SubjectPullRequest:
 		number := extractNumberFromURL(n.SubjectURL)
 		if number != "" {
 			toast = "Opening PR..."
 			cmd = i.executeGHView("pr", repo, number)
 		}
-	case "Issue":
+	case triage.SubjectIssue:
 		number := extractNumberFromURL(n.SubjectURL)
 		if number != "" {
-			toast = "Opening issue..."
+			toast = "Opening Issue..."
 			cmd = i.executeGHView("issue", repo, number)
 		}
-	case "Release":
+
+	case triage.SubjectRelease:
 		tag := extractTagFromURL(n.SubjectURL)
 		if tag != "" {
 			toast = "Opening release..."

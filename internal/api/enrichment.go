@@ -84,11 +84,13 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		var res models.EnrichmentResult
 		var err error
 
-		switch subjectType {
-		case "PullRequest":
+		switch triage.SubjectType(subjectType) {
+		case triage.SubjectPullRequest:
 			res, err = e.fetchPullRequestGQL(ctx, u)
-		case "Issue":
+		case triage.SubjectIssue:
 			res, err = e.fetchREST(ctx, u)
+		case triage.SubjectDiscussion:
+			res, err = e.fetchREST(ctx, u) // Discussions also supported via REST for basic details
 		default:
 			// Releases and others don't have descriptions in REST API without extra calls
 			res = models.EnrichmentResult{HTMLURL: u, FetchedAt: time.Now()}
@@ -150,15 +152,15 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 	var data struct {
 		Repository struct {
 			PullRequest struct {
-				Body   string `json:"body"`
-				URL    string `json:"url"`
-				Author struct {
+				Body    string `json:"body"`
+				HTMLURL string `json:"url"`
+				Author  struct {
 					Login string `json:"login"`
 				} `json:"author"`
-				State          string `json:"state"`
-				Merged         bool   `json:"merged"`
-				IsDraft        bool   `json:"isDraft"`
-				ReviewDecision string `json:"reviewDecision"`
+				State            string `json:"state"`
+				Merged           bool   `json:"merged"`
+				IsDraft          bool   `json:"isDraft"`
+				ResourceSubState string `json:"reviewDecision"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	}
@@ -179,12 +181,12 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 	}
 
 	return models.EnrichmentResult{
-		Body:           pr.Body,
-		HTMLURL:        pr.URL,
-		Author:         pr.Author.Login,
-		ResourceState:  state,
-		ReviewDecision: pr.ReviewDecision,
-		FetchedAt:      time.Now(),
+		Body:             pr.Body,
+		HTMLURL:          pr.HTMLURL,
+		Author:           pr.Author.Login,
+		ResourceState:    state,
+		ResourceSubState: pr.ResourceSubState,
+		FetchedAt:        time.Now(),
 	}, nil
 }
 
@@ -195,7 +197,8 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.Enri
 		User    struct {
 			Login string `json:"login"`
 		} `json:"user"`
-		State string `json:"state"`
+		State       string  `json:"state"`
+		StateReason *string `json:"state_reason"`
 	}
 
 	// Use internal REST client for authenticated requests
@@ -210,12 +213,18 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.Enri
 		resourceState = strings.ToUpper(data.State[:1]) + strings.ToLower(data.State[1:])
 	}
 
+	subState := ""
+	if data.StateReason != nil {
+		subState = strings.ToUpper(*data.StateReason)
+	}
+
 	return models.EnrichmentResult{
-		Body:          data.Body,
-		HTMLURL:       data.HTMLURL,
-		Author:        data.User.Login,
-		ResourceState: resourceState,
-		FetchedAt:     time.Now(),
+		Body:             data.Body,
+		HTMLURL:          data.HTMLURL,
+		Author:           data.User.Login,
+		ResourceState:    resourceState,
+		ResourceSubState: subState,
+		FetchedAt:        time.Now(),
 	}, nil
 }
 
@@ -254,8 +263,10 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
+				__typename
 				... on PullRequest { id, state, merged, isDraft, reviewDecision }
-				... on Issue { id, state }
+				... on Issue { id, state, stateReason }
+				... on Discussion { id, closed, stateReason }
 			}
 			rateLimit { cost, remaining }
 		}
@@ -264,11 +275,14 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 
 	var data struct {
 		Nodes []struct {
-			ID             string `json:"id"`
-			State          string `json:"state"`
-			Merged         bool   `json:"merged"`
-			IsDraft        bool   `json:"isDraft"`
-			ReviewDecision string `json:"reviewDecision"`
+			Typename       string  `json:"__typename"`
+			ID             string  `json:"id"`
+			State          string  `json:"state"`
+			Merged         bool    `json:"merged"`
+			IsDraft        bool    `json:"isDraft"`
+			ReviewDecision string  `json:"reviewDecision"`
+			StateReason    *string `json:"stateReason"` // Use pointer to handle nulls
+			Closed         bool    `json:"closed"`      // Discussion
 		} `json:"nodes"`
 		RateLimit struct {
 			Cost      int `json:"cost"`
@@ -308,24 +322,46 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		}
 
 		state := ""
-		if node.Merged {
-			state = "Merged"
-		} else if node.IsDraft {
-			state = "Draft"
-		} else if node.State != "" {
-			state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+		subState := ""
+
+		switch triage.SubjectType(node.Typename) {
+		case triage.SubjectPullRequest:
+			if node.Merged {
+				state = "Merged"
+			} else if node.IsDraft {
+				state = "Draft"
+			} else if node.State != "" {
+				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+			}
+			subState = node.ReviewDecision
+		case triage.SubjectIssue:
+			if node.State != "" {
+				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
+			}
+			if node.StateReason != nil {
+				subState = *node.StateReason
+			}
+		case triage.SubjectDiscussion:
+			if node.Closed {
+				state = "Closed"
+			} else {
+				state = "Open"
+			}
+			if node.StateReason != nil {
+				subState = *node.StateReason
+			}
 		}
 
-		if state != "" || node.ReviewDecision != "" {
-			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state, node.ReviewDecision); err != nil {
+		if state != "" || subState != "" {
+			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state, subState); err != nil {
 				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
 			}
 
 			// Populate results for immediate TUI refresh
 			results[node.ID] = models.EnrichmentResult{
-				ResourceState:  state,
-				ReviewDecision: node.ReviewDecision,
-				FetchedAt:      time.Now(),
+				ResourceState:    state,
+				ResourceSubState: subState,
+				FetchedAt:        time.Now(),
 			}
 		}
 	}

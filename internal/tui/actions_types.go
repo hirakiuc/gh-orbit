@@ -83,7 +83,7 @@ func (a ActionSetPriority) Type() string { return "set_priority" }
 type ActionFetchDetail struct {
 	ID          string
 	URL         string
-	SubjectType string
+	SubjectType triage.SubjectType
 }
 
 func (a ActionFetchDetail) Type() string { return "fetch_detail" }

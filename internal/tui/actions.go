@@ -118,26 +118,26 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	return m.MarkReadByID(i.notification.GitHubID, !i.notification.IsReadLocally)
 }
 
-func (m *Model) FetchDetailCmd(id, u, subjectType string) tea.Cmd {
+func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		res, err := m.enrich.FetchDetail(ctx, u, subjectType)
+		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType))
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
 		// Update database with granular enrich method
-		err = m.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ReviewDecision)
+		err = m.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
 		return detailLoadedMsg{
-			GitHubID:       id,
-			Body:           res.Body,
-			Author:         res.Author,
-			HTMLURL:        res.HTMLURL,
-			ResourceState:  res.ResourceState,
-			ReviewDecision: res.ReviewDecision,
+			GitHubID:         id,
+			Body:             res.Body,
+			Author:           res.Author,
+			HTMLURL:          res.HTMLURL,
+			ResourceState:    res.ResourceState,
+			ResourceSubState: res.ResourceSubState,
 		}
 	})
 }

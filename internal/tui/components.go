@@ -45,15 +45,15 @@ func renderSelectionIndicator(styles Styles, isSelected bool) string {
 	return "  "
 }
 
-func renderNotificationIcon(subjectType string) string {
+func renderNotificationIcon(subjectType triage.SubjectType) string {
 	switch subjectType {
-	case "PullRequest":
+	case triage.SubjectPullRequest:
 		return " "
-	case "Issue":
+	case triage.SubjectIssue:
 		return " "
-	case "Discussion":
+	case triage.SubjectDiscussion:
 		return " "
-	case "Release":
+	case triage.SubjectRelease:
 		return " "
 	default:
 		return "  "

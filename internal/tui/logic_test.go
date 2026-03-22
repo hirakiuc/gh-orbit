@@ -220,11 +220,16 @@ func TestModel_Transition_Filtering(t *testing.T) {
 	// 1. Filter PRs
 	msg := keyPress("p") // matches FilterPR
 	_ = m.Transition(msg, 0)
-	assert.Equal(t, "PullRequest", m.listView.resourceFilter)
+	assert.Equal(t, triage.SubjectPullRequest, m.listView.resourceFilter)
 
 	// 2. Toggle off
 	_ = m.Transition(msg, 0)
-	assert.Equal(t, "", m.listView.resourceFilter)
+	assert.Equal(t, triage.SubjectType(""), m.listView.resourceFilter)
+
+	// 3. Filter Discussions
+	msg = keyPress("d") // matches FilterDiscussion
+	_ = m.Transition(msg, 0)
+	assert.Equal(t, triage.SubjectDiscussion, m.listView.resourceFilter)
 }
 
 func TestModel_ApplyFilters_HidesNotificationsOlderThanConfiguredDays(t *testing.T) {

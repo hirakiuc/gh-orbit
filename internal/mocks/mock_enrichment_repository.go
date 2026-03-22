@@ -21,9 +21,9 @@ func (_m *MockEnrichmentRepository) EXPECT() *MockEnrichmentRepository_Expecter 
 	return &MockEnrichmentRepository_Expecter{mock: &_m.Mock}
 }
 
-// EnrichNotification provides a mock function with given fields: ctx, id, body, author, htmlURL, resourceState, reviewDecision
-func (_m *MockEnrichmentRepository) EnrichNotification(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, reviewDecision string) error {
-	ret := _m.Called(ctx, id, body, author, htmlURL, resourceState, reviewDecision)
+// EnrichNotification provides a mock function with given fields: ctx, id, body, author, htmlURL, resourceState, resourceSubState
+func (_m *MockEnrichmentRepository) EnrichNotification(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, resourceSubState string) error {
+	ret := _m.Called(ctx, id, body, author, htmlURL, resourceState, resourceSubState)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnrichNotification")
@@ -31,7 +31,7 @@ func (_m *MockEnrichmentRepository) EnrichNotification(ctx context.Context, id s
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string) error); ok {
-		r0 = rf(ctx, id, body, author, htmlURL, resourceState, reviewDecision)
+		r0 = rf(ctx, id, body, author, htmlURL, resourceState, resourceSubState)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -51,12 +51,12 @@ type MockEnrichmentRepository_EnrichNotification_Call struct {
 //   - author string
 //   - htmlURL string
 //   - resourceState string
-//   - reviewDecision string
-func (_e *MockEnrichmentRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, reviewDecision interface{}) *MockEnrichmentRepository_EnrichNotification_Call {
-	return &MockEnrichmentRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, body, author, htmlURL, resourceState, reviewDecision)}
+//   - resourceSubState string
+func (_e *MockEnrichmentRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockEnrichmentRepository_EnrichNotification_Call {
+	return &MockEnrichmentRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, body, author, htmlURL, resourceState, resourceSubState)}
 }
 
-func (_c *MockEnrichmentRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, reviewDecision string)) *MockEnrichmentRepository_EnrichNotification_Call {
+func (_c *MockEnrichmentRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, resourceSubState string)) *MockEnrichmentRepository_EnrichNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(string), args[6].(string))
 	})
@@ -73,9 +73,9 @@ func (_c *MockEnrichmentRepository_EnrichNotification_Call) RunAndReturn(run fun
 	return _c
 }
 
-// UpdateResourceStateByNodeID provides a mock function with given fields: ctx, nodeID, state, reviewDecision
-func (_m *MockEnrichmentRepository) UpdateResourceStateByNodeID(ctx context.Context, nodeID string, state string, reviewDecision string) error {
-	ret := _m.Called(ctx, nodeID, state, reviewDecision)
+// UpdateResourceStateByNodeID provides a mock function with given fields: ctx, nodeID, state, resourceSubState
+func (_m *MockEnrichmentRepository) UpdateResourceStateByNodeID(ctx context.Context, nodeID string, state string, resourceSubState string) error {
+	ret := _m.Called(ctx, nodeID, state, resourceSubState)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateResourceStateByNodeID")
@@ -83,7 +83,7 @@ func (_m *MockEnrichmentRepository) UpdateResourceStateByNodeID(ctx context.Cont
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
-		r0 = rf(ctx, nodeID, state, reviewDecision)
+		r0 = rf(ctx, nodeID, state, resourceSubState)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -100,12 +100,12 @@ type MockEnrichmentRepository_UpdateResourceStateByNodeID_Call struct {
 //   - ctx context.Context
 //   - nodeID string
 //   - state string
-//   - reviewDecision string
-func (_e *MockEnrichmentRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}, reviewDecision interface{}) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
-	return &MockEnrichmentRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state, reviewDecision)}
+//   - resourceSubState string
+func (_e *MockEnrichmentRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}, resourceSubState interface{}) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
+	return &MockEnrichmentRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state, resourceSubState)}
 }
 
-func (_c *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call) Run(run func(ctx context.Context, nodeID string, state string, reviewDecision string)) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
+func (_c *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call) Run(run func(ctx context.Context, nodeID string, state string, resourceSubState string)) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})

@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+// SubjectType represents the type of resource a notification refers to.
+type SubjectType string
+
+const (
+	SubjectPullRequest SubjectType = "PullRequest"
+	SubjectIssue       SubjectType = "Issue"
+	SubjectDiscussion  SubjectType = "Discussion"
+	SubjectRelease     SubjectType = "Release"
+	SubjectCommit      SubjectType = "Commit"
+)
+
 // State represents the local triage state for a notification.
 type State struct {
 	NotificationID string `json:"notification_id"`
@@ -19,14 +30,14 @@ type Notification struct {
 	GitHubID           string       `json:"github_id"`
 	SubjectTitle       string       `json:"subject_title"`
 	SubjectURL         string       `json:"subject_url"`
-	SubjectType        string       `json:"subject_type"`
+	SubjectType        SubjectType  `json:"subject_type"`
 	Reason             string       `json:"reason"`
 	RepositoryFullName string       `json:"repository_full_name"`
 	HTMLURL            string       `json:"html_url"`
 	Body               string       `json:"body"`
 	AuthorLogin        string       `json:"author_login"`
 	ResourceState      string       `json:"resource_state"`
-	ReviewDecision     string       `json:"review_decision"`
+	ResourceSubState   string       `json:"resource_sub_state"`
 	SubjectNodeID      string       `json:"subject_node_id"`
 	IsEnriched         bool         `json:"is_enriched"`
 	EnrichedAt         sql.NullTime `json:"enriched_at"`
