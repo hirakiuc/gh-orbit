@@ -116,6 +116,8 @@ notifications:
 		// Verify default was preserved for missing field
 		assert.Equal(t, 60, cfg.Notifications.SyncInterval)
 		assert.Equal(t, 365, cfg.Notifications.MaxVisibleAgeDays)
+		// Verify TUI defaults when section is missing
+		assert.False(t, cfg.TUI.AutoReadOnOpen)
 	})
 
 	t.Run("Successful Load with Explicit MaxVisibleAgeDays", func(t *testing.T) {

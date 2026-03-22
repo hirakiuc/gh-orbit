@@ -56,7 +56,7 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 	}
 
 	if a, ok := action.(ActionCheckoutPR); ok {
-		return i.executeCheckoutPR(a.Repository, a.Number)
+		return i.executeCheckoutPR(a.NotificationID, a.Repository, a.Number)
 	}
 
 	if a, ok := action.(ActionEnrichItems); ok {
@@ -122,7 +122,7 @@ func (i *Interpreter) executeOpenBrowser(u string) tea.Cmd {
 	})
 }
 
-func (i *Interpreter) executeCheckoutPR(repo, number string) tea.Cmd {
+func (i *Interpreter) executeCheckoutPR(id, repo, number string) tea.Cmd {
 	// Validation logic moved from actions.go
 	if !github.ReRepoName.MatchString(repo) || !github.RePRNumber.MatchString(number) {
 		return func() tea.Msg {
@@ -142,14 +142,8 @@ func (i *Interpreter) executeCheckoutPR(repo, number string) tea.Cmd {
 		return actionCompleteMsg{}
 	}, "pr", "checkout", number, "-R", repo)
 
-	// Find the item to mark as read
-	var selectedID string
-	if item, ok := i.model.listView.list.SelectedItem().(item); ok {
-		selectedID = item.notification.GitHubID
-	}
-
-	if selectedID != "" {
-		return tea.Batch(checkoutCmd, i.model.MarkReadByID(selectedID, true))
+	if i.model.config.TUI.AutoReadOnOpen && id != "" {
+		return tea.Batch(checkoutCmd, i.model.MarkReadByID(id, true))
 	}
 	return checkoutCmd
 }
@@ -187,7 +181,12 @@ func (i *Interpreter) executeViewWeb(n triage.NotificationWithState) tea.Cmd {
 		cmd = i.executeOpenBrowser(n.HTMLURL)
 	}
 
-	return tea.Batch(cmd, i.model.ui.SetToast(toast), i.model.MarkReadByID(n.GitHubID, true))
+	batch := []tea.Cmd{cmd, i.model.ui.SetToast(toast)}
+	if i.model.config.TUI.AutoReadOnOpen {
+		batch = append(batch, i.model.MarkReadByID(n.GitHubID, true))
+	}
+
+	return tea.Batch(batch...)
 }
 
 func (i *Interpreter) executeGHView(ghCmd, repo, arg string) tea.Cmd {

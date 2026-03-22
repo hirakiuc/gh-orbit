@@ -36,8 +36,9 @@ type ActionSyncNotifications struct {
 func (a ActionSyncNotifications) Type() string { return "sync_notifications" }
 
 type ActionCheckoutPR struct {
-	Repository string
-	Number     string
+	NotificationID string
+	Repository     string
+	Number         string
 }
 
 func (a ActionCheckoutPR) Type() string { return "checkout_pr" }
