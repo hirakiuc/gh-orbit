@@ -1,6 +1,9 @@
 package tui
 
-import "charm.land/bubbles/v2/key"
+import (
+	"charm.land/bubbles/v2/key"
+	"github.com/hirakiuc/gh-orbit/internal/config"
+)
 
 // KeyMap defines the custom keybindings for the gh-orbit TUI.
 type KeyMap struct {
@@ -25,94 +28,100 @@ type KeyMap struct {
 	FilterPR         key.Binding
 	FilterIssue      key.Binding
 	FilterDiscussion key.Binding
+	Help             key.Binding
 }
 
-// DefaultKeyMap returns the default keybindings for the application.
-func DefaultKeyMap() KeyMap {
+// NewKeyMap returns keybindings initialized from configuration.
+func NewKeyMap(cfg *config.Config) KeyMap {
+	k := cfg.Keys
 	return KeyMap{
 		Sync: key.NewBinding(
-			key.WithKeys("r"),
-			key.WithHelp("r", "sync"),
+			key.WithKeys(k.Sync...),
+			key.WithHelp(k.Sync[0], "sync"),
 		),
 		PriorityUp: key.NewBinding(
-			key.WithKeys("shift+up", "K"),
-			key.WithHelp("shift+up", "priority up"),
+			key.WithKeys(k.PriorityUp...),
+			key.WithHelp(k.PriorityUp[0], "priority up"),
 		),
 		PriorityDown: key.NewBinding(
-			key.WithKeys("shift+down", "J"),
-			key.WithHelp("shift+down", "priority down"),
+			key.WithKeys(k.PriorityDown...),
+			key.WithHelp(k.PriorityDown[0], "priority down"),
 		),
 		PriorityNone: key.NewBinding(
-			key.WithKeys("0"),
-			key.WithHelp("0", "clear priority"),
+			key.WithKeys(k.PriorityNone...),
+			key.WithHelp(k.PriorityNone[0], "clear priority"),
 		),
 		Tab1: key.NewBinding(
-			key.WithKeys("1"),
-			key.WithHelp("1", "inbox"),
+			key.WithKeys(k.Inbox...),
+			key.WithHelp(k.Inbox[0], "inbox"),
 		),
 		Tab2: key.NewBinding(
-			key.WithKeys("2"),
-			key.WithHelp("2", "unread"),
+			key.WithKeys(k.Unread...),
+			key.WithHelp(k.Unread[0], "unread"),
 		),
 		Tab3: key.NewBinding(
-			key.WithKeys("3"),
-			key.WithHelp("3", "triaged"),
+			key.WithKeys(k.Triaged...),
+			key.WithHelp(k.Triaged[0], "triaged"),
 		),
 		Tab4: key.NewBinding(
-			key.WithKeys("4"),
-			key.WithHelp("4", "all"),
+			key.WithKeys(k.All...),
+			key.WithHelp(k.All[0], "all"),
 		),
 		CopyURL: key.NewBinding(
-			key.WithKeys("y"),
-			key.WithHelp("y", "copy url"),
+			key.WithKeys(k.CopyURL...),
+			key.WithHelp(k.CopyURL[0], "copy url"),
 		),
 		ToggleRead: key.NewBinding(
-			key.WithKeys("m"),
-			key.WithHelp("m", "mark read/unread"),
+			key.WithKeys(k.ToggleRead...),
+			key.WithHelp(k.ToggleRead[0], "mark read/unread"),
 		),
 		NextTab: key.NewBinding(
-			key.WithKeys("]", "tab"),
-			key.WithHelp("]", "next tab"),
+			key.WithKeys(k.NextTab...),
+			key.WithHelp(k.NextTab[0], "next tab"),
 		),
 		PrevTab: key.NewBinding(
-			key.WithKeys("[", "shift+tab"),
-			key.WithHelp("[", "prev tab"),
+			key.WithKeys(k.PrevTab...),
+			key.WithHelp(k.PrevTab[0], "prev tab"),
 		),
 		CheckoutPR: key.NewBinding(
-			key.WithKeys("c"),
-			key.WithHelp("c", "checkout pr"),
+			key.WithKeys(k.CheckoutPR...),
+			key.WithHelp(k.CheckoutPR[0], "checkout pr"),
 		),
 		ViewContextual: key.NewBinding(
-			key.WithKeys("v"),
-			key.WithHelp("v", "view (gh cli)"),
+			key.WithKeys(k.ViewContextual...),
+			key.WithHelp(k.ViewContextual[0], "view (gh cli)"),
 		),
 		OpenBrowser: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "open (browser)"),
+			key.WithKeys(k.OpenBrowser...),
+			key.WithHelp(k.OpenBrowser[0], "open (browser)"),
 		),
 		ToggleDetail: key.NewBinding(
-			key.WithKeys(" ", "space"),
-			key.WithHelp("space", "peek detail"),
+			key.WithKeys(k.ToggleDetail...),
+			key.WithHelp(k.ToggleDetail[0], "peek detail"),
 		),
 		Back: key.NewBinding(
-			key.WithKeys("esc", "backspace"),
-			key.WithHelp("esc", "back"),
+			key.WithKeys(k.Back...),
+			key.WithHelp(k.Back[0], "back"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("q"),
-			key.WithHelp("q", "quit"),
+			key.WithKeys(k.Quit...),
+			key.WithHelp(k.Quit[0], "quit"),
 		),
 		FilterPR: key.NewBinding(
-			key.WithKeys("p"),
-			key.WithHelp("p", "filter PRs"),
+			key.WithKeys(k.FilterPR...),
+			key.WithHelp(k.FilterPR[0], "filter PRs"),
 		),
 		FilterIssue: key.NewBinding(
-			key.WithKeys("i"),
-			key.WithHelp("i", "filter issues"),
+			key.WithKeys(k.FilterIssue...),
+			key.WithHelp(k.FilterIssue[0], "filter issues"),
 		),
 		FilterDiscussion: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "filter discussions"),
+			key.WithKeys(k.FilterDiscussion...),
+			key.WithHelp(k.FilterDiscussion[0], "filter discussions"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys(k.Help...),
+			key.WithHelp(k.Help[0], "help"),
 		),
 	}
 }
@@ -120,10 +129,10 @@ func DefaultKeyMap() KeyMap {
 // ShortHelp returns the keybindings to be displayed in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
+		k.Help,
 		k.Sync,
 		k.ToggleRead,
 		k.ToggleDetail,
-		k.Back,
 		k.Quit,
 	}
 }
@@ -135,6 +144,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
 		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
 		{k.Tab1, k.Tab2, k.Tab3, k.Tab4},
-		{k.NextTab, k.PrevTab, k.CheckoutPR, k.Quit},
+		{k.NextTab, k.PrevTab, k.CheckoutPR, k.Help, k.Quit},
 	}
 }

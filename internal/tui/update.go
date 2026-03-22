@@ -105,6 +105,8 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 		switch {
 		case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.ToggleDetail):
 			m.state = StateList
+		case key.Matches(msg, m.keys.Help):
+			m.showHelp = !m.showHelp
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				actions = append(actions, ActionViewWeb{Notification: i.notification})
@@ -128,7 +130,8 @@ func (m *Model) handleQuitTransition() []Action {
 		return []Action{ActionQuit{}}
 	}
 	m.lastQuitPress = time.Now()
-	return []Action{ActionShowToast{Message: "Press q again to quit"}}
+	m.ui.SetToast("Press 'q' again to quit")
+	return nil
 }
 
 func (m *Model) transitionList(msg tea.Msg) []Action {
@@ -316,20 +319,13 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 	m.ui.SetSize(msg.Width, msg.Height)
-
-	m.headerHeight = lipgloss.Height(m.renderHeader())
-	m.footerHeight = lipgloss.Height(m.renderFooter())
-	availableHeight := m.height - m.headerHeight - m.footerHeight
-
-	m.listView.list.SetSize(msg.Width, availableHeight)
-	m.detailView.viewport.SetWidth(msg.Width - 4)
-	m.detailView.viewport.SetHeight(availableHeight - 2)
 	m.updateMarkdownRenderer()
 }
 
 func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 	m.isDark = msg.IsDark()
 	m.styles = DefaultStyles(m.isDark)
+	m.keys = NewKeyMap(m.config)
 	m.listView.list.Styles.Title = m.styles.Title
 	m.listView.delegate = newItemDelegate(m.styles, m.keys)
 	m.listView.list.SetDelegate(m.listView.delegate)
@@ -430,6 +426,8 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 		return m.handleToggleDetailKey()
 	case key.Matches(msg, m.keys.ToggleRead):
 		return m.handleToggleReadKey()
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = !m.showHelp
 	case key.Matches(msg, m.keys.NextTab):
 		m.cycleTab(1)
 	case key.Matches(msg, m.keys.PrevTab):

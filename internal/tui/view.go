@@ -19,6 +19,26 @@ func (m *Model) View() tea.View {
 		}
 	}
 
+	header := m.renderHeader()
+	footer := m.renderFooter()
+
+	m.headerHeight = lipgloss.Height(header)
+	m.footerHeight = lipgloss.Height(footer)
+
+	// Update sub-model sizes dynamically
+	availHeight := m.height - m.headerHeight - m.footerHeight
+	if availHeight < 0 {
+		availHeight = 0
+	}
+
+	switch m.state {
+	case StateList:
+		m.listView.list.SetSize(m.width, availHeight)
+	case StateDetail:
+		m.detailView.viewport.SetWidth(m.width)
+		m.detailView.viewport.SetHeight(availHeight)
+	}
+
 	var content string
 	switch m.state {
 	case StateDetail:
@@ -29,9 +49,9 @@ func (m *Model) View() tea.View {
 
 	rendered := lipgloss.JoinVertical(
 		lipgloss.Left,
-		m.renderHeader(),
+		header,
 		content,
-		m.renderFooter(),
+		footer,
 	)
 
 	return tea.View{
@@ -128,7 +148,7 @@ func (m *Model) renderFooter() string {
 	// 5. Version Information
 	vStr := m.styles.SelectedDescription.Render(" " + m.version + " ")
 
-	footer := lipgloss.JoinHorizontal(
+	statusLine := lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		statusMsg,
 		" ",
@@ -138,7 +158,12 @@ func (m *Model) renderFooter() string {
 		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-6, lipgloss.Right, vStr+" "+health),
 	)
 
-	return footer
+	if !m.showHelp {
+		return statusLine
+	}
+
+	helpView := m.help.View(m.keys)
+	return lipgloss.JoinVertical(lipgloss.Left, statusLine, helpView)
 }
 
 func (m *Model) renderDetailView() string {
