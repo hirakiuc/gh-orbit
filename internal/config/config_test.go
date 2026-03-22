@@ -120,12 +120,12 @@ notifications:
 		assert.False(t, cfg.TUI.AutoReadOnOpen)
 	})
 
-	t.Run("Successful Load with Explicit MaxVisibleAgeDays", func(t *testing.T) {
+	t.Run("Successful Load with Keybinding Overrides", func(t *testing.T) {
 		content := `
 version: 1
-notifications:
-  enabled: true
-  max_visible_age_days: 30
+keys:
+  sync: ["s"]
+  quit: ["escape"]
 `
 		err := os.WriteFile(expectedPath, []byte(content), 0o600)
 		require.NoError(t, err)
@@ -133,7 +133,14 @@ notifications:
 		cfg, err := Load()
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
-		assert.Equal(t, 30, cfg.Notifications.MaxVisibleAgeDays)
+
+		// Verify overrides
+		assert.Equal(t, []string{"s"}, cfg.Keys.Sync)
+		assert.Equal(t, []string{"escape"}, cfg.Keys.Quit)
+
+		// Verify fallback to defaults for other keys
+		assert.Equal(t, []string{"r"}, DefaultConfig().Keys.Sync) // Default was 'r'
+		assert.Equal(t, []string{"m"}, cfg.Keys.ToggleRead)       // Still 'm'
 	})
 }
 
