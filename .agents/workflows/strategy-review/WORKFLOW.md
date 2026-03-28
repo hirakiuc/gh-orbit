@@ -67,7 +67,7 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 3. **[Reviewer] Audit**: Read `.agents/issue.md` and `.agents/proposal.md`, then execute the `feedback` workflow.
 4. **[Reviewer] Persist**: Save findings to `.agents/feedback.md` and notify the Worker.
 5. **[Worker] Refine**: Update `.agents/proposal.md` and **increment the Revision number** based on feedback.
-6. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker.
+6. **[Reviewer/User] Sign-off**: Once satisfied, the Reviewer provides the **SIGN-OFF** marker (adhering to the strict protocol for blocking findings vs. optional suggestions).
 
    - *Escape Hatch*: The User can provide direct approval if a stalemate occurs.
 
