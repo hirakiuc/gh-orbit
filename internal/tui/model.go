@@ -201,7 +201,6 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadNotifications(),
 		m.tickClock(),
-		m.tickHeartbeat(),
 	)
 }
 
