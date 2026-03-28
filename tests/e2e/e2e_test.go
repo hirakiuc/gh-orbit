@@ -109,3 +109,23 @@ func TestCLI_Sync(t *testing.T) {
 	dbPath := filepath.Join(tmpHome, ".local", "share", "gh-orbit", "orbit.db")
 	require.FileExists(t, dbPath)
 }
+
+func TestCLI_Version(t *testing.T) {
+	// Prepare Environment
+	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
+
+	// Ensure binary exists
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		t.Skip("gh-orbit binary not found in bin/. Run 'make build' first.")
+	}
+
+	// Run 'gh-orbit --version'
+	cmd := exec.Command(binPath, "--version") // #nosec G204
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "version command failed")
+
+	// Verify output format
+	outStr := string(output)
+	assert.NotContains(t, outStr, "%s", "Version string still contains a raw %s placeholder")
+	assert.Contains(t, outStr, "gh-orbit", "Version output should contain the binary name")
+}

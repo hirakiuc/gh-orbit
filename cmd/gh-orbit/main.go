@@ -42,7 +42,7 @@ func main() {
 		},
 	}
 
-	rootCmd.SetVersionTemplate(fmt.Sprintf("gh-orbit %%s (%s) build %s\n", buildinfo.Commit, buildinfo.Date))
+	rootCmd.SetVersionTemplate(fmt.Sprintf("gh-orbit {{.Version}} (%s) build %s\n", buildinfo.Commit, buildinfo.Date))
 
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Logging level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output (OTel tracing)")
