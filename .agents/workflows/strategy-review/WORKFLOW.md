@@ -73,19 +73,20 @@ To minimize coordination overhead and maximize token efficiency, this workflow u
 
 ### Phase B: Implementation & Submission
 
-1. **[Worker] Publish**: ONLY after receiving a **SIGN-OFF**, synthesize the final technical context of `.agents/proposal.md` into a clean architectural record using the `FINAL_RECORD_TEMPLATE.md`.
+1. **[Worker] Publish**: ONLY after receiving a **SIGN-OFF**, synthesize the final technical context of `.agents/proposal.md` into a clean architectural record (the **Approved Strategy**) using the `FINAL_RECORD_TEMPLATE.md`.
    - Post this record as a comment on the GitHub Issue: `gh issue comment "<ID>" --body "<SYNTHESIZED_RECORD>"`
    - *Note*: Ensure all procedural noise (Revision, Reviewer Hints, Review History) is omitted to maintain a professional project history.
 2. **[Worker] Branching**: Create the development branch linked to the issue.
    - `gh issue develop "<ID>"`
-3. **[Worker] Implementation**: Execute the plan on the new branch.
+3. **[Worker] Implementation**: Execute the plan on the new branch, ensuring adherence to the Approved Strategy.
 4. **[Worker] Submission**: Create a Pull Request using `gh pr create`.
    - *Requirement*: The PR description MUST reference the Issue ID and summarize the final implementation.
 
-### Phase C: Review & Finality (The Closing Loop)
+### Phase C: Implementation Audit (The Closing Loop)
 
-1. **[Reviewer/User] PR Audit**: Perform the final code review on the Pull Request.
-2. **[Worker] Iteration**: Address feedback on the PR until approval is received.
+1. **[Reviewer/User] Audit**: Perform the final code review on the Pull Request.
+   - **Verification**: The Reviewer MUST explicitly verify the final diff on the topic branch against the **Approved Strategy** (published in Phase B) before providing approval.
+2. **[Worker] Iteration**: Address feedback on the PR until the Reviewer is satisfied that the implementation matches the intent of the Approved Strategy.
 3. **[Worker] Merge**: Merge the PR once the **SIGN-OFF** (Approval) is granted.
 4. **[Worker] Synchronize**: Switch back to the default branch (`main`) and pull the latest changes.
 5. **[Worker] Terminal Reset**: **Mandatory step.** Run `make reset-task` to clear the local workbench and prepare the filesystem for the next task.
