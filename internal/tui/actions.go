@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -77,6 +78,12 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 		return nil
 	}
 
+	// 1. Mark as inflight
+	now := time.Now()
+	for _, n := range toEnrich {
+		m.inflightEnrichments[n.GitHubID] = now
+	}
+
 	// For a single item enrichment (Detail View), we use FetchDetail
 	if len(toEnrich) == 1 {
 		n := toEnrich[0]
@@ -95,15 +102,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 
 		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
 			results := m.enrich.FetchHybridBatch(ctx, chunk)
-			if len(results) == 0 {
-				return nil
-			}
-
-			notifs, err := m.db.ListNotifications(ctx)
-			if err != nil {
-				return types.ErrMsg{Err: err}
-			}
-			return notificationsLoadedMsg{notifications: notifs, IsInitial: false}
+			return enrichmentBatchCompleteMsg{Results: results}
 		}))
 	}
 

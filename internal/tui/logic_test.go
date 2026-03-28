@@ -194,15 +194,61 @@ func TestModel_Transition_Enrichment(t *testing.T) {
 	m.listView.list.Select(0)
 	oldIndex := 0
 
-	// 1. Viewport enrichment msg
-	actions := m.Transition(viewportEnrichMsg{}, oldIndex)
+	// 1. Viewport enrichment msg (ID check)
+	m.enrichID = 42
+	actions := m.Transition(viewportEnrichMsg{ID: 42}, oldIndex)
 	assert.Contains(t, actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{notifs[0], notifs[1]}})
 
 	// 2. List index change (debounced enrichment)
 	// oldIndex is 0
 	_, cmd := m.Update(keyPress("down"))
-
 	assert.NotNil(t, cmd, "Update should return commands for enrichment tick")
+}
+
+func TestModel_Enrichment_Deduplication(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()},
+	}
+	m.allNotifications = []triage.NotificationWithState{notif}
+	m.applyFilters()
+	m.listView.list.SetSize(100, 100)
+
+	// 1. Mark as inflight
+	m.inflightEnrichments["1"] = time.Now()
+
+	// 2. Trigger enrichment
+	actions := m.Transition(viewportEnrichMsg{ID: m.enrichID}, 0)
+	// Should NOT contain ActionEnrichItems because it's already inflight
+	for _, a := range actions {
+		if ae, ok := a.(ActionEnrichItems); ok {
+			assert.Empty(t, ae.Notifications, "Should not re-enrich inflight item")
+		}
+	}
+}
+
+func TestModel_Enrichment_SurgicalUpdate(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()},
+	}
+	m.allNotifications = []triage.NotificationWithState{notif}
+	m.inflightEnrichments["1"] = time.Now()
+
+	// 1. Receive surgical update
+	results := map[string]models.EnrichmentResult{
+		"1": {ResourceState: "Merged", ResourceSubState: "APPROVED", FetchedAt: time.Now()},
+	}
+	_ = m.Transition(enrichmentBatchCompleteMsg{Results: results}, 0)
+
+	// 2. Assertions
+	assert.True(t, m.allNotifications[0].IsEnriched)
+	assert.Equal(t, "Merged", m.allNotifications[0].ResourceState)
+	assert.Empty(t, m.inflightEnrichments, "Inflight map should be cleared")
 }
 
 func TestModel_Transition_Filtering(t *testing.T) {

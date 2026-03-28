@@ -90,9 +90,7 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 				return clearStatusMsg{}
 			})
 		case TickEnrich:
-			return tea.Tick(a.Interval, func(_ time.Time) tea.Msg {
-				return viewportEnrichMsg{}
-			})
+			return i.model.tickEnrich()
 		}
 	}
 

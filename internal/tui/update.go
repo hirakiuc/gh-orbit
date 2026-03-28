@@ -44,12 +44,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailView.viewport, cmd = m.detailView.viewport.Update(msg)
 		cmds = append(cmds, cmd)
 	case StateList:
+		oldPage := m.listView.list.Paginator.Page
 		m.listView.list, cmd = m.listView.list.Update(msg)
 		cmds = append(cmds, cmd)
 
-		// Debounced enrichment logic (after sub-model update ensures index is fresh)
-		if m.listView.list.Index() != oldIndex {
-			cmds = append(cmds, m.interpreter.Execute(ActionScheduleTick{TickType: TickEnrich, Interval: 250 * time.Millisecond}))
+		// Debounced enrichment logic (after sub-model update ensures index/page is fresh)
+		if m.listView.list.Index() != oldIndex || m.listView.list.Paginator.Page != oldPage {
+			cmds = append(cmds, m.interpreter.Execute(ActionScheduleTick{TickType: TickEnrich}))
 		}
 	}
 
@@ -68,6 +69,8 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		return m.handlePriorityUpdated(msg)
 	case syncCompleteMsg:
 		return m.handleSyncComplete(msg)
+	case enrichmentBatchCompleteMsg:
+		return m.handleEnrichmentBatchComplete(msg)
 	case detailLoadedMsg:
 		m.handleDetailLoaded(msg)
 	case pollTickMsg:
@@ -75,6 +78,9 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 	case clockTickMsg:
 		return m.handleClockTick(msg)
 	case viewportEnrichMsg:
+		if msg.ID != m.enrichID {
+			return nil
+		}
 		return []Action{ActionEnrichItems{Notifications: m.getVisibleNotifications()}}
 	case types.ErrMsg:
 		m.handleTransitionError(msg)
@@ -165,8 +171,18 @@ func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
 	visible := m.listView.list.Items()[start:end]
 
 	var items []triage.NotificationWithState
+	now := time.Now()
+
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
+			// 1. Skip if already inflight (with 30s TTL to prevent permanent blocking)
+			if started, ok := m.inflightEnrichments[i.notification.GitHubID]; ok {
+				if now.Sub(started) < 30*time.Second {
+					continue
+				}
+			}
+
+			// 2. Skip if already enriched and fresh
 			var isExpired bool
 			if i.notification.IsEnriched {
 				if i.notification.EnrichedAt.Valid {
@@ -339,6 +355,8 @@ func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 
 func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	m.allNotifications = msg.notifications
+	// Clear inflight on full reload to avoid stale blocks
+	m.inflightEnrichments = make(map[string]time.Time)
 	m.applyFilters()
 	if m.state == StateDetail {
 		m.refreshDetailView()
@@ -372,8 +390,35 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	}
 }
 
+func (m *Model) handleEnrichmentBatchComplete(msg enrichmentBatchCompleteMsg) []Action {
+	m.ui.SetFetching(false)
+
+	// Surgical update of in-memory notification slice
+	for id, res := range msg.Results {
+		delete(m.inflightEnrichments, id)
+
+		for idx, n := range m.allNotifications {
+			if n.GitHubID != id {
+				continue
+			}
+
+			m.allNotifications[idx].ResourceState = res.ResourceState
+			m.allNotifications[idx].ResourceSubState = res.ResourceSubState
+			m.allNotifications[idx].IsEnriched = true
+			m.allNotifications[idx].EnrichedAt.Time = res.FetchedAt
+			m.allNotifications[idx].EnrichedAt.Valid = true
+			break
+		}
+	}
+
+	m.applyFilters()
+	return nil
+}
+
 func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 	m.ui.SetFetching(false)
+	delete(m.inflightEnrichments, msg.GitHubID)
+
 	for idx, n := range m.allNotifications {
 		if n.GitHubID != msg.GitHubID {
 			continue
@@ -418,6 +463,8 @@ func (m *Model) handleTransitionError(msg types.ErrMsg) {
 	m.err = msg.Err
 	m.ui.SetSyncing(false)
 	m.ui.SetFetching(false)
+	// Clear inflight on error to allow retry
+	m.inflightEnrichments = make(map[string]time.Time)
 }
 
 func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
