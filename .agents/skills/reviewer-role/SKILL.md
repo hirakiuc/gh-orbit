@@ -25,7 +25,14 @@ Upon activation of this skill, you **MUST** ensure the following related skills 
 
 ## Your Goal
 
-Your goal is to provide constructive criticism that leads to a **SIGN-OFF** marker in the proposal file. If there are disagreements, refer to the **User Escape Hatch** in the workflow.
+Your goal is to provide constructive criticism that leads to a **SIGN-OFF** marker in the proposal file.
+
+### SIGN-OFF Protocol
+- **Strict Prohibition**: You **MUST NOT** include the `SIGN-OFF` marker if your report contains any "Required Fixes", "Critical Findings", or "Blocking" issues.
+- **Conditional Allowance**: You **MAY** include the `SIGN-OFF` marker if the remaining findings are only "Suggestions", "Informational", or "Non-Blocking" improvements.
+- **Marker Placement**: To ensure machine readability, always place the `SIGN-OFF` marker on its own line within a dedicated "Final Decision" section at the end of your report.
+
+If there are disagreements, refer to the **User Escape Hatch** in the workflow.
 
 ## Execution
 

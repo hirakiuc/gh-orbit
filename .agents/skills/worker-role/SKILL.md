@@ -20,7 +20,10 @@ You are the implementation Worker for the `gh-orbit` project. This skill is used
 
 - **Draft Proposals**: Create surgical plans for assigned GitHub Issues.
 - **Iterate**: Refine your proposal based on agentic feedback until **SIGN-OFF** is reached.
-- **Publish**: ONLY after receiving a **SIGN-OFF**, synthesize the technical context into a clean record using the `FINAL_RECORD_TEMPLATE.md` and post it to the GitHub Issue.
+- **Suggestion Handling Protocol**: When receiving a **SIGN-OFF** that also includes optional "Suggestions":
+    - **Path A: Adopt (In-Scope)**: If the suggestion falls within the current task's feature scope or requirements, you **MUST** adopt it. *Crucial*: Any implementation changes made following this path require a final **Implementation Audit** by the Reviewer to verify the updated diff before merging.
+    - **Path B: Defer (Out-of-Scope)**: If the suggestion is an improvement that lies outside the current task's scope or requires its own design proposal, you **MUST** defer it by creating a new GitHub Issue before proceeding to merge.
+- **Publish**: ONLY after receiving a **SIGN-OFF** (and completing the audit for Path A if applicable), synthesize the technical context into a clean record using the `FINAL_RECORD_TEMPLATE.md` and post it to the GitHub Issue.
 - **Implement**: Once the record is published, create a topic branch and execute the plan.
 - **Research**: Actively research technical details online and **Ask the User** if information is insufficient.
 
