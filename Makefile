@@ -25,7 +25,7 @@ else
     SED_INPLACE := sed -i
 endif
 
-.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task check quality quality-report
+.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task reset-task check quality quality-report
 
 all: build
 
@@ -128,13 +128,20 @@ roadmap:
 task:
 	@if [ -z "$(ID)" ]; then echo "Usage: make task ID=<issue-number>"; exit 1; fi
 	@echo "Initializing workbench for Issue #$(ID)..."
-	@rm -f .agents/issue.md .agents/proposal.md .agents/feedback.md .agents/rfc.md
+	@$(MAKE) reset-task
 	@gh issue view "$(ID)" --json title,body,state,labels,milestone --template 'Title: {{.title}}\n\nBody: {{.body}}\n\nLabels: {{range .labels}}{{.name}} {{end}}\nMilestone: {{if .milestone}}{{.milestone.title}}{{else}}None{{end}}\nState: {{.state}}\n' > .agents/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
 	@cp .agents/workflows/strategy-review/TEMPLATE.md .agents/proposal.md
 	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/proposal.md
 	@cp .agents/workflows/strategy-review/RFC_TEMPLATE.md .agents/rfc.md
 	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/rfc.md
 	@echo "Workbench ready: .agents/issue.md, .agents/proposal.md, and .agents/rfc.md initialized."
+
+reset-task:
+	@echo "Resetting workbench to a neutral state..."
+	@echo "No active task" > .agents/issue.md
+	@echo "No active task" > .agents/proposal.md
+	@echo "No active task" > .agents/feedback.md
+	@echo "No active task" > .agents/rfc.md
 
 clean-tmp:
 	@echo "Cleaning up local sandbox directory..."
@@ -159,5 +166,7 @@ help:
 	@echo "  clean         - Remove build artifacts"
 	@echo "  clean-tmp     - Remove project-local sandbox files"
 	@echo "  check         - Run fmt, lint, and test (fail-fast)"
+	@echo "  task          - Initialize workbench for a task (usage: make task ID=<issue-number>)"
+	@echo "  reset-task    - Reset workbench files to a neutral state"
 	@echo "  quality       - Run quantitative health checks (cyclop, gocognit, funlen, maintidx)"
 	@echo "  quality-report- Generate Markdown maintainability report for milestone issues"
