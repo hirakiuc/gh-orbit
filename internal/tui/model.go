@@ -100,6 +100,8 @@ type Model struct {
 	clockInterval     time.Duration
 	lastQuitPress     time.Time
 	executor          types.CommandExecutor
+
+	syncStarted bool
 }
 
 // Option defines a functional option for Model configuration.
@@ -199,9 +201,8 @@ func NewModel(
 // Init sets up initial application state and background workers.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
-		m.loadNotifications(),
+		m.loadNotifications(true),
 		m.tickClock(),
-		m.tickHeartbeat(),
 	)
 }
 
@@ -232,14 +233,14 @@ func (m *Model) Shutdown() {
 }
 
 // loadNotifications loads the full list of notifications from local database.
-func (m *Model) loadNotifications() tea.Cmd {
+func (m *Model) loadNotifications(isInitial bool) tea.Cmd {
 	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 		// Initial load triggers initial enrichment
-		return notificationsLoadedMsg{notifications: notifs, IsInitial: true}
+		return notificationsLoadedMsg{notifications: notifs, IsInitial: isInitial}
 	})
 }
 

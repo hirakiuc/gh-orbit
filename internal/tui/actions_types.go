@@ -101,7 +101,9 @@ type ActionEnrichItems struct {
 
 func (a ActionEnrichItems) Type() string { return "enrich_items" }
 
-type ActionLoadNotifications struct{}
+type ActionLoadNotifications struct {
+	IsInitial bool
+}
 
 func (a ActionLoadNotifications) Type() string { return "load_notifications" }
 

@@ -46,6 +46,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StateList:
 		m.listView.list, cmd = m.listView.list.Update(msg)
 		cmds = append(cmds, cmd)
+
+		// Debounced enrichment logic (after sub-model update ensures index is fresh)
+		if m.listView.list.Index() != oldIndex {
+			cmds = append(cmds, m.interpreter.Execute(ActionScheduleTick{TickType: TickEnrich, Interval: 250 * time.Millisecond}))
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -90,11 +95,6 @@ func (m *Model) Transition(msg tea.Msg, oldIndex int) []Action {
 		stateActions = m.transitionList(msg)
 	}
 	actions = append(actions, stateActions...)
-
-	// Debounced enrichment logic
-	if m.state == StateList && m.listView.list.Index() != oldIndex {
-		actions = append(actions, ActionScheduleTick{TickType: TickEnrich, Interval: 250 * time.Millisecond})
-	}
 
 	return actions
 }
@@ -343,13 +343,17 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	if m.state == StateDetail {
 		m.refreshDetailView()
 	}
-	if !msg.IsInitial {
-		return nil
-	}
-	return []Action{
+
+	actions := []Action{
 		ActionEnrichItems{Notifications: m.getVisibleNotifications()},
-		ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval},
 	}
+
+	if msg.IsInitial && !m.syncStarted {
+		m.syncStarted = true
+		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
+	}
+
+	return actions
 }
 
 func (m *Model) handlePriorityUpdated(msg priorityUpdatedMsg) []Action {
@@ -364,7 +368,7 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.RateLimit = msg.rateLimit
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
-		ActionLoadNotifications{},
+		ActionLoadNotifications{IsInitial: false},
 	}
 }
 

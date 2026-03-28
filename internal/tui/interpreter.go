@@ -67,8 +67,8 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.model.FetchDetailCmd(a.ID, a.URL, a.SubjectType)
 	}
 
-	if _, ok := action.(ActionLoadNotifications); ok {
-		return i.model.loadNotifications()
+	if a, ok := action.(ActionLoadNotifications); ok {
+		return i.model.loadNotifications(a.IsInitial)
 	}
 
 	if a, ok := action.(ActionUpdateRateLimit); ok {
