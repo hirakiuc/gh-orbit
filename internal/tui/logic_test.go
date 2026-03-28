@@ -70,7 +70,7 @@ func TestInterpreter_Execute(t *testing.T) {
 		ActionViewWeb{Notification: notif},
 		ActionCheckoutPR{Repository: "o/r", Number: "1"},
 		ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}},
-		ActionLoadNotifications{},
+		ActionLoadNotifications{IsInitial: true},
 		ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 100}},
 		ActionScheduleTick{TickType: TickHeartbeat, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickClock, Interval: time.Millisecond},
@@ -103,7 +103,7 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 
 	// 3. Sync Complete
 	actions = m.Transition(syncCompleteMsg{rateLimit: models.RateLimitInfo{Remaining: 500}}, 0)
-	assert.Contains(t, actions, ActionLoadNotifications{})
+	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false})
 	assert.Equal(t, 500, m.RateLimit.Remaining)
 }
 

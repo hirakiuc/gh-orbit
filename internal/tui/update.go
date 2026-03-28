@@ -348,7 +348,8 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		ActionEnrichItems{Notifications: m.getVisibleNotifications()},
 	}
 
-	if msg.IsInitial {
+	if msg.IsInitial && !m.syncStarted {
+		m.syncStarted = true
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
 	}
 
@@ -367,7 +368,7 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.RateLimit = msg.rateLimit
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
-		ActionLoadNotifications{},
+		ActionLoadNotifications{IsInitial: false},
 	}
 }
 
