@@ -96,10 +96,15 @@ type Model struct {
 	RateLimit         models.RateLimitInfo
 	heartbeatID       uint64
 	clockID           uint64
+	enrichID          uint64
 	heartbeatInterval time.Duration
 	clockInterval     time.Duration
-	lastQuitPress     time.Time
-	executor          types.CommandExecutor
+
+	// Enrichment Management
+	inflightEnrichments map[string]time.Time
+
+	lastQuitPress time.Time
+	executor      types.CommandExecutor
 
 	syncStarted bool
 }
@@ -183,8 +188,9 @@ func NewModel(
 		state:        StateList,
 		PollInterval: cfg.Notifications.SyncInterval,
 		// Default intervals
-		heartbeatInterval: time.Duration(cfg.Notifications.SyncInterval) * time.Second,
-		clockInterval:     1 * time.Minute,
+		heartbeatInterval:   time.Duration(cfg.Notifications.SyncInterval) * time.Second,
+		clockInterval:       1 * time.Minute,
+		inflightEnrichments: make(map[string]time.Time),
 	}
 
 	// Apply options
@@ -219,6 +225,15 @@ func (m *Model) tickClock() tea.Cmd {
 	id := m.clockID
 	return tea.Tick(m.clockInterval, func(_ time.Time) tea.Msg {
 		return clockTickMsg{ID: id}
+	})
+}
+
+func (m *Model) tickEnrich() tea.Cmd {
+	m.enrichID++
+	id := m.enrichID
+	debounce := time.Duration(m.config.Enrichment.DebounceMS) * time.Millisecond
+	return tea.Tick(debounce, func(_ time.Time) tea.Msg {
+		return viewportEnrichMsg{ID: id}
 	})
 }
 
@@ -278,10 +293,14 @@ type detailLoadedMsg struct {
 	ResourceSubState string
 }
 
+type enrichmentBatchCompleteMsg struct {
+	Results map[string]models.EnrichmentResult
+}
+
 type (
 	actionCompleteMsg struct{}
 	clearStatusMsg    struct{}
-	viewportEnrichMsg struct{}
+	viewportEnrichMsg struct{ ID uint64 }
 )
 
 type (
