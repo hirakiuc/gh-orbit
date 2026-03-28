@@ -17,6 +17,9 @@
 4. **Implement**: Follow the Strategy Review Workflow in `.agents/workflows/strategy-review/WORKFLOW.md`.
 5. **Validate**: Run `make generate && make check` after every major change.
 6. **Audit**: Run `gh orbit doctor` to verify environment health.
+7. **Submit**: Create a Pull Request using the template in `.github/PULL_REQUEST_TEMPLATE.md`.
+    - Synthesize the description from the strategy proposal and verification results.
+    - **For AI Agents**: Explicitly append the attribution footer (`Co-authored-by: ...`) to the PR description.
 
 ### 2.2 Proactiveness & Agreements
 
@@ -34,7 +37,7 @@
 
 ### 2.4 Role Boundaries
 
-- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow. **Mindset**: Proactively flags uncertainties and initiates RFC discussions for complex architectural shifts.
+- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow. Responsible for the synthesis, attribution (when applicable), and submission of the PR. **Mindset**: Proactively flags uncertainties and initiates RFC discussions for complex architectural shifts.
 - **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`. **Mindset**: Acts as a collaborative architect, providing early feedback on RFCs and refining trade-offs in proposals.
 
 ## 3. Sandbox & Environment Constraints
