@@ -226,7 +226,7 @@ func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	}}))
 
 	// 1. Enrich Notification (Combined body, author, etc)
-	require.NoError(t, db.EnrichNotification(ctx, id, "Some body", "author", "https://github.com/u", "OPEN", "APPROVED"))
+	require.NoError(t, db.EnrichNotification(ctx, id, "node_1", "Some body", "author", "https://github.com/u", "OPEN", "APPROVED"))
 
 	// Verify
 	ns, err := db.GetNotification(ctx, id)

@@ -71,17 +71,17 @@ func (_c *MockRepository_ArchiveThread_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
-// EnrichNotification provides a mock function with given fields: ctx, id, body, author, htmlURL, resourceState, resourceSubState
-func (_m *MockRepository) EnrichNotification(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, resourceSubState string) error {
-	ret := _m.Called(ctx, id, body, author, htmlURL, resourceState, resourceSubState)
+// EnrichNotification provides a mock function with given fields: ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState
+func (_m *MockRepository) EnrichNotification(ctx context.Context, id string, nodeID string, body string, author string, htmlURL string, resourceState string, resourceSubState string) error {
+	ret := _m.Called(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnrichNotification")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string) error); ok {
-		r0 = rf(ctx, id, body, author, htmlURL, resourceState, resourceSubState)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, string) error); ok {
+		r0 = rf(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -97,18 +97,19 @@ type MockRepository_EnrichNotification_Call struct {
 // EnrichNotification is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
+//   - nodeID string
 //   - body string
 //   - author string
 //   - htmlURL string
 //   - resourceState string
 //   - resourceSubState string
-func (_e *MockRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockRepository_EnrichNotification_Call {
-	return &MockRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, body, author, htmlURL, resourceState, resourceSubState)}
+func (_e *MockRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, nodeID interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockRepository_EnrichNotification_Call {
+	return &MockRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)}
 }
 
-func (_c *MockRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, body string, author string, htmlURL string, resourceState string, resourceSubState string)) *MockRepository_EnrichNotification_Call {
+func (_c *MockRepository_EnrichNotification_Call) Run(run func(ctx context.Context, id string, nodeID string, body string, author string, htmlURL string, resourceState string, resourceSubState string)) *MockRepository_EnrichNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(string), args[6].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string), args[5].(string), args[6].(string), args[7].(string))
 	})
 	return _c
 }
@@ -118,7 +119,7 @@ func (_c *MockRepository_EnrichNotification_Call) Return(_a0 error) *MockReposit
 	return _c
 }
 
-func (_c *MockRepository_EnrichNotification_Call) RunAndReturn(run func(context.Context, string, string, string, string, string, string) error) *MockRepository_EnrichNotification_Call {
+func (_c *MockRepository_EnrichNotification_Call) RunAndReturn(run func(context.Context, string, string, string, string, string, string, string) error) *MockRepository_EnrichNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }

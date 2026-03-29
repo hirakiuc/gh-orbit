@@ -234,14 +234,19 @@ func TestModel_Enrichment_SurgicalUpdate(t *testing.T) {
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
-		Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()},
+		Notification: triage.Notification{
+			GitHubID:      "1",
+			SubjectNodeID: "node_1",
+			IsEnriched:    false,
+			UpdatedAt:     time.Now(),
+		},
 	}
 	m.allNotifications = []triage.NotificationWithState{notif}
 	m.inflightEnrichments["1"] = time.Now()
 
-	// 1. Receive surgical update
+	// 1. Receive surgical update (indexed by SubjectNodeID)
 	results := map[string]models.EnrichmentResult{
-		"1": {ResourceState: "Merged", ResourceSubState: "APPROVED", FetchedAt: time.Now()},
+		"node_1": {ResourceState: "Merged", ResourceSubState: "APPROVED", FetchedAt: time.Now()},
 	}
 	_ = m.Transition(enrichmentBatchCompleteMsg{Results: results}, 0)
 

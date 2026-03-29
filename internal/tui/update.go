@@ -394,20 +394,20 @@ func (m *Model) handleEnrichmentBatchComplete(msg enrichmentBatchCompleteMsg) []
 	m.ui.SetFetching(false)
 
 	// Surgical update of in-memory notification slice
-	for id, res := range msg.Results {
-		delete(m.inflightEnrichments, id)
-
+	for nodeID, res := range msg.Results {
 		for idx, n := range m.allNotifications {
-			if n.GitHubID != id {
+			if n.SubjectNodeID != nodeID {
 				continue
 			}
+
+			// Clear inflight for each notification matching this nodeID
+			delete(m.inflightEnrichments, n.GitHubID)
 
 			m.allNotifications[idx].ResourceState = res.ResourceState
 			m.allNotifications[idx].ResourceSubState = res.ResourceSubState
 			m.allNotifications[idx].IsEnriched = true
 			m.allNotifications[idx].EnrichedAt.Time = res.FetchedAt
 			m.allNotifications[idx].EnrichedAt.Valid = true
-			break
 		}
 	}
 
@@ -423,6 +423,7 @@ func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 		if n.GitHubID != msg.GitHubID {
 			continue
 		}
+		m.allNotifications[idx].SubjectNodeID = msg.SubjectNodeID
 		m.allNotifications[idx].Body = msg.Body
 		m.allNotifications[idx].AuthorLogin = msg.Author
 		m.allNotifications[idx].HTMLURL = msg.HTMLURL

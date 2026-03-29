@@ -31,6 +31,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res := response.(*struct {
 				Repository struct {
 					PullRequest struct {
+						ID      string `json:"id"`
 						Body    string `json:"body"`
 						HTMLURL string `json:"url"`
 						Author  struct {
@@ -43,6 +44,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 					} `json:"pullRequest"`
 				} `json:"repository"`
 			})
+			res.Repository.PullRequest.ID = "node_1"
 			res.Repository.PullRequest.Body = "PR Body"
 			res.Repository.PullRequest.ResourceSubState = "APPROVED"
 		}).Return(nil).Once()
@@ -60,6 +62,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "url", nil, mock.Anything).Call.Run(func(args mock.Arguments) {
 			response := args.Get(4)
 			res := response.(*struct {
+				ID      string `json:"node_id"`
 				Body    string `json:"body"`
 				HTMLURL string `json:"html_url"`
 				User    struct {
@@ -68,6 +71,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 				State       string  `json:"state"`
 				StateReason *string `json:"state_reason"`
 			})
+			res.ID = "node_issue_1"
 			res.Body = "Issue Body"
 			res.State = "closed"
 			reason := "completed"

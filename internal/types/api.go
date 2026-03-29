@@ -130,7 +130,7 @@ type SyncRepository interface {
 
 // EnrichmentRepository defines the database interactions required by the EnrichmentEngine.
 type EnrichmentRepository interface {
-	EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, resourceSubState string) error
+	EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error
 	UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, resourceSubState string) error
 }
 
