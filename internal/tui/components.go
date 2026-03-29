@@ -76,6 +76,12 @@ func renderNotificationIcon(subjectType triage.SubjectType) string {
 }
 
 func renderRepoColumn(styles Styles, repoFullName string, width int) string {
+	// Manual truncation to ensure it fits in exactly 1 line
+	runes := []rune(repoFullName)
+	if len(runes) > width {
+		repoFullName = string(runes[:width-3]) + "..."
+	}
+
 	return styles.SelectedDescription.
 		Width(width).
 		MaxWidth(width).

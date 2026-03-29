@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/stretchr/testify/assert"
 )
@@ -124,6 +125,34 @@ func TestRenderFooter(t *testing.T) {
 		assert.NotEmpty(t, view)
 		assert.Contains(t, stripANSI(view), "[DND]")
 	})
+}
+
+func TestRenderNotificationRow_LongRepo(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			SubjectType:        "PullRequest",
+			SubjectTitle:       "Small Title",
+			SubjectURL:         "https://github.com/o/r/pull/123",
+			RepositoryFullName: "a-very-long-repository-name-that-exceeds-twenty-chars",
+			GitHubID:           "123",
+			ResourceState:      "OPEN",
+		},
+	}
+
+	out := RenderNotificationRow(ctx, notif)
+	plain := stripANSI(out)
+
+	// Verify that the output is exactly 1 line
+	assert.NotContains(t, out, "\n", "Row must not contain newlines")
+	assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
+
+	// Verify truncation of repo name
+	assert.Contains(t, plain, "a-very-long-repos...", "Repo name must be truncated with ellipsis")
 }
 
 func TestRenderMarkdown(t *testing.T) {
