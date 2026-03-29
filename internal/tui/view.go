@@ -126,7 +126,13 @@ func (m *Model) renderFooter() string {
 
 	health := bridgeStyle.Render(bridge)
 
-	// 4. Rate Limit Status
+	// 4. Focus Mode
+	focusIndicator := ""
+	if m.focusMode == "Active" {
+		focusIndicator = m.styles.PriorityMed.Render("[DND]")
+	}
+
+	// 5. Rate Limit Status
 	rlStatus := ""
 	if m.RateLimit.Limit > 0 {
 		threshold := int64(m.RateLimit.Limit) / 10
@@ -145,7 +151,7 @@ func (m *Model) renderFooter() string {
 		}
 	}
 
-	// 5. Version Information
+	// 6. Version Information
 	vStr := m.styles.SelectedDescription.Render(" " + m.version + " ")
 
 	statusLine := lipgloss.JoinHorizontal(
@@ -154,8 +160,10 @@ func (m *Model) renderFooter() string {
 		" ",
 		filters,
 		" ",
+		focusIndicator,
+		" ",
 		rlStatus,
-		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-6, lipgloss.Right, vStr+" "+health),
+		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(focusIndicator)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-8, lipgloss.Right, vStr+" "+health),
 	)
 
 	if !m.showHelp {

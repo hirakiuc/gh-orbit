@@ -98,8 +98,20 @@ func TestRenderHeader(t *testing.T) {
 func TestRenderFooter(t *testing.T) {
 	m := newTestModel(t)
 	m.width = 100
-	view := m.renderFooter()
-	assert.NotEmpty(t, view)
+
+	t.Run("Normal state", func(t *testing.T) {
+		m.focusMode = "Inactive"
+		view := m.renderFooter()
+		assert.NotEmpty(t, view)
+		assert.NotContains(t, stripANSI(view), "[DND]")
+	})
+
+	t.Run("Active Focus Mode", func(t *testing.T) {
+		m.focusMode = "Active"
+		view := m.renderFooter()
+		assert.NotEmpty(t, view)
+		assert.Contains(t, stripANSI(view), "[DND]")
+	})
 }
 
 func TestRenderMarkdown(t *testing.T) {

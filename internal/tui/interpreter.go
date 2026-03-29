@@ -79,6 +79,10 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		}
 	}
 
+	if _, ok := action.(ActionCheckFocusMode); ok {
+		return i.model.checkFocusMode()
+	}
+
 	if a, ok := action.(ActionScheduleTick); ok {
 		switch a.TickType {
 		case TickHeartbeat:
