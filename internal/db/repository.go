@@ -13,18 +13,19 @@ import (
 
 // EnrichNotification updates a notification with detailed content (body, author).
 // It also propagates the state to all notifications sharing the same subject_node_id for consistency.
-func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, resourceSubState string) error {
+func (db *DB) EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 1. Get the subject_node_id for this notification
-	var nodeID string
-	err = tx.QueryRowContext(ctx, "SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
+	// 1. Get current nodeID if we didn't get one
+	if nodeID == "" {
+		err = tx.QueryRowContext(ctx, "SELECT subject_node_id FROM notifications WHERE github_id = ?", id).Scan(&nodeID)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("failed to fetch node_id during enrichment: %w", err)
+		}
 	}
 
 	now := time.Now()
@@ -37,10 +38,11 @@ func (db *DB) EnrichNotification(ctx context.Context, id, body, author, htmlURL,
 		    html_url = COALESCE(NULLIF(?, ''), html_url),
 		    resource_state = ?,
 		    resource_sub_state = ?,
+		    subject_node_id = COALESCE(NULLIF(?, ''), subject_node_id),
 		    is_enriched = TRUE,
 		    enriched_at = ?
 		WHERE github_id = ?
-	`, body, author, htmlURL, resourceState, resourceSubState, now, id)
+	`, body, author, htmlURL, resourceState, resourceSubState, nodeID, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to enrich notification: %w", err)
 	}

@@ -128,10 +128,28 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 		return e.fetchREST(ctx, u)
 	}
 
+	var data struct {
+		Repository struct {
+			PullRequest struct {
+				ID      string `json:"id"`
+				Body    string `json:"body"`
+				HTMLURL string `json:"url"`
+				Author  struct {
+					Login string `json:"login"`
+				} `json:"author"`
+				State            string `json:"state"`
+				Merged           bool   `json:"merged"`
+				IsDraft          bool   `json:"isDraft"`
+				ResourceSubState string `json:"reviewDecision"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	}
+
 	queryString := `
 		query($owner: String!, $repo: String!, $number: Int!) {
 			repository(owner: $owner, name: $repo) {
 				pullRequest(number: $number) {
+					id
 					body
 					url
 					author { login }
@@ -147,22 +165,6 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 		"owner":  owner,
 		"repo":   repo,
 		"number": number,
-	}
-
-	var data struct {
-		Repository struct {
-			PullRequest struct {
-				Body    string `json:"body"`
-				HTMLURL string `json:"url"`
-				Author  struct {
-					Login string `json:"login"`
-				} `json:"author"`
-				State            string `json:"state"`
-				Merged           bool   `json:"merged"`
-				IsDraft          bool   `json:"isDraft"`
-				ResourceSubState string `json:"reviewDecision"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
 	}
 
 	err = e.client.GQL().DoWithContext(ctx, queryString, variables, &data)
@@ -181,6 +183,7 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 	}
 
 	return models.EnrichmentResult{
+		SubjectNodeID:    pr.ID,
 		Body:             pr.Body,
 		HTMLURL:          pr.HTMLURL,
 		Author:           pr.Author.Login,
@@ -192,6 +195,7 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 
 func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.EnrichmentResult, error) {
 	var data struct {
+		ID      string `json:"node_id"`
 		Body    string `json:"body"`
 		HTMLURL string `json:"html_url"`
 		User    struct {
@@ -219,6 +223,7 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.Enri
 	}
 
 	return models.EnrichmentResult{
+		SubjectNodeID:    data.ID,
 		Body:             data.Body,
 		HTMLURL:          data.HTMLURL,
 		Author:           data.User.Login,

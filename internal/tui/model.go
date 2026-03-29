@@ -53,7 +53,7 @@ type notificationStore interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
 	MarkReadLocally(ctx context.Context, id string, isRead bool) error
 	SetPriority(ctx context.Context, id string, priority int) error
-	EnrichNotification(ctx context.Context, id, body, author, htmlURL, resourceState, resourceSubState string) error
+	EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error
 }
 
 // Model represents the application state.
@@ -286,6 +286,7 @@ type syncCompleteMsg struct {
 
 type detailLoadedMsg struct {
 	GitHubID         string
+	SubjectNodeID    string
 	Body             string
 	Author           string
 	HTMLURL          string

@@ -84,21 +84,52 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 		m.inflightEnrichments[n.GitHubID] = now
 	}
 
-	// For a single item enrichment (Detail View), we use FetchDetail
-	if len(toEnrich) == 1 {
-		n := toEnrich[0]
-		return m.FetchDetailCmd(n.GitHubID, n.SubjectURL, n.SubjectType)
+	// 2. Split into Batch (has node_id) and Discovery (missing node_id) groups
+	var batch []triage.NotificationWithState
+	var discovery []triage.NotificationWithState
+
+	for _, n := range toEnrich {
+		if n.SubjectNodeID != "" {
+			batch = append(batch, n)
+		} else {
+			discovery = append(discovery, n)
+		}
 	}
 
-	// For multiple items (Viewport), split into smaller chunks to utilize concurrent workers
 	var cmds []tea.Cmd
 
-	for i := 0; i < len(toEnrich); i += EnrichmentChunkSize {
+	// Handle Discovery items (one-by-one to get node_id)
+	// We use PriorityEnrich for proactive discovery to avoid blocking user actions
+	for _, n := range discovery {
+		id, url, st := n.GitHubID, n.SubjectURL, n.SubjectType
+		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+			res, err := m.enrich.FetchDetail(ctx, url, string(st))
+			if err != nil {
+				return types.ErrMsg{Err: err}
+			}
+			// Atomic DB update including nodeID
+			if err := m.db.EnrichNotification(ctx, id, res.SubjectNodeID, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState); err != nil {
+				return types.ErrMsg{Err: err}
+			}
+			return detailLoadedMsg{
+				GitHubID:         id,
+				SubjectNodeID:    res.SubjectNodeID,
+				Body:             res.Body,
+				Author:           res.Author,
+				HTMLURL:          res.HTMLURL,
+				ResourceState:    res.ResourceState,
+				ResourceSubState: res.ResourceSubState,
+			}
+		}))
+	}
+
+	// Handle Batch items (GraphQL batch fetch)
+	for i := 0; i < len(batch); i += EnrichmentChunkSize {
 		end := i + EnrichmentChunkSize
-		if end > len(toEnrich) {
-			end = len(toEnrich)
+		if end > len(batch) {
+			end = len(batch)
 		}
-		chunk := toEnrich[i:end]
+		chunk := batch[i:end]
 
 		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
 			results := m.enrich.FetchHybridBatch(ctx, chunk)
@@ -125,13 +156,14 @@ func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType) tea
 		}
 
 		// Update database with granular enrich method
-		err = m.db.EnrichNotification(ctx, id, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState)
+		err = m.db.EnrichNotification(ctx, id, res.SubjectNodeID, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
 		return detailLoadedMsg{
 			GitHubID:         id,
+			SubjectNodeID:    res.SubjectNodeID,
 			Body:             res.Body,
 			Author:           res.Author,
 			HTMLURL:          res.HTMLURL,
