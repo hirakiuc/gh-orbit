@@ -73,6 +73,8 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		return m.handleEnrichmentBatchComplete(msg)
 	case detailLoadedMsg:
 		m.handleDetailLoaded(msg)
+	case focusModeMsg:
+		m.focusMode = string(msg)
 	case pollTickMsg:
 		return m.handlePollTick(msg)
 	case clockTickMsg:
@@ -457,7 +459,10 @@ func (m *Model) handleClockTick(msg clockTickMsg) []Action {
 	if msg.ID != m.clockID {
 		return nil
 	}
-	return []Action{ActionScheduleTick{TickType: TickClock, Interval: m.clockInterval}}
+	return []Action{
+		ActionScheduleTick{TickType: TickClock, Interval: m.clockInterval},
+		ActionCheckFocusMode{},
+	}
 }
 
 func (m *Model) handleTransitionError(msg types.ErrMsg) {

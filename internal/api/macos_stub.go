@@ -28,7 +28,7 @@ func (s *stubNotifier) Status() types.BridgeStatus {
 
 // CheckFocusMode returns a no-op status for non-macOS platforms.
 func CheckFocusMode(executor types.CommandExecutor) string {
-	return "Unsupported platform"
+	return "Inactive"
 }
 
 // BridgeProbe represents the result of a single bridge diagnostic check.

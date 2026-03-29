@@ -119,3 +119,7 @@ type ActionScheduleTick struct {
 }
 
 func (a ActionScheduleTick) Type() string { return "schedule_tick" }
+
+type ActionCheckFocusMode struct{}
+
+func (a ActionCheckFocusMode) Type() string { return "check_focus_mode" }

@@ -88,6 +88,7 @@ type Model struct {
 	headerHeight     int
 	footerHeight     int
 	bridgeStatus     types.BridgeStatus
+	focusMode        string
 	interpreter      *Interpreter
 
 	// Background Sync State
@@ -209,6 +210,7 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.loadNotifications(true),
 		m.tickClock(),
+		m.checkFocusMode(),
 	)
 }
 
@@ -269,7 +271,15 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 	})
 }
 
+func (m *Model) checkFocusMode() tea.Cmd {
+	return func() tea.Msg {
+		return focusModeMsg(api.CheckFocusMode(m.executor))
+	}
+}
+
 // Messages
+type focusModeMsg string
+
 type notificationsLoadedMsg struct {
 	notifications []triage.NotificationWithState
 	IsInitial     bool
