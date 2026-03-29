@@ -3,8 +3,10 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
@@ -16,19 +18,32 @@ type RenderContext struct {
 }
 
 // RenderNotificationRow provides a consistent, non-truncated row layout.
-// Layout: [Indicator][Icon][Unread][Badge] [Title] [ID] [Priority]
+// RenderNotificationRow provides a consistent, high-density Repo-First row layout.
+// Layout: [Indicator][Icon][Unread][Badge] [Repo] │ [Title] [ID] [Time] [Priority]
 func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) string {
 	const minTitleWidth = 10
+	const repoWidth = 20
+
 	indicator := renderSelectionIndicator(ctx.Styles, ctx.IsSelected)
 	icon := renderNotificationIcon(n.SubjectType)
 	unread := renderUnreadIndicator(ctx.Styles, n.IsReadLocally)
 	badge := renderResourceStateBadge(ctx, n.ResourceState)
-	idStr := renderResourceID(ctx.Styles, n.SubjectURL)
+	repo := renderRepoColumn(ctx.Styles, n.RepositoryFullName, repoWidth)
+	divider := ctx.Styles.Separator.Render(" │ ")
+
+	idStr := ""
+	timeStr := ""
+	if ctx.Width >= 80 {
+		idStr = " " + renderResourceID(ctx.Styles, n.SubjectURL)
+		timeStr = " " + renderRelativeTime(ctx.Styles, n.UpdatedAt)
+	}
+
 	priority := renderPriorityBadge(ctx.Styles, n.Priority)
-	titleWidth := calculateAvailableTitleWidth(ctx.Width, minTitleWidth, icon, unread, badge, idStr, priority)
+
+	titleWidth := calculateAvailableTitleWidth(ctx.Width, minTitleWidth, icon, unread, badge, repo, divider, idStr, timeStr, priority)
 	title := renderNotificationTitle(ctx, n, titleWidth)
 
-	return fmt.Sprintf("%s%s%s%s%s%s%s", indicator, icon, unread, badge, title, idStr, priority)
+	return fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s", indicator, icon, unread, badge, repo, divider, title, idStr, timeStr, priority)
 }
 
 func renderUnreadIndicator(styles Styles, isRead bool) string {
@@ -58,6 +73,18 @@ func renderNotificationIcon(subjectType triage.SubjectType) string {
 	default:
 		return "  "
 	}
+}
+
+func renderRepoColumn(styles Styles, repoFullName string, width int) string {
+	return styles.SelectedDescription.
+		Width(width).
+		MaxWidth(width).
+		Render(repoFullName)
+}
+
+func renderRelativeTime(styles Styles, updatedAt time.Time) string {
+	relTime := humanize.Time(updatedAt)
+	return styles.SelectedDescription.Render(relTime)
 }
 
 func renderResourceID(styles Styles, subjectURL string) string {
@@ -105,17 +132,20 @@ func renderPriorityBadge(styles Styles, priority int) string {
 	}
 }
 
-func calculateAvailableTitleWidth(totalWidth, minTitleWidth int, icon, unread, badge, idStr, priority string) int {
+func calculateAvailableTitleWidth(totalWidth, minTitleWidth int, icon, unread, badge, repo, divider, idStr, timeStr, priority string) int {
 	const selectionIndicatorWidth = 2
-	const layoutSafetyBuffer = 7 // 2 spaces + 5 extra cells for multi-width glyphs.
+	const layoutSafetyBuffer = 10 // Increased to handle multi-width icons and padding.
 
-	fixedWidth := selectionIndicatorWidth + lipgloss.Width(icon) + lipgloss.Width(unread) + lipgloss.Width(idStr) + layoutSafetyBuffer
-	if badge != "" {
-		fixedWidth += lipgloss.Width(badge) + 1
-	}
-	if priority != "" {
-		fixedWidth += lipgloss.Width(priority)
-	}
+	fixedWidth := selectionIndicatorWidth +
+		lipgloss.Width(icon) +
+		lipgloss.Width(unread) +
+		lipgloss.Width(badge) +
+		lipgloss.Width(repo) +
+		lipgloss.Width(divider) +
+		lipgloss.Width(idStr) +
+		lipgloss.Width(timeStr) +
+		lipgloss.Width(priority) +
+		layoutSafetyBuffer
 
 	availableTitleWidth := totalWidth - fixedWidth
 	if availableTitleWidth < minTitleWidth {
@@ -132,5 +162,20 @@ func renderNotificationTitle(ctx RenderContext, n triage.NotificationWithState, 
 	if ctx.IsSelected {
 		titleStyle = ctx.Styles.SelectedTitle
 	}
-	return titleStyle.Width(width).MaxWidth(width).Render(n.SubjectTitle)
+
+	// Sanitize title: remove newlines and tabs to maintain single-line density
+	cleanTitle := strings.ReplaceAll(n.SubjectTitle, "\n", " ")
+	cleanTitle = strings.ReplaceAll(cleanTitle, "\r", "")
+	cleanTitle = strings.ReplaceAll(cleanTitle, "\t", " ")
+	cleanTitle = strings.TrimSpace(cleanTitle)
+
+	// Manual truncation to ensure it fits in exactly 1 line
+	// Note: We use runes to handle multi-width characters more safely,
+	// although Title is usually ASCII.
+	runes := []rune(cleanTitle)
+	if len(runes) > width {
+		cleanTitle = string(runes[:width-3]) + "..."
+	}
+
+	return titleStyle.Width(width).MaxWidth(width).Render(cleanTitle)
 }

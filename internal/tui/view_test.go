@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/triage"
@@ -17,18 +18,27 @@ func TestRenderNotificationRow_States(t *testing.T) {
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{
-			SubjectType:   "PullRequest",
-			SubjectTitle:  "Title",
-			SubjectURL:    "https://github.com/o/r/pull/123",
-			GitHubID:      "123",
-			ResourceState: "MERGED",
+			SubjectType:        "PullRequest",
+			SubjectTitle:       "Title",
+			SubjectURL:         "https://github.com/o/r/pull/123",
+			RepositoryFullName: "owner/repo",
+			GitHubID:           "123",
+			ResourceState:      "MERGED",
 		},
 	}
 
-	// Test normal
+	// Test normal (Repo-First)
 	out := RenderNotificationRow(ctx, notif)
-	assert.Contains(t, stripANSI(out), "Title")
-	assert.Contains(t, stripANSI(out), "MERGED")
+	plain := stripANSI(out)
+	assert.Contains(t, plain, "owner/repo")
+	assert.Contains(t, plain, "│")
+	assert.Contains(t, plain, "Title")
+	assert.Contains(t, plain, "MERGED")
+
+	// Verify order: repo before title
+	repoIdx := strings.Index(plain, "owner/repo")
+	titleIdx := strings.Index(plain, "Title")
+	assert.Less(t, repoIdx, titleIdx, "Repo must come before Title")
 
 	// Test selected
 	ctx.IsSelected = true
@@ -42,7 +52,7 @@ func TestRenderNotificationRow_States(t *testing.T) {
 	notif.SubjectTitle = "Very Long Title That Should Be Truncated"
 	outPriority := RenderNotificationRow(ctx, notif)
 
-	plain := stripANSI(outPriority)
+	plain = stripANSI(outPriority)
 	// Log for diagnostic visibility in CI if it fails
 	t.Logf("Actual row width: %d, Content: [%s]", len(plain), plain)
 
@@ -58,19 +68,21 @@ func TestRenderNotificationRow_EmptyState(t *testing.T) {
 
 	notifOpen := triage.NotificationWithState{
 		Notification: triage.Notification{
-			SubjectType:   "PullRequest",
-			SubjectTitle:  "Title",
-			SubjectURL:    "https://github.com/o/r/pull/123",
-			ResourceState: "OPEN",
+			SubjectType:        "PullRequest",
+			SubjectTitle:       "Title",
+			SubjectURL:         "https://github.com/o/r/pull/123",
+			RepositoryFullName: "owner/repo",
+			ResourceState:      "OPEN",
 		},
 	}
 
 	notifEmpty := triage.NotificationWithState{
 		Notification: triage.Notification{
-			SubjectType:   "PullRequest",
-			SubjectTitle:  "Title",
-			SubjectURL:    "https://github.com/o/r/pull/124",
-			ResourceState: "", // Empty state should use placeholder
+			SubjectType:        "PullRequest",
+			SubjectTitle:       "Title",
+			SubjectURL:         "https://github.com/o/r/pull/124",
+			RepositoryFullName: "owner/repo",
+			ResourceState:      "", // Empty state should use placeholder
 		},
 	}
 

@@ -7,7 +7,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
 
@@ -31,7 +30,7 @@ func newItemDelegate(s Styles, k KeyMap) itemDelegate {
 	return itemDelegate{styles: s, keys: k}
 }
 
-func (d itemDelegate) Height() int                               { return 2 }
+func (d itemDelegate) Height() int                               { return 1 }
 func (d itemDelegate) Spacing() int                              { return 0 }
 func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
 
@@ -51,7 +50,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	isSelected := index == m.Index()
 
-	// 1. Target Identity Row (Indicator + Icon + Unread + Badge + Title + #ID + Priority)
+	// Target Identity Row (Indicator + Icon + Unread + Badge + Repo + Divider + Title + #ID + Time + Priority)
 	ctx := RenderContext{
 		Styles:     d.styles,
 		Width:      m.Width(),
@@ -60,12 +59,5 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	}
 	str := RenderNotificationRow(ctx, i.notification)
 
-	// 2. Meta info (line 2)
-	relTime := humanize.Time(i.notification.UpdatedAt)
-	description := fmt.Sprintf("%s • %s", i.notification.RepositoryFullName, relTime)
-	if isSelected {
-		description = d.styles.SelectedDescription.Render(description)
-	}
-
-	_, _ = fmt.Fprintf(w, "%s\n    %s", str, description)
+	_, _ = fmt.Fprint(w, str)
 }
