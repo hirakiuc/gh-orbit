@@ -25,20 +25,6 @@ func (m *Model) View() tea.View {
 	m.headerHeight = lipgloss.Height(header)
 	m.footerHeight = lipgloss.Height(footer)
 
-	// Update sub-model sizes dynamically
-	availHeight := m.height - m.headerHeight - m.footerHeight
-	if availHeight < 0 {
-		availHeight = 0
-	}
-
-	switch m.state {
-	case StateList:
-		m.listView.list.SetSize(m.width, availHeight)
-	case StateDetail:
-		m.detailView.viewport.SetWidth(m.width)
-		m.detailView.viewport.SetHeight(availHeight)
-	}
-
 	var content string
 	switch m.state {
 	case StateDetail:

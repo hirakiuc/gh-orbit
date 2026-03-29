@@ -116,6 +116,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
 			m.help.ShowAll = m.showHelp
+			m.syncSubModelSizes()
 		case key.Matches(msg, m.keys.OpenBrowser):
 			if i, ok := m.listView.list.SelectedItem().(item); ok {
 				actions = append(actions, ActionViewWeb{Notification: i.notification})
@@ -341,7 +342,25 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
 
 	m.help.SetWidth(msg.Width)
 
+	m.syncSubModelSizes()
 	m.updateMarkdownRenderer()
+}
+
+func (m *Model) syncSubModelSizes() {
+	header := m.renderHeader()
+	footer := m.renderFooter()
+
+	m.headerHeight = lipgloss.Height(header)
+	m.footerHeight = lipgloss.Height(footer)
+
+	availHeight := m.height - m.headerHeight - m.footerHeight
+	if availHeight < 0 {
+		availHeight = 0
+	}
+
+	m.listView.list.SetSize(m.width, availHeight)
+	m.detailView.viewport.SetWidth(m.width)
+	m.detailView.viewport.SetHeight(availHeight)
 }
 
 func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
@@ -490,6 +509,7 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
 		m.help.ShowAll = m.showHelp
+		m.syncSubModelSizes()
 	case key.Matches(msg, m.keys.NextTab):
 		m.cycleTab(1)
 	case key.Matches(msg, m.keys.PrevTab):
