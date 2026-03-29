@@ -52,6 +52,8 @@ type Styles struct {
 
 	// Search
 	FuzzyMatch lipgloss.Style
+
+	Separator lipgloss.Style
 }
 
 // DefaultStyles returns the default styles for the application.
@@ -181,6 +183,9 @@ func DefaultStyles(isDark bool) Styles {
 		Foreground(accent).
 		Bold(true).
 		Underline(true)
+
+	s.Separator = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#484F58"))
 
 	// Resource States (Desaturated Professional Palette)
 	openBG := lipgloss.Color("#1B3A24")
