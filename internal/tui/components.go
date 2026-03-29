@@ -17,33 +17,105 @@ type RenderContext struct {
 	IsSelected bool
 }
 
-// RenderNotificationRow provides a consistent, non-truncated row layout.
 // RenderNotificationRow provides a consistent, high-density Repo-First row layout.
-// Layout: [Indicator][Icon][Unread][Badge] [Repo] │ [Title] [ID] [Time] [Priority]
+// Layout: [Indicator+Icon+Unread] [Badge] [Repo] │ [Title] [#ID] [Time] [Priority]
 func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) string {
-	const minTitleWidth = 10
-	const repoWidth = 20
+	const (
+		indicatorCellWidth = 6
+		badgeWidth         = 12
+		dividerWidth       = 3
+		priorityWidth      = 6
+	)
 
+	// 1. Determine responsive columns
+	idStr := ""
+	idWidth := 0
+	if ctx.Width >= 80 {
+		idStr = renderResourceID(ctx.Styles, n.SubjectURL)
+		idWidth = 10
+	}
+
+	timeStr := ""
+	timeWidth := 0
+	if ctx.Width >= 100 {
+		timeStr = renderRelativeTime(ctx.Styles, n.UpdatedAt)
+		timeWidth = 15
+	}
+
+	// 2. Calculate flexible space (30/70 ratio for Repo vs Title)
+	fixedSpace := indicatorCellWidth + badgeWidth + dividerWidth + priorityWidth + idWidth + timeWidth
+	flexibleSpace := ctx.Width - fixedSpace
+	if flexibleSpace < 20 {
+		flexibleSpace = 20
+	}
+
+	repoWidth := int(float64(flexibleSpace) * 0.3)
+	if repoWidth < 10 {
+		repoWidth = 10
+	}
+	titleWidth := flexibleSpace - repoWidth
+
+	// 3. Prepare cells with fixed widths and strict truncation
 	indicator := renderSelectionIndicator(ctx.Styles, ctx.IsSelected)
 	icon := renderNotificationIcon(n.SubjectType)
 	unread := renderUnreadIndicator(ctx.Styles, n.IsReadLocally)
-	badge := renderResourceStateBadge(ctx, n.ResourceState)
-	repo := renderRepoColumn(ctx.Styles, n.RepositoryFullName, repoWidth)
-	divider := ctx.Styles.Separator.Render(" │ ")
+	indicatorCell := renderCell(indicator+icon+unread, indicatorCellWidth, false)
 
-	idStr := ""
-	timeStr := ""
-	if ctx.Width >= 80 {
-		idStr = " " + renderResourceID(ctx.Styles, n.SubjectURL)
-		timeStr = " " + renderRelativeTime(ctx.Styles, n.UpdatedAt)
+	badge := renderCell(renderResourceStateBadge(ctx, n.ResourceState), badgeWidth, false)
+	repo := renderCell(renderRepoColumn(ctx.Styles, n.RepositoryFullName, repoWidth), repoWidth, false)
+	divider := renderCell(ctx.Styles.Separator.Render(" │ "), dividerWidth, false)
+	title := renderCell(renderNotificationTitle(ctx, n, titleWidth), titleWidth, false)
+
+	idCell := ""
+	if idWidth > 0 {
+		idCell = renderCell(idStr, idWidth, true)
 	}
 
-	priority := renderPriorityBadge(ctx.Styles, n.Priority)
+	timeCell := ""
+	if timeWidth > 0 {
+		timeCell = renderCell(timeStr, timeWidth, true)
+	}
 
-	titleWidth := calculateAvailableTitleWidth(ctx.Width, minTitleWidth, icon, unread, badge, repo, divider, idStr, timeStr, priority)
-	title := renderNotificationTitle(ctx, n, titleWidth)
+	priority := renderCell(renderPriorityBadge(ctx.Styles, n.Priority), priorityWidth, false)
 
-	return fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s", indicator, icon, unread, badge, repo, divider, title, idStr, timeStr, priority)
+	// 4. Join horizontally for a guaranteed 1-line layout
+	return lipgloss.JoinHorizontal(
+		lipgloss.Bottom,
+		indicatorCell,
+		badge,
+		repo,
+		divider,
+		title,
+		idCell,
+		timeCell,
+		priority,
+	)
+}
+
+func renderCell(content string, width int, styleDefault bool) string {
+	s := lipgloss.NewStyle().
+		Width(width).
+		MaxWidth(width).
+		Height(1).
+		MaxHeight(1).
+		Padding(0, 0).
+		Margin(0, 0)
+	return s.Render(truncateToWidth(content, width))
+}
+
+func truncateToWidth(s string, w int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	// Note: lipgloss.Width handles multi-width characters correctly.
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+
+	// Simple rune-based truncation if lipgloss.Width is too large
+	runes := []rune(s)
+	if len(runes) > w {
+		return string(runes[:w-1]) + "…"
+	}
+	return s
 }
 
 func renderUnreadIndicator(styles Styles, isRead bool) string {
@@ -90,7 +162,7 @@ func renderRepoColumn(styles Styles, repoFullName string, width int) string {
 
 func renderRelativeTime(styles Styles, updatedAt time.Time) string {
 	relTime := humanize.Time(updatedAt)
-	return styles.SelectedDescription.Render(relTime)
+	return relTime
 }
 
 func renderResourceID(styles Styles, subjectURL string) string {
@@ -98,7 +170,7 @@ func renderResourceID(styles Styles, subjectURL string) string {
 	if lastIdx := strings.LastIndex(subjectURL, "/"); lastIdx != -1 {
 		id = "#" + subjectURL[lastIdx+1:]
 	}
-	return styles.SelectedDescription.Render(id)
+	return id
 }
 
 func renderResourceStateBadge(ctx RenderContext, resourceState string) string {
@@ -136,28 +208,6 @@ func renderPriorityBadge(styles Styles, priority int) string {
 	default:
 		return ""
 	}
-}
-
-func calculateAvailableTitleWidth(totalWidth, minTitleWidth int, icon, unread, badge, repo, divider, idStr, timeStr, priority string) int {
-	const selectionIndicatorWidth = 2
-	const layoutSafetyBuffer = 10 // Increased to handle multi-width icons and padding.
-
-	fixedWidth := selectionIndicatorWidth +
-		lipgloss.Width(icon) +
-		lipgloss.Width(unread) +
-		lipgloss.Width(badge) +
-		lipgloss.Width(repo) +
-		lipgloss.Width(divider) +
-		lipgloss.Width(idStr) +
-		lipgloss.Width(timeStr) +
-		lipgloss.Width(priority) +
-		layoutSafetyBuffer
-
-	availableTitleWidth := totalWidth - fixedWidth
-	if availableTitleWidth < minTitleWidth {
-		return minTitleWidth
-	}
-	return availableTitleWidth
 }
 
 func renderNotificationTitle(ctx RenderContext, n triage.NotificationWithState, width int) string {
