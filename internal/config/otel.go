@@ -44,7 +44,6 @@ func SetupOTel(ctx context.Context, version string) (*sdktrace.TracerProvider, f
 	// 2. Create the JSON exporter
 	exporter, err := stdouttrace.New(
 		stdouttrace.WithWriter(file),
-		stdouttrace.WithPrettyPrint(),
 	)
 	if err != nil {
 		_ = file.Close()
