@@ -55,10 +55,10 @@ func TestRenderNotificationRow_States(t *testing.T) {
 
 	plain = stripANSI(outPriority)
 	// Log for diagnostic visibility in CI if it fails
-	t.Logf("Actual row width: %d, Content: [%s]", len(plain), plain)
+	t.Logf("Actual row width: %d, Content: [%s]", lipgloss.Width(plain), plain)
 
 	assert.Contains(t, plain, "[!!!]", "Priority badge must be visible")
-	assert.LessOrEqual(t, len(plain), testWidth, "Row must not exceed available width")
+	assert.LessOrEqual(t, lipgloss.Width(plain), testWidth, "Row must not exceed available width")
 }
 
 func TestRenderNotificationRow_EmptyState(t *testing.T) {
@@ -97,7 +97,7 @@ func TestRenderNotificationRow_EmptyState(t *testing.T) {
 	t.Logf("Row with EMPTY: [%s]", plainEmpty)
 
 	assert.Contains(t, plainEmpty, "PEND", "Should contain PEND placeholder")
-	assert.Equal(t, len(plainOpen), len(plainEmpty), "Row lengths must be equal for consistent alignment")
+	assert.Equal(t, lipgloss.Width(plainOpen), lipgloss.Width(plainEmpty), "Row lengths must be equal for consistent alignment")
 }
 
 func TestRenderHeader(t *testing.T) {
@@ -130,7 +130,7 @@ func TestRenderFooter(t *testing.T) {
 func TestRenderNotificationRow_LongRepo(t *testing.T) {
 	ctx := RenderContext{
 		Styles: DefaultStyles(true),
-		Width:  100,
+		Width:  120,
 	}
 
 	notif := triage.NotificationWithState{
