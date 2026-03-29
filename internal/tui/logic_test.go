@@ -376,7 +376,7 @@ func TestModel_Transition_Global(t *testing.T) {
 	actions := m.Transition(tea.WindowSizeMsg{Width: 100, Height: 50}, 0)
 	assert.Equal(t, 100, m.width)
 	assert.Equal(t, 50, m.height)
-	assert.Empty(t, actions)
+	assert.Contains(t, actions, ActionScheduleTick{TickType: TickEnrich})
 
 	// Error Msg
 	msg := types.ErrMsg{Err: assert.AnError}

@@ -61,6 +61,7 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.handleWindowSize(msg)
+		return []Action{ActionScheduleTick{TickType: TickEnrich}}
 	case tea.BackgroundColorMsg:
 		m.handleBackgroundColor(msg)
 	case notificationsLoadedMsg:
