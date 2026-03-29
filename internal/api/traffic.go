@@ -119,12 +119,17 @@ func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.
 	newLimit := int32(3)
 	if info.Remaining < 500 {
 		newLimit = 1
-		c.logger.InfoContext(ctx, "traffic controller: scaling down concurrency", "new_limit", newLimit)
-	} else if info.Remaining > 1000 {
-		newLimit = 3
-		c.logger.InfoContext(ctx, "traffic controller: scaled up concurrency", "new_limit", newLimit)
 	}
-	atomic.StoreInt32(&c.workerLimit, newLimit)
+
+	oldLimit := atomic.LoadInt32(&c.workerLimit)
+	if newLimit != oldLimit {
+		if newLimit < oldLimit {
+			c.logger.DebugContext(ctx, "traffic controller: scaling down concurrency", "new_limit", newLimit)
+		} else {
+			c.logger.DebugContext(ctx, "traffic controller: scaled up concurrency", "new_limit", newLimit)
+		}
+		atomic.StoreInt32(&c.workerLimit, newLimit)
+	}
 
 	// Check for lockout (primary fallback)
 	if info.Remaining == 0 && !info.Reset.IsZero() {
