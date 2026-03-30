@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
@@ -66,7 +67,22 @@ func (m *Model) renderHeader() string {
 	if m.ui.syncing {
 		status = m.ui.spinner.View() + " Syncing..."
 	} else {
-		status = fmt.Sprintf("Quota: %d", m.traffic.Remaining())
+		remaining := m.traffic.Remaining()
+		threshold := 1000
+		if m.RateLimit.Limit > 0 {
+			// Using float64 for precise percentage calculation.
+			threshold = int(float64(m.RateLimit.Limit) * 0.2)
+		}
+
+		if remaining < threshold {
+			status = m.styles.PriorityMed.Render(fmt.Sprintf("Quota: %d (resets in %s)", remaining, m.QuotaResetStatus))
+		} else {
+			if m.LastSyncAt.IsZero() {
+				status = m.styles.Help.Render("Last synced: Never")
+			} else {
+				status = "Last synced: " + humanize.Time(m.LastSyncAt)
+			}
+		}
 	}
 
 	header := lipgloss.JoinHorizontal(

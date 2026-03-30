@@ -3,8 +3,10 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/stretchr/testify/assert"
 )
@@ -106,6 +108,59 @@ func TestRenderHeader(t *testing.T) {
 	view := m.renderHeader()
 	assert.NotEmpty(t, view)
 	assert.Contains(t, stripANSI(view), "Inbox")
+}
+
+func TestRenderHeader_States(t *testing.T) {
+	t.Run("Syncing", func(t *testing.T) {
+		m := newTestModel(t)
+		m.ui.syncing = true
+		view := m.renderHeader()
+		assert.Contains(t, stripANSI(view), "Syncing...")
+	})
+
+	t.Run("Low Quota", func(t *testing.T) {
+		m := newTestModel(t)
+		mockTraffic := mocks.NewMockTrafficController(t)
+		mockTraffic.EXPECT().Remaining().Return(800).Once()
+		m.traffic = mockTraffic
+
+		m.ui.syncing = false
+		m.RateLimit.Limit = 5000
+		m.RateLimit.Reset = time.Now().Add(15 * time.Minute)
+		m.updateQuotaResetStatus()
+
+		view := m.renderHeader()
+		plain := stripANSI(view)
+		assert.Contains(t, plain, "Quota: 800")
+		assert.Contains(t, plain, "resets in 15m")
+	})
+
+	t.Run("Never Synced", func(t *testing.T) {
+		m := newTestModel(t)
+		mockTraffic := mocks.NewMockTrafficController(t)
+		mockTraffic.EXPECT().Remaining().Return(5000).Once()
+		m.traffic = mockTraffic
+
+		m.ui.syncing = false
+		m.LastSyncAt = time.Time{}
+
+		view := m.renderHeader()
+		assert.Contains(t, stripANSI(view), "Last synced: Never")
+	})
+
+	t.Run("Recently Synced", func(t *testing.T) {
+		m := newTestModel(t)
+		mockTraffic := mocks.NewMockTrafficController(t)
+		mockTraffic.EXPECT().Remaining().Return(5000).Once()
+		m.traffic = mockTraffic
+
+		m.ui.syncing = false
+		// Use a fixed time for humanize to be consistent
+		m.LastSyncAt = time.Now().Add(-2 * time.Minute)
+
+		view := m.renderHeader()
+		assert.Contains(t, stripANSI(view), "Last synced: 2 minutes ago")
+	})
 }
 
 func TestRenderFooter(t *testing.T) {
