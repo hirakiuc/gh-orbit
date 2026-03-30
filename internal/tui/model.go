@@ -95,6 +95,7 @@ type Model struct {
 	LastSyncAt        time.Time
 	PollInterval      int
 	RateLimit         models.RateLimitInfo
+	QuotaResetStatus  string // Cached humanized reset duration
 	heartbeatID       uint64
 	clockID           uint64
 	enrichID          uint64
@@ -269,6 +270,15 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 		}
 		return syncCompleteMsg{rateLimit: rl}
 	})
+}
+
+func (m *Model) updateQuotaResetStatus() {
+	if m.RateLimit.Reset.IsZero() {
+		m.QuotaResetStatus = ""
+		return
+	}
+
+	m.QuotaResetStatus = time.Until(m.RateLimit.Reset).Round(time.Minute).String()
 }
 
 func (m *Model) checkFocusMode() tea.Cmd {

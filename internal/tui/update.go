@@ -406,6 +406,7 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.ui.SetSyncing(false)
 	m.LastSyncAt = time.Now()
 	m.RateLimit = msg.rateLimit
+	m.updateQuotaResetStatus()
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
 		ActionLoadNotifications{IsInitial: false},
@@ -479,6 +480,7 @@ func (m *Model) handleClockTick(msg clockTickMsg) []Action {
 	if msg.ID != m.clockID {
 		return nil
 	}
+	m.updateQuotaResetStatus()
 	return []Action{
 		ActionScheduleTick{TickType: TickClock, Interval: m.clockInterval},
 		ActionCheckFocusMode{},

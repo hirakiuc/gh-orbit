@@ -127,6 +127,7 @@ func TestRenderHeader_States(t *testing.T) {
 		m.ui.syncing = false
 		m.RateLimit.Limit = 5000
 		m.RateLimit.Reset = time.Now().Add(15 * time.Minute)
+		m.updateQuotaResetStatus()
 
 		view := m.renderHeader()
 		plain := stripANSI(view)

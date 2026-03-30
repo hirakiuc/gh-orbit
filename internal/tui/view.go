@@ -75,8 +75,7 @@ func (m *Model) renderHeader() string {
 		}
 
 		if remaining < threshold {
-			reset := time.Until(m.RateLimit.Reset).Round(time.Minute)
-			status = m.styles.PriorityMed.Render(fmt.Sprintf("Quota: %d (resets in %v)", remaining, reset))
+			status = m.styles.PriorityMed.Render(fmt.Sprintf("Quota: %d (resets in %s)", remaining, m.QuotaResetStatus))
 		} else {
 			if m.LastSyncAt.IsZero() {
 				status = m.styles.Help.Render("Last synced: Never")
