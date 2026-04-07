@@ -15,11 +15,11 @@ Always include the following co-authored-by footer in commit messages:
 
 ### 2.2 Shell Safety
 
-Strictly follow the shell safety protocols defined in [.agent/rules/shell-safety.md](.agent/rules/shell-safety.md).
+Strictly follow the shell safety protocols defined in [AGENTS.md](AGENTS.md).
 
 ### 2.3 Strategy Review
 
-Mandatory adherence to the [Strategy Review Workflow](.agent/workflows/strategy-review/WORKFLOW.md) before any changes to `internal/` or `cmd/`.
+Mandatory adherence to the Strategy Review Workflow (Hybrid Loop) defined in [AGENTS.md](AGENTS.md) before any changes to `internal/` or `cmd/`.
 
 ### 2.4 Sandbox & macOS Seatbelt
 

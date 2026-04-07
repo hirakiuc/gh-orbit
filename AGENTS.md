@@ -1,71 +1,145 @@
-# Agent Guidelines: gh-orbit
+# Agentic Core: Project Context & Operations (gh-orbit)
 
-## 1. Core Principles & Tech Stack
+This file defines the project-specific overrides and foundational rules for the `gh-orbit` project. These rules supplement and, where they conflict, override the generalized standards provided by the `agentic-core` extension.
+
+## 0. Project Overview & Architecture
+
+### 0.1 Core Philosophy
 
 - **Local-First**: Prioritize local SQLite (`modernc.org/sqlite`, CGO-free) over API polling.
 - **TUI-Centric**: Use `bubbletea`, `bubbles`, and `lipgloss` for all user interactions.
 - **Observability**: Every action must be traced via `go.opentelemetry.io/otel`.
 - **Zero-Config**: Credentials should be inherited from the `gh` host environment.
 
-## 2. Standard Operating Procedures (SOPs)
+### 0.2 The Tech Stack
 
-### 2.1 Task Cycle
+- **Language**: Go (latest stable).
+- **Database**: SQLite (via `modernc.org/sqlite`).
+- **TUI**: `charmbracelet/bubbletea`, `bubbles`, `lipgloss`.
+- **Testing**: `testify` (use `require` for prerequisites, `assert` for results).
+- **Mocks**: `mockery` (run `make generate` after interface changes).
+
+---
+
+## 1. Standard Operating Procedures (SOPs)
+
+### 1.1 The Workbench Workflow
+
+To minimize coordination overhead, agents use three static file paths for task state:
+
+- **Active Context**: `.agents/issue.md` (Cache for target GitHub Issue description).
+- **Active Proposal**: `.agents/proposal.md` (Live design workbench).
+- **Active Feedback**: `.agents/feedback.md` (Live audit log from the Reviewer).
+- **Optional RFC**: `.agents/rfc.md` (Persistent log for high-level architectural discussion).
+
+### 1.2 Task Cycle
 
 1. **Sync**: `git pull origin main` before starting any task.
 2. **Triage**: Run `make roadmap` to establish the current project state and pick the next target.
-3. **Verify**: Run `make check` to establish a baseline.
-4. **Implement**: Follow the Strategy Review Workflow in `.agents/workflows/strategy-review/WORKFLOW.md`.
-5. **Validate**: Run `make generate && make check` after every major change.
-6. **Audit**: Run `gh orbit doctor` to verify environment health.
-7. **Submit**: Create a Pull Request using the template in `.github/PULL_REQUEST_TEMPLATE.md`.
-    - Synthesize the description from the strategy proposal and verification results.
-    - **For AI Agents**: Explicitly append the attribution footer (`Co-authored-by: ...`) to the PR description.
+3. **Initialize**: Run `make task ID="<issue-id>"` to populate the workbench.
+4. **Strategy Review**: Follow the **Hybrid Loop** (RFC vs Proposal) before implementation.
+5. **Implement**: Create a topic branch via `gh issue develop <ID>`.
+6. **Validate**: Run `make check` (linting + tests) after every major change.
+7. **Submit**: Create a PR using `gh pr create`. Reference the Issue ID.
+8. **Cleanup**: Run `make reset-task` after the PR is merged.
 
-### 2.2 Proactiveness & Agreements
+### 1.3 Branch Persistence
 
-- **Approvals**: Mandatory use of `ask_user` for:
-  - Destructive operations (e.g., clearing local database).
-  - Strategic changes that deviate from the Implementation Plan.
-  - Adding new external dependencies.
-- Attribution: All commits must include:
-    `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
+- **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction.
+- **Completion**: A task is complete ONLY when the PR is merged or the user directs you to move to a new task.
 
-### 2.3 Branch Persistence
+---
 
-- **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction to do so. This ensures you remain in the correct context for iterating on reviewer feedback.
-- Completion: A task is only considered complete when the pull request is merged or the user directs you to move to a new task.
+## 2. Role Boundaries & Interaction
 
-### 2.4 Role Boundaries
+### 2.1 Role Definitions
 
-- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow. Responsible for the synthesis, attribution (when applicable), and submission of the PR. **Mindset**: Proactively flags uncertainties and initiates RFC discussions for complex architectural shifts.
-- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`. **Mindset**: Acts as a collaborative architect, providing early feedback on RFCs and refining trade-offs in proposals.
+- **Worker**: Responsible for implementation, testing, and PR submission. Operates in Section 4 (Implementation) of the Proposal.
+- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode for source files.
+- **Manager (User)**: Orchestrates the handoff between roles and provides final sign-off.
 
-## 3. Sandbox & Environment Constraints
+### 2.2 Hybrid Loop (RFC vs Proposal)
 
-This project enforces a restricted sandbox for AI agents (e.g., via macOS Seatbelt).
+**RFC Path (High Uncertainty)**:
 
-- **Mandatory ./tmp usage**: All caching, build artifacts, and transient files MUST reside in the project-local `./tmp` directory.
-- **Environment Redirection**: When executing shell commands, you must ensure that tool-specific caches are redirected:
-  - **Go**: `GOCACHE=$(pwd)/tmp/go-cache`
-  - **Linters**: `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
-  - **System Tmp**: `TMPDIR=$(pwd)/tmp`
-- **Rationale**: This ensures that agent file modifications are isolated to the project's boundary and remain compliant with global security policies.
-- **Troubleshooting**: If you encounter "Operation not permitted" or "Permission denied" when running a shell command, it is a signal that you are attempting an action outside the sandbox. Adjust your command to use project-local paths or consult the `Makefile` for pre-configured targets.
+- **Triggers**:
+  - Any change introducing a new external dependency.
+  - Any architectural shift touching `internal/db` or core interfaces.
+  - Any task estimated to touch >5 files or having a high "Blast Radius".
+- **Action**: Share a high-level strategy summary or use `.agents/rfc.md` before formalizing.
 
-## 4. Implementation Patterns
+**Proposal Path (Refined Implementation)**:
 
-- **Dependency Injection**: Always use interface-based DI for service orchestration.
-- **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
-- **Hardened SQLite**: Use WAL mode and foreign keys for all local storage.
-- **Testing**: Use the `testify` for asserting in test cases.
-  - For assertions of prerequisites in test cases, use `require` so that the test stops if the prerequisite is not met.
-  - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
-- Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
+- **Triggers**: Features, bug fixes, or well-defined patterns following successful RFC alignment.
+- **Action**: Draft the formal `.agents/proposal.md` and increment Revision numbers based on feedback.
 
-## 5. Reliability & Precision Rules
+### 2.3 SIGN-OFF Protocol
 
-- **API Verification**: Always run `go doc <package>.<symbol>` before implementing calls to external libraries (especially `v2+` versions) to ensure 100% signature and behavior accuracy.
-- **Surgical Refactoring**: For large controller or logic files (>200 lines, e.g., `update.go`), prioritize the use of `replace` or `insert_after_symbol` instead of `write_file` to prevent accidental feature regressions (logic erasure).
-- **Mock Synchronicity**: When modifying interfaces, run `make generate` immediately after the interface change and before fixing implementations or tests to maintain a consistent build state.
-- **Impact Analysis**: Before modifying a core interface or symbol, use Serena MCP's `find_referencing_symbols` to map the blast radius. This ensures that tests and dependent logic are updated in the same turn, preventing build-fail loops.
-- **Feature Preservation**: Before refactoring complex logic paths, explicitly list the features being touched and verify their parity after the change.
+- **Strict Prohibition**: The `SIGN-OFF` marker MUST NOT be included if there are any "Required Fixes" or "Critical/Blocking" findings.
+- **Conditional Allowance**: `SIGN-OFF` is allowed if only "Suggestions" or "Non-Blocking" improvements remain.
+- **Machine-Readable Format**: To ensure automated processing, the `SIGN-OFF` marker MUST be placed on its own line in a "Final Decision" section at the end of the report in `.agents/feedback.md`.
+
+    Example:
+
+    ```markdown
+    ## Final Decision
+    SIGN-OFF
+    ```
+
+### 2.4 Adopt vs Defer Protocol
+
+When receiving a **SIGN-OFF** with suggestions:
+
+- **Adopt**: If the suggestion is in-scope, implement it. This requires a final **Implementation Audit** by the Reviewer.
+- **Defer**: If out-of-scope, create a new GitHub Issue before merging.
+
+---
+
+## 3. Sandbox & Environment Constraints (macOS Seatbelt)
+
+AI agents operate in a restricted sandbox. You MUST adhere to these path redirections:
+
+- **Mandatory ./tmp usage**: All caching and build artifacts MUST reside in the project-local `./tmp`.
+- **Environment Variables**: Always prepend the following to shell commands:
+  - `GOCACHE=$(pwd)/tmp/go-cache`
+  - `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
+  - `TMPDIR=$(pwd)/tmp`
+- **Prefer Makefile**: Use `make build`, `make test`, `make lint` as they are pre-configured with these paths.
+- **Self-Correction**: If you encounter "Operation not permitted" or "Permission denied," it is a signal to check your environment variable redirections and project-local paths before escalating to the user.
+
+---
+
+## 4. Implementation Rules
+
+### 4.1 Reliability & Precision
+
+- **API Verification**: Run `go doc <package>.<symbol>` before calling external libraries to ensure signature accuracy.
+- **Surgical Refactoring**: For files >200 lines (e.g., `internal/tui/update.go`), use `replace` or `insert` instead of `write_file` to prevent logic erasure.
+- **Impact Analysis**: Use Serena's `find_referencing_symbols` before modifying core interfaces.
+- **Context Hygiene**: Never store `context.Context` in structs. Pass it as the first argument.
+
+### 4.2 GitHub Operations & GraphQL
+
+- **Precise Typing**: Use `-F` for numbers/booleans and `-f` for strings in `gh api graphql`.
+- **Thread Management**: Use the specific mutations `addPullRequestReviewThreadReply` and `resolveReviewThread` (NOT `resolvePullRequestReviewThread`).
+- **Shell Safety (High-Precision Patterns)**:
+  - **Piping Multi-line Content**: Use `jq -nr --arg body "$BODY" '$body' | gh ... --body-file -` to safely handle arbitrary content including newlines and special characters.
+  - **Variable Injection**: Avoid raw variable expansion in shell strings. Prefer `printf "%s" "$VAR" | ...` or `jq` argument passing.
+
+### 4.3 Shell Safety Standards
+
+- **Prefer Single Quotes**: For all static command arguments.
+- **Heredocs**: Use `cat << 'EOF'` (quoted EOF) for multi-line text to disable expansion.
+- **Validation**: Perform a dry run (e.g., `echo "..."`) of complex commands involving dynamic strings before final execution.
+
+---
+
+## 5. Audit Protocol (Universal)
+
+All reviews must follow these severity levels:
+
+- **CRITICAL**: Blocking finding (must fix before sign-off).
+- **WARN**: Best practice violation (should fix).
+- **INFO**: Style suggestion (optional).
+
+Unified Output Format: `[TAG-SEVERITY] <File Path>[:Line]: <Description>`
