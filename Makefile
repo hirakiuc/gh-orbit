@@ -130,18 +130,14 @@ task:
 	@echo "Initializing workbench for Issue #$(ID)..."
 	@$(MAKE) reset-task
 	@gh issue view "$(ID)" --json title,body,state,labels,milestone --template 'Title: {{.title}}\n\nBody: {{.body}}\n\nLabels: {{range .labels}}{{.name}} {{end}}\nMilestone: {{if .milestone}}{{.milestone.title}}{{else}}None{{end}}\nState: {{.state}}\n' > .agents/issue.md || (echo "Error: Issue #$(ID) not found."; exit 1)
-	@cp .agents/workflows/strategy-review/TEMPLATE.md .agents/proposal.md
-	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/proposal.md
-	@cp .agents/workflows/strategy-review/RFC_TEMPLATE.md .agents/rfc.md
-	@$(SED_INPLACE) "s/\[ID\]/$(ID)/g" .agents/rfc.md
-	@echo "Workbench ready: .agents/issue.md, .agents/proposal.md, and .agents/rfc.md initialized."
+	@echo "Workbench ready: .agents/issue.md initialized. Use the Worker Role to initialize the proposal."
 
 reset-task:
 	@echo "Resetting workbench to a neutral state..."
-	@echo "No active task" > .agents/issue.md
-	@echo "No active task" > .agents/proposal.md
-	@echo "No active task" > .agents/feedback.md
-	@echo "No active task" > .agents/rfc.md
+	@printf "No active task" > .agents/issue.md
+	@printf "No active task" > .agents/proposal.md
+	@printf "No active task" > .agents/feedback.md
+	@printf "No active task" > .agents/rfc.md
 
 clean-tmp:
 	@echo "Cleaning up local sandbox directory..."
