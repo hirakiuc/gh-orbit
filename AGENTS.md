@@ -1,71 +1,72 @@
-# Agent Guidelines: gh-orbit
+# Agentic Core: Project Context & Operations (gh-orbit)
 
-## 1. Core Principles & Tech Stack
+This file defines the project-specific overrides and foundational rules for the `gh-orbit` project. These rules supplement and, where they conflict, override the generalized standards provided by the `agentic-core` extension.
+
+## 0. Project Overview & Architecture
+
+### 0.1 Core Philosophy
 
 - **Local-First**: Prioritize local SQLite (`modernc.org/sqlite`, CGO-free) over API polling.
 - **TUI-Centric**: Use `bubbletea`, `bubbles`, and `lipgloss` for all user interactions.
 - **Observability**: Every action must be traced via `go.opentelemetry.io/otel`.
 - **Zero-Config**: Credentials should be inherited from the `gh` host environment.
 
-## 2. Standard Operating Procedures (SOPs)
+### 0.2 The Tech Stack
 
-### 2.1 Task Cycle
+- **Language**: Go (latest stable).
+- **Database**: SQLite (via `modernc.org/sqlite`).
+- **TUI**: `charmbracelet/bubbletea`, `bubbles`, `lipgloss`.
+- **Testing**: `testify` (use `require` for prerequisites, `assert` for results).
+- **Mocks**: `mockery` (run `make generate` after interface changes).
+
+---
+
+## 1. Standard Operating Procedures (SOPs)
+
+### 1.1 The Workbench Workflow
+
+This project uses the extension's standard "Workbench" files:
+
+- **Active Context**: `.agents/issue.md`
+- **Active Proposal**: `.agents/proposal.md`
+- **Active Feedback**: `.agents/feedback.md`
+- **Optional RFC**: `.agents/rfc.md`
+
+### 1.2 Task Cycle
 
 1. **Sync**: `git pull origin main` before starting any task.
 2. **Triage**: Run `make roadmap` to establish the current project state and pick the next target.
-3. **Verify**: Run `make check` to establish a baseline.
-4. **Implement**: Follow the Strategy Review Workflow in `.agents/workflows/strategy-review/WORKFLOW.md`.
-5. **Validate**: Run `make generate && make check` after every major change.
-6. **Audit**: Run `gh orbit doctor` to verify environment health.
-7. **Submit**: Create a Pull Request using the template in `.github/PULL_REQUEST_TEMPLATE.md`.
-    - Synthesize the description from the strategy proposal and verification results.
-    - **For AI Agents**: Explicitly append the attribution footer (`Co-authored-by: ...`) to the PR description.
+3. **Initialize**: Use `make task ID="<ID>"` to populate the context in `.agents/issue.md`.
+4. **Strategy Review**: Follow the extension's **Hybrid Loop** (RFC vs Proposal) before implementation.
+   - *Note*: The **Worker Role** (extension) is responsible for initializing the proposal from its own templates.
+5. **Implement**: Create a topic branch via `gh issue develop <ID>`.
+6. **Validate**: Run `make check` (linting + tests) after every major change.
+7. **Submit**: Create a PR using `gh pr create`. Reference the Issue ID.
+8. **Cleanup**: Run `make reset-task` after the PR is merged.
 
-### 2.2 Proactiveness & Agreements
+### 1.3 Branch Persistence
 
-- **Approvals**: Mandatory use of `ask_user` for:
-  - Destructive operations (e.g., clearing local database).
-  - Strategic changes that deviate from the Implementation Plan.
-  - Adding new external dependencies.
-- Attribution: All commits must include:
-    `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
+- **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction.
 
-### 2.3 Branch Persistence
+---
 
-- **Stay on Branch**: NEVER switch away from a topic branch (e.g., to `main`) until you have received an explicit **SIGN-OFF** in `.agents/feedback.md` or a direct user instruction to do so. This ensures you remain in the correct context for iterating on reviewer feedback.
-- Completion: A task is only considered complete when the pull request is merged or the user directs you to move to a new task.
+## 2. Global Rule & Skill Delegation
 
-### 2.4 Role Boundaries
+To minimize redundancy, this project delegates foundational logic to the `agentic-core` extension:
 
-- **Worker**: Responsible for implementation, testing, and modifying source files. Follows the Task Cycle and Strategy Review Workflow. Responsible for the synthesis, attribution (when applicable), and submission of the PR. **Mindset**: Proactively flags uncertainties and initiates RFC discussions for complex architectural shifts.
-- **Reviewer**: Responsible for auditing proposals and implementation. Must operate in **Read-Only** mode relative to source files. The only file a Reviewer should modify is `.agents/feedback.md`. **Mindset**: Acts as a collaborative architect, providing early feedback on RFCs and refining trade-offs in proposals.
+- **Shell Safety**: Strictly follow the high-precision piping patterns in the extension's `rules/shell-safety.md`.
+- **GitHub API**: Use the extension's `github-operations` skill for all GraphQL/Rest interactions.
+- **Planning & Review**: Follow the extension's `worker-role` and `reviewer-role` SIGN-OFF and Adopt/Defer protocols.
 
-## 3. Sandbox & Environment Constraints
+---
 
-This project enforces a restricted sandbox for AI agents (e.g., via macOS Seatbelt).
+## 3. Sandbox & Environment Constraints (macOS Seatbelt)
 
-- **Mandatory ./tmp usage**: All caching, build artifacts, and transient files MUST reside in the project-local `./tmp` directory.
-- **Environment Redirection**: When executing shell commands, you must ensure that tool-specific caches are redirected:
-  - **Go**: `GOCACHE=$(pwd)/tmp/go-cache`
-  - **Linters**: `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
-  - **System Tmp**: `TMPDIR=$(pwd)/tmp`
-- **Rationale**: This ensures that agent file modifications are isolated to the project's boundary and remain compliant with global security policies.
-- **Troubleshooting**: If you encounter "Operation not permitted" or "Permission denied" when running a shell command, it is a signal that you are attempting an action outside the sandbox. Adjust your command to use project-local paths or consult the `Makefile` for pre-configured targets.
+AI agents operate in a restricted sandbox. You MUST adhere to these path redirections:
 
-## 4. Implementation Patterns
-
-- **Dependency Injection**: Always use interface-based DI for service orchestration.
-- **Context Hygiene**: Contexts must NEVER be stored in structs. Pass `ctx context.Context` as the first argument.
-- **Hardened SQLite**: Use WAL mode and foreign keys for all local storage.
-- **Testing**: Use the `testify` for asserting in test cases.
-  - For assertions of prerequisites in test cases, use `require` so that the test stops if the prerequisite is not met.
-  - For assertions of expected results in test cases, use `assert` so that the test fails if the expected result is not met, but continue to run the test.
-- Use assertions as much as possible to confirm that the test result is really expected. DON'T omit it without any explicit reason.
-
-## 5. Reliability & Precision Rules
-
-- **API Verification**: Always run `go doc <package>.<symbol>` before implementing calls to external libraries (especially `v2+` versions) to ensure 100% signature and behavior accuracy.
-- **Surgical Refactoring**: For large controller or logic files (>200 lines, e.g., `update.go`), prioritize the use of `replace` or `insert_after_symbol` instead of `write_file` to prevent accidental feature regressions (logic erasure).
-- **Mock Synchronicity**: When modifying interfaces, run `make generate` immediately after the interface change and before fixing implementations or tests to maintain a consistent build state.
-- **Impact Analysis**: Before modifying a core interface or symbol, use Serena MCP's `find_referencing_symbols` to map the blast radius. This ensures that tests and dependent logic are updated in the same turn, preventing build-fail loops.
-- **Feature Preservation**: Before refactoring complex logic paths, explicitly list the features being touched and verify their parity after the change.
+- **Mandatory ./tmp usage**: All caching and build artifacts MUST reside in the project-local `./tmp`.
+- **Environment Variables**: Always prepend the following to shell commands:
+  - `GOCACHE=$(pwd)/tmp/go-cache`
+  - `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
+  - `TMPDIR=$(pwd)/tmp`
+- **Self-Correction**: If you encounter "Operation not permitted," it is a signal to check your environment variable redirections and project-local paths.
