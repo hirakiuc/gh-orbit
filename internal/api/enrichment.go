@@ -103,10 +103,13 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 		e.mu.RLock()
 		if res, ok := e.cache[u]; ok {
 			span.SetAttributes(
+				attribute.Bool("enrichment.cache_hit", !force),
 				attribute.Bool("enrichment.cache_available", true),
 				attribute.String("enrichment.cached_at", res.FetchedAt.Format(time.RFC3339)),
 				attribute.Float64("enrichment.cache_age_sec", time.Since(res.FetchedAt).Seconds()),
 			)
+		} else {
+			span.SetAttributes(attribute.Bool("enrichment.cache_hit", false))
 		}
 		e.mu.RUnlock()
 
@@ -188,10 +191,10 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 	var data struct {
 		Repository struct {
 			PullRequest struct {
-				ID             string `json:"id"`
-				Body           string `json:"body"`
-				HTMLURL        string `json:"url"`
-				Author         struct {
+				ID      string `json:"id"`
+				Body    string `json:"body"`
+				HTMLURL string `json:"url"`
+				Author  struct {
 					Login string `json:"login"`
 				} `json:"author"`
 				State          string `json:"state"`
@@ -227,6 +230,7 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 		FetchedAt:        time.Now(),
 	}, nil
 }
+
 func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.EnrichmentResult, error) {
 	var data struct {
 		ID      string `json:"node_id"`

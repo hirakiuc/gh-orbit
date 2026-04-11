@@ -208,12 +208,13 @@ func NewModel(
 
 // Init sets up initial application state and background workers.
 func (m *Model) Init() tea.Cmd {
-        return tea.Batch(
-                m.loadNotifications(true, false),
-                m.tickClock(),
-                m.checkFocusMode(),
-        )
+	return tea.Batch(
+		m.loadNotifications(true, false),
+		m.tickClock(),
+		m.checkFocusMode(),
+	)
 }
+
 func (m *Model) tickHeartbeat() tea.Cmd {
 	m.heartbeatID++
 	id := m.heartbeatID

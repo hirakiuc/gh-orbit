@@ -47,7 +47,8 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *mode
 	path := "notifications?per_page=100&all=true"
 	isFirstPage := true
 
-	for path != "" {		url := f.buildURL(path)
+	for path != "" {
+		url := f.buildURL(path)
 		req, err := f.prepareRequest(ctx, url, meta, force)
 		if err != nil {
 			return nil, nil, rlInfo, err

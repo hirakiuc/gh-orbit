@@ -10,7 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
-	)
+)
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Global bridge status refresh (Imperative Shell side-effect)
 	m.bridgeStatus = m.sync.BridgeStatus()
@@ -466,6 +467,7 @@ func (m *Model) handleEnrichmentBatchComplete(msg enrichmentBatchCompleteMsg) []
 	m.applyFilters()
 	return nil
 }
+
 func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 	m.ui.SetFetching(false)
 	delete(m.inflightEnrichments, msg.GitHubID)
@@ -500,6 +502,7 @@ func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 		m.refreshDetailView()
 	}
 }
+
 func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 	if msg.ID != m.heartbeatID {
 		return nil
@@ -516,6 +519,7 @@ func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 	m.ui.SetSyncing(true)
 	return append(actions, ActionSyncNotifications{Force: false})
 }
+
 func (m *Model) handleClockTick(msg clockTickMsg) []Action {
 	if msg.ID != m.clockID {
 		return nil

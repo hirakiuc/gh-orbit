@@ -31,10 +31,10 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res := response.(*struct {
 				Repository struct {
 					PullRequest struct {
-						ID             string `json:"id"`
-						Body           string `json:"body"`
-						HTMLURL        string `json:"url"`
-						Author         struct {
+						ID      string `json:"id"`
+						Body    string `json:"body"`
+						HTMLURL string `json:"url"`
+						Author  struct {
 							Login string `json:"login"`
 						} `json:"author"`
 						State          string `json:"state"`
