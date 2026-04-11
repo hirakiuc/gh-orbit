@@ -31,30 +31,30 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res := response.(*struct {
 				Repository struct {
 					PullRequest struct {
-						ID      string `json:"id"`
-						Body    string `json:"body"`
-						HTMLURL string `json:"url"`
-						Author  struct {
+						ID             string `json:"id"`
+						Body           string `json:"body"`
+						HTMLURL        string `json:"url"`
+						Author         struct {
 							Login string `json:"login"`
 						} `json:"author"`
-						State            string `json:"state"`
-						Merged           bool   `json:"merged"`
-						IsDraft          bool   `json:"isDraft"`
-						ResourceSubState string `json:"reviewDecision"`
+						State          string `json:"state"`
+						Merged         bool   `json:"merged"`
+						IsDraft        bool   `json:"isDraft"`
+						ReviewDecision string `json:"reviewDecision"`
 					} `json:"pullRequest"`
 				} `json:"repository"`
 			})
 			res.Repository.PullRequest.ID = "node_1"
 			res.Repository.PullRequest.Body = "PR Body"
-			res.Repository.PullRequest.ResourceSubState = "APPROVED"
+			res.Repository.PullRequest.ReviewDecision = "APPROVED"
 		}).Return(nil).Once()
 
 		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
-		res, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest")
+		res, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest", false)
 		assert.NoError(t, err)
-		assert.Equal(t, "PR Body", res.Body)
+		assert.Equal(t, "node_1", res.SubjectNodeID)
 		assert.Equal(t, "APPROVED", res.ResourceSubState)
 	})
 
@@ -81,7 +81,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
-		res, err := engine.FetchDetail(ctx, "url", "Issue")
+		res, err := engine.FetchDetail(ctx, "url", "Issue", false)
 		assert.NoError(t, err)
 		assert.Equal(t, "Issue Body", res.Body)
 		assert.Equal(t, "Closed", res.ResourceState)
@@ -95,9 +95,36 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		cached := models.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
 		engine.cache["url"] = cached
 
-		res, err := engine.FetchDetail(ctx, "url", "Issue")
+		res, err := engine.FetchDetail(ctx, "url", "Issue", false)
 		assert.NoError(t, err)
 		assert.Equal(t, "cached", res.Body)
+	})
+
+	t.Run("Force Refresh Bypasses Cache", func(t *testing.T) {
+		mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "url", nil, mock.Anything).Call.Run(func(args mock.Arguments) {
+			response := args.Get(4)
+			res := response.(*struct {
+				ID      string `json:"node_id"`
+				Body    string `json:"body"`
+				HTMLURL string `json:"html_url"`
+				User    struct {
+					Login string `json:"login"`
+				} `json:"user"`
+				State       string  `json:"state"`
+				StateReason *string `json:"state_reason"`
+			})
+			res.Body = "fresh"
+		}).Return(nil).Once()
+
+		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		t.Cleanup(func() { engine.Shutdown(ctx) })
+
+		cached := models.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
+		engine.cache["url"] = cached
+
+		res, err := engine.FetchDetail(ctx, "url", "Issue", true)
+		assert.NoError(t, err)
+		assert.Equal(t, "fresh", res.Body)
 	})
 }
 
@@ -158,7 +185,7 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 			{Notification: triage.Notification{GitHubID: "3", SubjectNodeID: "disc1"}},
 		}
 
-		results := engine.FetchHybridBatch(ctx, notifs)
+		results := engine.FetchHybridBatch(ctx, notifs, false)
 		assert.Len(t, results, 3)
 		assert.Equal(t, "Merged", results["pr1"].ResourceState)
 		assert.Equal(t, "APPROVED", results["pr1"].ResourceSubState)

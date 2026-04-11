@@ -208,13 +208,12 @@ func NewModel(
 
 // Init sets up initial application state and background workers.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(
-		m.loadNotifications(true),
-		m.tickClock(),
-		m.checkFocusMode(),
-	)
+        return tea.Batch(
+                m.loadNotifications(true, false),
+                m.tickClock(),
+                m.checkFocusMode(),
+        )
 }
-
 func (m *Model) tickHeartbeat() tea.Cmd {
 	m.heartbeatID++
 	id := m.heartbeatID
@@ -251,14 +250,14 @@ func (m *Model) Shutdown() {
 }
 
 // loadNotifications loads the full list of notifications from local database.
-func (m *Model) loadNotifications(isInitial bool) tea.Cmd {
+func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
 	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 		// Initial load triggers initial enrichment
-		return notificationsLoadedMsg{notifications: notifs, IsInitial: isInitial}
+		return notificationsLoadedMsg{notifications: notifs, IsInitial: isInitial, IsForced: isForced}
 	})
 }
 
@@ -268,7 +267,7 @@ func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
 		if err != nil && err != types.ErrSyncIntervalNotReached {
 			return types.ErrMsg{Err: err}
 		}
-		return syncCompleteMsg{rateLimit: rl}
+		return syncCompleteMsg{rateLimit: rl, IsForced: force}
 	})
 }
 
@@ -293,6 +292,7 @@ type focusModeMsg string
 type notificationsLoadedMsg struct {
 	notifications []triage.NotificationWithState
 	IsInitial     bool
+	IsForced      bool
 }
 
 type priorityUpdatedMsg struct {
@@ -302,8 +302,8 @@ type priorityUpdatedMsg struct {
 
 type syncCompleteMsg struct {
 	rateLimit models.RateLimitInfo
+	IsForced  bool
 }
-
 type detailLoadedMsg struct {
 	GitHubID         string
 	SubjectNodeID    string

@@ -85,6 +85,7 @@ type ActionFetchDetail struct {
 	ID          string
 	URL         string
 	SubjectType triage.SubjectType
+	Force       bool
 }
 
 func (a ActionFetchDetail) Type() string { return "fetch_detail" }
@@ -97,12 +98,14 @@ func (a ActionShowToast) Type() string { return "show_toast" }
 
 type ActionEnrichItems struct {
 	Notifications []triage.NotificationWithState
+	Force         bool
 }
 
 func (a ActionEnrichItems) Type() string { return "enrich_items" }
 
 type ActionLoadNotifications struct {
 	IsInitial bool
+	IsForced  bool
 }
 
 func (a ActionLoadNotifications) Type() string { return "load_notifications" }

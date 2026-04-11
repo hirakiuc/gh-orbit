@@ -8,11 +8,9 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
-)
-
+	)
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Global bridge status refresh (Imperative Shell side-effect)
 	m.bridgeStatus = m.sync.BridgeStatus()
@@ -114,6 +112,16 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 		switch {
 		case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.ToggleDetail):
 			m.state = StateList
+		case key.Matches(msg, m.keys.Sync):
+			if n, ok := m.selectedNotification(); ok {
+				m.ui.SetFetching(true)
+				actions = append(actions, ActionFetchDetail{
+					ID:          n.GitHubID,
+					URL:         n.SubjectURL,
+					SubjectType: n.SubjectType,
+					Force:       true,
+				})
+			}
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
 			m.help.ShowAll = m.showHelp
@@ -177,6 +185,11 @@ func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
 	var items []triage.NotificationWithState
 	now := time.Now()
 
+	statusTTL := 2 * time.Minute
+	if m.config != nil {
+		statusTTL = time.Duration(m.config.Enrichment.StatusTTLSeconds) * time.Second
+	}
+
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
 			// 1. Skip if already inflight (with 30s TTL to prevent permanent blocking)
@@ -190,7 +203,7 @@ func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
 			var isExpired bool
 			if i.notification.IsEnriched {
 				if i.notification.EnrichedAt.Valid {
-					isExpired = time.Since(i.notification.EnrichedAt.Time) > api.StatusTTL
+					isExpired = time.Since(i.notification.EnrichedAt.Time) > statusTTL
 				} else {
 					isExpired = true
 				}
@@ -385,7 +398,7 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	}
 
 	actions := []Action{
-		ActionEnrichItems{Notifications: m.getVisibleNotifications()},
+		ActionEnrichItems{Notifications: m.getVisibleNotifications(), Force: msg.IsForced},
 	}
 
 	if msg.IsInitial && !m.syncStarted {
@@ -409,7 +422,7 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.updateQuotaResetStatus()
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
-		ActionLoadNotifications{IsInitial: false},
+		ActionLoadNotifications{IsInitial: false, IsForced: msg.IsForced},
 	}
 }
 

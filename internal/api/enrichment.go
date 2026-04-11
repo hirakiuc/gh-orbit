@@ -35,15 +35,18 @@ type EnrichmentEngine struct {
 	mu     sync.RWMutex
 	sf     singleflight.Group
 	done   chan struct{}
+	config *config.Config
 }
 
 func NewEnrichmentEngine(ctx context.Context, client github.Client, database types.EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
+	cfg, _ := config.Load()
 	e := &EnrichmentEngine{
 		client: client,
 		db:     database,
 		logger: logger,
 		cache:  make(map[string]models.EnrichmentResult),
 		done:   make(chan struct{}),
+		config: cfg,
 	}
 
 	// Start background pruning worker with lifecycle-managed context
@@ -59,27 +62,53 @@ func (e *EnrichmentEngine) Shutdown(ctx context.Context) {
 }
 
 // FetchDetail retrieves detailed information for a notification from GitHub.
-func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error) {
-	// 1. Check local cache
-	e.mu.RLock()
-	if res, ok := e.cache[u]; ok {
-		if time.Since(res.FetchedAt) < ContentTTL {
-			e.mu.RUnlock()
-			return res, nil
-		}
+func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
+	contentTTL := 10 * time.Minute
+	if e.config != nil {
+		contentTTL = time.Duration(e.config.Enrichment.ContentTTLSeconds) * time.Second
 	}
-	e.mu.RUnlock()
+
+	// 1. Check local cache (unless forced)
+	if !force {
+		e.mu.RLock()
+		if res, ok := e.cache[u]; ok {
+			remaining := contentTTL - time.Since(res.FetchedAt)
+			if remaining > 0 {
+				e.mu.RUnlock()
+				return res, nil
+			}
+		}
+		e.mu.RUnlock()
+	}
 
 	// 2. Execute Fetch with singleflight to avoid redundant API calls
-	val, err, _ := e.sf.Do(u, func() (any, error) {
+	// When forced, we use a unique key for singleflight to ensure we don't share with a cached (non-forced) call
+	sfKey := u
+	if force {
+		sfKey = "force:" + u
+	}
+
+	val, err, _ := e.sf.Do(sfKey, func() (any, error) {
 		tracer := config.GetTracer()
 		ctx, span := tracer.Start(ctx, "enrichment.fetch_detail",
 			trace.WithAttributes(
 				attribute.String("url", u),
 				attribute.String("type", subjectType),
+				attribute.Bool("force", force),
 			),
 		)
 		defer span.End()
+
+		// Observability: Check if we had a cache entry even if we are forcing/missing
+		e.mu.RLock()
+		if res, ok := e.cache[u]; ok {
+			span.SetAttributes(
+				attribute.Bool("enrichment.cache_available", true),
+				attribute.String("enrichment.cached_at", res.FetchedAt.Format(time.RFC3339)),
+				attribute.Float64("enrichment.cache_age_sec", time.Since(res.FetchedAt).Seconds()),
+			)
+		}
+		e.mu.RUnlock()
 
 		var res models.EnrichmentResult
 		var err error
@@ -116,10 +145,10 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 }
 
 func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (models.EnrichmentResult, error) {
-	owner, repo := github.ExtractOwnerRepoFromURL(u)
+	owner, repoName := github.ExtractOwnerRepoFromURL(u)
 	numberStr := github.ExtractNumberFromURL(u)
 
-	if owner == "" || repo == "" || numberStr == "" {
+	if owner == "" || repoName == "" || numberStr == "" {
 		return e.fetchREST(ctx, u)
 	}
 
@@ -128,43 +157,49 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 		return e.fetchREST(ctx, u)
 	}
 
+	tracer := config.GetTracer()
+	ctx, span := tracer.Start(ctx, "enrichment.gql_fetch")
+	defer span.End()
+
+	// Use repository query to get node ID and details
+	queryString := `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                        repository(owner: $owner, name: $repo) {
+                                pullRequest(number: $number) {
+                                        id
+                                        body
+                                        url
+                                        author { login }
+                                        state
+                                        merged
+                                        isDraft
+                                        reviewDecision
+                                }
+                        }
+                }
+        `
+	variables := map[string]any{
+		"owner":  owner,
+		"repo":   repoName,
+		"number": number,
+	}
+
+	// Structural Alignment: Use a dedicated result struct for FetchDetail
 	var data struct {
 		Repository struct {
 			PullRequest struct {
-				ID      string `json:"id"`
-				Body    string `json:"body"`
-				HTMLURL string `json:"url"`
-				Author  struct {
+				ID             string `json:"id"`
+				Body           string `json:"body"`
+				HTMLURL        string `json:"url"`
+				Author         struct {
 					Login string `json:"login"`
 				} `json:"author"`
-				State            string `json:"state"`
-				Merged           bool   `json:"merged"`
-				IsDraft          bool   `json:"isDraft"`
-				ResourceSubState string `json:"reviewDecision"`
+				State          string `json:"state"`
+				Merged         bool   `json:"merged"`
+				IsDraft        bool   `json:"isDraft"`
+				ReviewDecision string `json:"reviewDecision"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
-	}
-
-	queryString := `
-		query($owner: String!, $repo: String!, $number: Int!) {
-			repository(owner: $owner, name: $repo) {
-				pullRequest(number: $number) {
-					id
-					body
-					url
-					author { login }
-					state
-					merged
-					isDraft
-					reviewDecision
-				}
-			}
-		}
-	`
-	variables := map[string]any{
-		"owner":  owner,
-		"repo":   repo,
-		"number": number,
 	}
 
 	err = e.client.GQL().DoWithContext(ctx, queryString, variables, &data)
@@ -188,11 +223,10 @@ func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (m
 		HTMLURL:          pr.HTMLURL,
 		Author:           pr.Author.Login,
 		ResourceState:    state,
-		ResourceSubState: pr.ResourceSubState,
+		ResourceSubState: pr.ReviewDecision,
 		FetchedAt:        time.Now(),
 	}, nil
 }
-
 func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.EnrichmentResult, error) {
 	var data struct {
 		ID      string `json:"node_id"`
@@ -234,12 +268,24 @@ func (e *EnrichmentEngine) fetchREST(ctx context.Context, u string) (models.Enri
 }
 
 // FetchHybridBatch retrieves metadata for multiple items using GQL for efficiency.
-func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState) map[string]models.EnrichmentResult {
+func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult {
 	results := make(map[string]models.EnrichmentResult)
 	var nodeIDs []string
 
+	statusTTL := 2 * time.Minute
+	if e.config != nil {
+		statusTTL = time.Duration(e.config.Enrichment.StatusTTLSeconds) * time.Second
+	}
+
 	for _, n := range notifications {
 		if n.SubjectNodeID != "" {
+			if !force && n.IsEnriched && n.EnrichedAt.Valid && time.Since(n.EnrichedAt.Time) < statusTTL {
+				e.logger.DebugContext(ctx, "enrichment: skipping item within status TTL",
+					"node_id", n.SubjectNodeID,
+					"enriched_at", n.EnrichedAt.Time.Format(time.RFC3339),
+					"ttl", statusTTL)
+				continue
+			}
 			nodeIDs = append(nodeIDs, n.SubjectNodeID)
 		}
 	}
@@ -358,6 +404,12 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		}
 
 		if state != "" || subState != "" {
+			// Observability: Log transition
+			e.logger.DebugContext(ctx, "enrichment: node state fetched",
+				"node_id", node.ID,
+				"new_state", state,
+				"new_substate", subState)
+
 			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state, subState); err != nil {
 				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
 			}
