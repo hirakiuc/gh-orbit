@@ -60,15 +60,15 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 	}
 
 	if a, ok := action.(ActionEnrichItems); ok {
-		return i.model.enrichItems(a.Notifications)
+		return i.model.enrichItems(a.Notifications, a.Force)
 	}
 
 	if a, ok := action.(ActionFetchDetail); ok {
-		return i.model.FetchDetailCmd(a.ID, a.URL, a.SubjectType)
+		return i.model.FetchDetailCmd(a.ID, a.URL, a.SubjectType, a.Force)
 	}
 
 	if a, ok := action.(ActionLoadNotifications); ok {
-		return i.model.loadNotifications(a.IsInitial)
+		return i.model.loadNotifications(a.IsInitial, a.IsForced)
 	}
 
 	if a, ok := action.(ActionUpdateRateLimit); ok {

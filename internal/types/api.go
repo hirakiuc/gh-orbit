@@ -89,8 +89,8 @@ type Syncer interface {
 
 // Enricher defines the interface for fetching notification details.
 type Enricher interface {
-	FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error)
-	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState) map[string]models.EnrichmentResult
+	FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error)
+	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult
 	Shutdown(ctx context.Context)
 }
 

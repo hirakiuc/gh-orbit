@@ -24,9 +24,9 @@ func (_m *MockEnricher) EXPECT() *MockEnricher_Expecter {
 	return &MockEnricher_Expecter{mock: &_m.Mock}
 }
 
-// FetchDetail provides a mock function with given fields: ctx, u, subjectType
-func (_m *MockEnricher) FetchDetail(ctx context.Context, u string, subjectType string) (models.EnrichmentResult, error) {
-	ret := _m.Called(ctx, u, subjectType)
+// FetchDetail provides a mock function with given fields: ctx, u, subjectType, force
+func (_m *MockEnricher) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
+	ret := _m.Called(ctx, u, subjectType, force)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FetchDetail")
@@ -34,17 +34,17 @@ func (_m *MockEnricher) FetchDetail(ctx context.Context, u string, subjectType s
 
 	var r0 models.EnrichmentResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (models.EnrichmentResult, error)); ok {
-		return rf(ctx, u, subjectType)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool) (models.EnrichmentResult, error)); ok {
+		return rf(ctx, u, subjectType, force)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) models.EnrichmentResult); ok {
-		r0 = rf(ctx, u, subjectType)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool) models.EnrichmentResult); ok {
+		r0 = rf(ctx, u, subjectType, force)
 	} else {
 		r0 = ret.Get(0).(models.EnrichmentResult)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, u, subjectType)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, bool) error); ok {
+		r1 = rf(ctx, u, subjectType, force)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -61,13 +61,14 @@ type MockEnricher_FetchDetail_Call struct {
 //   - ctx context.Context
 //   - u string
 //   - subjectType string
-func (_e *MockEnricher_Expecter) FetchDetail(ctx interface{}, u interface{}, subjectType interface{}) *MockEnricher_FetchDetail_Call {
-	return &MockEnricher_FetchDetail_Call{Call: _e.mock.On("FetchDetail", ctx, u, subjectType)}
+//   - force bool
+func (_e *MockEnricher_Expecter) FetchDetail(ctx interface{}, u interface{}, subjectType interface{}, force interface{}) *MockEnricher_FetchDetail_Call {
+	return &MockEnricher_FetchDetail_Call{Call: _e.mock.On("FetchDetail", ctx, u, subjectType, force)}
 }
 
-func (_c *MockEnricher_FetchDetail_Call) Run(run func(ctx context.Context, u string, subjectType string)) *MockEnricher_FetchDetail_Call {
+func (_c *MockEnricher_FetchDetail_Call) Run(run func(ctx context.Context, u string, subjectType string, force bool)) *MockEnricher_FetchDetail_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(bool))
 	})
 	return _c
 }
@@ -77,22 +78,22 @@ func (_c *MockEnricher_FetchDetail_Call) Return(_a0 models.EnrichmentResult, _a1
 	return _c
 }
 
-func (_c *MockEnricher_FetchDetail_Call) RunAndReturn(run func(context.Context, string, string) (models.EnrichmentResult, error)) *MockEnricher_FetchDetail_Call {
+func (_c *MockEnricher_FetchDetail_Call) RunAndReturn(run func(context.Context, string, string, bool) (models.EnrichmentResult, error)) *MockEnricher_FetchDetail_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// FetchHybridBatch provides a mock function with given fields: ctx, notifications
-func (_m *MockEnricher) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState) map[string]models.EnrichmentResult {
-	ret := _m.Called(ctx, notifications)
+// FetchHybridBatch provides a mock function with given fields: ctx, notifications, force
+func (_m *MockEnricher) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult {
+	ret := _m.Called(ctx, notifications, force)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FetchHybridBatch")
 	}
 
 	var r0 map[string]models.EnrichmentResult
-	if rf, ok := ret.Get(0).(func(context.Context, []triage.NotificationWithState) map[string]models.EnrichmentResult); ok {
-		r0 = rf(ctx, notifications)
+	if rf, ok := ret.Get(0).(func(context.Context, []triage.NotificationWithState, bool) map[string]models.EnrichmentResult); ok {
+		r0 = rf(ctx, notifications, force)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]models.EnrichmentResult)
@@ -110,13 +111,14 @@ type MockEnricher_FetchHybridBatch_Call struct {
 // FetchHybridBatch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - notifications []triage.NotificationWithState
-func (_e *MockEnricher_Expecter) FetchHybridBatch(ctx interface{}, notifications interface{}) *MockEnricher_FetchHybridBatch_Call {
-	return &MockEnricher_FetchHybridBatch_Call{Call: _e.mock.On("FetchHybridBatch", ctx, notifications)}
+//   - force bool
+func (_e *MockEnricher_Expecter) FetchHybridBatch(ctx interface{}, notifications interface{}, force interface{}) *MockEnricher_FetchHybridBatch_Call {
+	return &MockEnricher_FetchHybridBatch_Call{Call: _e.mock.On("FetchHybridBatch", ctx, notifications, force)}
 }
 
-func (_c *MockEnricher_FetchHybridBatch_Call) Run(run func(ctx context.Context, notifications []triage.NotificationWithState)) *MockEnricher_FetchHybridBatch_Call {
+func (_c *MockEnricher_FetchHybridBatch_Call) Run(run func(ctx context.Context, notifications []triage.NotificationWithState, force bool)) *MockEnricher_FetchHybridBatch_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].([]triage.NotificationWithState))
+		run(args[0].(context.Context), args[1].([]triage.NotificationWithState), args[2].(bool))
 	})
 	return _c
 }
@@ -126,7 +128,7 @@ func (_c *MockEnricher_FetchHybridBatch_Call) Return(_a0 map[string]models.Enric
 	return _c
 }
 
-func (_c *MockEnricher_FetchHybridBatch_Call) RunAndReturn(run func(context.Context, []triage.NotificationWithState) map[string]models.EnrichmentResult) *MockEnricher_FetchHybridBatch_Call {
+func (_c *MockEnricher_FetchHybridBatch_Call) RunAndReturn(run func(context.Context, []triage.NotificationWithState, bool) map[string]models.EnrichmentResult) *MockEnricher_FetchHybridBatch_Call {
 	_c.Call.Return(run)
 	return _c
 }

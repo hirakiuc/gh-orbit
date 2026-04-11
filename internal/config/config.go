@@ -54,9 +54,11 @@ type TUIConfig struct {
 
 // EnrichmentConfig represents the settings for background metadata enrichment.
 type EnrichmentConfig struct {
-	DebounceMS  int `yaml:"debounce_ms"`
-	Concurrency int `yaml:"concurrency"`
-	BatchSize   int `yaml:"batch_size"`
+	DebounceMS        int `yaml:"debounce_ms"`
+	Concurrency       int `yaml:"concurrency"`
+	BatchSize         int `yaml:"batch_size"`
+	StatusTTLSeconds  int `yaml:"status_ttl_seconds"`
+	ContentTTLSeconds int `yaml:"content_ttl_seconds"`
 }
 
 // NotificationsConfig represents the settings for system alerts.
@@ -82,9 +84,11 @@ func DefaultConfig() *Config {
 			IgnoreRepos:       []string{},
 		},
 		Enrichment: EnrichmentConfig{
-			DebounceMS:  250,
-			Concurrency: 1,
-			BatchSize:   20,
+			DebounceMS:        250,
+			Concurrency:       1,
+			BatchSize:         20,
+			StatusTTLSeconds:  120, // 2 minutes
+			ContentTTLSeconds: 600, // 10 minutes
 		},
 		TUI: TUIConfig{
 			AutoReadOnOpen: false,
@@ -138,6 +142,14 @@ func (c *Config) Validate() error {
 
 	if c.Enrichment.Concurrency < 1 || c.Enrichment.Concurrency > 10 {
 		return fmt.Errorf("enrichment.concurrency must be between 1 and 10, got %d", c.Enrichment.Concurrency)
+	}
+
+	if c.Enrichment.StatusTTLSeconds < 0 || c.Enrichment.StatusTTLSeconds > 86400 {
+		return fmt.Errorf("enrichment.status_ttl_seconds must be between 0 and 86400, got %d", c.Enrichment.StatusTTLSeconds)
+	}
+
+	if c.Enrichment.ContentTTLSeconds < 0 || c.Enrichment.ContentTTLSeconds > 86400 {
+		return fmt.Errorf("enrichment.content_ttl_seconds must be between 0 and 86400, got %d", c.Enrichment.ContentTTLSeconds)
 	}
 
 	// 4. TUI Validation

@@ -73,7 +73,7 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 const EnrichmentChunkSize = 10
 
 // enrichItems triggers background enrichment for a specific set of notifications.
-func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
+func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool) tea.Cmd {
 	if len(toEnrich) == 0 {
 		return nil
 	}
@@ -103,7 +103,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 	for _, n := range discovery {
 		id, url, st := n.GitHubID, n.SubjectURL, n.SubjectType
 		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
-			res, err := m.enrich.FetchDetail(ctx, url, string(st))
+			res, err := m.enrich.FetchDetail(ctx, url, string(st), force)
 			if err != nil {
 				return types.ErrMsg{Err: err}
 			}
@@ -132,7 +132,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState) tea.Cmd {
 		chunk := batch[i:end]
 
 		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
-			results := m.enrich.FetchHybridBatch(ctx, chunk)
+			results := m.enrich.FetchHybridBatch(ctx, chunk, force)
 			return enrichmentBatchCompleteMsg{Results: results}
 		}))
 	}
@@ -148,9 +148,9 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 	return m.MarkReadByID(i.notification.GitHubID, !i.notification.IsReadLocally)
 }
 
-func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType) tea.Cmd {
+func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType, force bool) tea.Cmd {
 	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
-		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType))
+		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType), force)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}

@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
@@ -84,7 +83,7 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		if msg.ID != m.enrichID {
 			return nil
 		}
-		return []Action{ActionEnrichItems{Notifications: m.getVisibleNotifications()}}
+		return []Action{ActionEnrichItems{Notifications: m.getVisibleNotifications(false)}}
 	case types.ErrMsg:
 		m.handleTransitionError(msg)
 	}
@@ -114,6 +113,16 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 		switch {
 		case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.ToggleDetail):
 			m.state = StateList
+		case key.Matches(msg, m.keys.Sync):
+			if n, ok := m.selectedNotification(); ok {
+				m.ui.SetFetching(true)
+				actions = append(actions, ActionFetchDetail{
+					ID:          n.GitHubID,
+					URL:         n.SubjectURL,
+					SubjectType: n.SubjectType,
+					Force:       true,
+				})
+			}
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
 			m.help.ShowAll = m.showHelp
@@ -167,7 +176,7 @@ func (m *Model) getPriorityToast(p int) string {
 	}
 }
 
-func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
+func (m *Model) getVisibleNotifications(force bool) []triage.NotificationWithState {
 	start, end := m.listView.list.Paginator.GetSliceBounds(len(m.listView.list.Items()))
 	if start < 0 || end > len(m.listView.list.Items()) || start >= end {
 		return nil
@@ -177,26 +186,35 @@ func (m *Model) getVisibleNotifications() []triage.NotificationWithState {
 	var items []triage.NotificationWithState
 	now := time.Now()
 
+	statusTTL := 2 * time.Minute
+	if m.config != nil {
+		statusTTL = time.Duration(m.config.Enrichment.StatusTTLSeconds) * time.Second
+	}
+
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
 			// 1. Skip if already inflight (with 30s TTL to prevent permanent blocking)
-			if started, ok := m.inflightEnrichments[i.notification.GitHubID]; ok {
-				if now.Sub(started) < 30*time.Second {
-					continue
+			// UNLESS we are forcing a refresh
+			if !force {
+				if started, ok := m.inflightEnrichments[i.notification.GitHubID]; ok {
+					if now.Sub(started) < 30*time.Second {
+						continue
+					}
 				}
 			}
 
 			// 2. Skip if already enriched and fresh
+			// UNLESS we are forcing a refresh
 			var isExpired bool
 			if i.notification.IsEnriched {
 				if i.notification.EnrichedAt.Valid {
-					isExpired = time.Since(i.notification.EnrichedAt.Time) > api.StatusTTL
+					isExpired = time.Since(i.notification.EnrichedAt.Time) > statusTTL
 				} else {
 					isExpired = true
 				}
 			}
 
-			if !i.notification.IsEnriched || isExpired {
+			if force || !i.notification.IsEnriched || isExpired {
 				items = append(items, i.notification)
 			}
 		}
@@ -385,7 +403,7 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	}
 
 	actions := []Action{
-		ActionEnrichItems{Notifications: m.getVisibleNotifications()},
+		ActionEnrichItems{Notifications: m.getVisibleNotifications(msg.IsForced), Force: msg.IsForced},
 	}
 
 	if msg.IsInitial && !m.syncStarted {
@@ -409,12 +427,16 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.updateQuotaResetStatus()
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
-		ActionLoadNotifications{IsInitial: false},
+		ActionLoadNotifications{IsInitial: false, IsForced: msg.IsForced},
 	}
 }
 
 func (m *Model) handleEnrichmentBatchComplete(msg enrichmentBatchCompleteMsg) []Action {
 	m.ui.SetFetching(false)
+
+	if len(msg.Results) > 0 {
+		m.logger.Debug("tui: enrichment batch complete", "result_count", len(msg.Results))
+	}
 
 	// Surgical update of in-memory notification slice
 	for nodeID, res := range msg.Results {
@@ -425,6 +447,14 @@ func (m *Model) handleEnrichmentBatchComplete(msg enrichmentBatchCompleteMsg) []
 
 			// Clear inflight for each notification matching this nodeID
 			delete(m.inflightEnrichments, n.GitHubID)
+
+			// Log state transition if it changed
+			if m.allNotifications[idx].ResourceState != res.ResourceState {
+				m.logger.Info("tui: item state changed",
+					"id", n.GitHubID,
+					"old_state", m.allNotifications[idx].ResourceState,
+					"new_state", res.ResourceState)
+			}
 
 			m.allNotifications[idx].ResourceState = res.ResourceState
 			m.allNotifications[idx].ResourceSubState = res.ResourceSubState
@@ -442,10 +472,21 @@ func (m *Model) handleDetailLoaded(msg detailLoadedMsg) {
 	m.ui.SetFetching(false)
 	delete(m.inflightEnrichments, msg.GitHubID)
 
+	m.logger.Debug("tui: detail loaded", "id", msg.GitHubID, "state", msg.ResourceState)
+
 	for idx, n := range m.allNotifications {
 		if n.GitHubID != msg.GitHubID {
 			continue
 		}
+
+		// Log state transition if it changed
+		if m.allNotifications[idx].ResourceState != msg.ResourceState {
+			m.logger.Info("tui: item state changed",
+				"id", n.GitHubID,
+				"old_state", m.allNotifications[idx].ResourceState,
+				"new_state", msg.ResourceState)
+		}
+
 		m.allNotifications[idx].SubjectNodeID = msg.SubjectNodeID
 		m.allNotifications[idx].Body = msg.Body
 		m.allNotifications[idx].AuthorLogin = msg.Author
@@ -467,7 +508,10 @@ func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 		return nil
 	}
 
-	actions := []Action{ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval}}
+	actions := []Action{
+		ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval},
+		ActionScheduleTick{TickType: TickEnrich},
+	}
 	if time.Since(m.LastSyncAt).Seconds() < float64(m.PollInterval) {
 		return actions
 	}

@@ -45,6 +45,7 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *mode
 
 	// We always use all=true to ensure cross-device consistency
 	path := "notifications?per_page=100&all=true"
+	isFirstPage := true
 
 	for path != "" {
 		url := f.buildURL(path)
@@ -80,11 +81,15 @@ func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *mode
 		}
 		allNotifications = append(allNotifications, page...)
 
-		// 4. Update Sync Metadata
-		f.updateSyncMeta(&newMeta, resp, url)
+		// 4. Update Sync Metadata (Only for the first page to capture the newest state)
+		if isFirstPage {
+			f.updateSyncMeta(&newMeta, resp, url)
+			f.logger.DebugContext(ctx, "sync: updated checkpoint from first page", "etag", newMeta.ETag, "last_modified", newMeta.LastModified)
+		}
 
 		// 5. Handle Pagination
 		path = f.getNextPagePath(resp)
+		isFirstPage = false
 	}
 
 	span.SetAttributes(attribute.Int("notification_count", len(allNotifications)))
