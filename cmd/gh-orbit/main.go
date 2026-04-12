@@ -250,7 +250,7 @@ func runSync() error {
 		return err
 	}
 
-	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
+	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor, engine.WithSilentAlerts())
 	if err != nil {
 		return err
 	}
