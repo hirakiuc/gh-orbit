@@ -40,6 +40,7 @@ func NewCoreEngine(
 	// 2. Initialize GitHub Client
 	client, err := github.NewClient()
 	if err != nil {
+		_ = database.Close()
 		return nil, fmt.Errorf("failed to initialize GitHub client: %w", err)
 	}
 

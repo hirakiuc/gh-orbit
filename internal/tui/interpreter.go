@@ -137,6 +137,7 @@ func (i *Interpreter) executeCheckoutPR(id, repo, number string) tea.Cmd {
 	i.model.logger.InfoContext(context.Background(), "checking out PR", "repo", repo, "number", number)
 
 	// Interactive command: must be handled at the TUI edge
+	// #nosec G204: Intentional dynamic command execution for GitHub CLI
 	checkoutCmd := tea.ExecProcess(exec.Command("gh", "pr", "checkout", number, "-R", repo), func(err error) tea.Msg {
 		if err != nil {
 			i.model.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
