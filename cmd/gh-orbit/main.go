@@ -13,8 +13,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/buildinfo"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/db"
-	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/engine"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/spf13/cobra"
@@ -33,10 +32,6 @@ func main() {
 		Use:     "gh-orbit",
 		Short:   "A local-first triage tool for GitHub notifications.",
 		Version: buildinfo.Version,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Validate Global Flags
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTUI()
 		},
@@ -94,6 +89,9 @@ func getSlogLevel(l string) slog.Level {
 }
 
 func runDoctor() error {
+	if testMode {
+		return nil
+	}
 	ctx := context.Background()
 	level := &slog.LevelVar{}
 	level.Set(getSlogLevel(logLevel))
@@ -236,10 +234,6 @@ func getDirSize(path string) int64 {
 }
 
 func runSync() error {
-	if testMode {
-		_, err := initResources(context.Background(), slog.Default())
-		return err
-	}
 	env, ctx, err := initEnvironment(context.Background())
 	if err != nil {
 		return err
@@ -250,18 +244,29 @@ func runSync() error {
 	}
 	defer env.span.End()
 
-	res, err := initResources(ctx, env.logger)
+	executor := api.NewOSCommandExecutor()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = res.database.Close() }()
 
-	// Execute Sync
-	fetcher := github.NewNotificationFetcher(res.client, env.logger)
-	syncer := api.NewSyncEngine(fetcher, res.database, nil, env.logger)
+	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
+	if err != nil {
+		return err
+	}
+	defer eng.Shutdown(ctx)
+
+	if testMode {
+		return nil
+	}
+
+	user, err := eng.Client.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
 
 	fmt.Println("🚀 Starting cold sync...")
-	rl, err := syncer.Sync(ctx, res.userID, true)
+	rl, err := eng.Sync.Sync(ctx, user.Login, true)
 	if err != nil {
 		return err
 	}
@@ -271,10 +276,6 @@ func runSync() error {
 }
 
 func runTUI() error {
-	if testMode {
-		_, err := initResources(context.Background(), slog.Default())
-		return err
-	}
 	env, ctx, err := initEnvironment(context.Background())
 	if err != nil {
 		return err
@@ -285,13 +286,28 @@ func runTUI() error {
 	}
 	defer env.span.End()
 
-	res, err := initResources(ctx, env.logger)
+	executor := api.NewOSCommandExecutor()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = res.database.Close() }()
 
-	return launchTUI(ctx, env, res)
+	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
+	if err != nil {
+		return err
+	}
+	defer eng.Shutdown(ctx)
+
+	if testMode {
+		return nil
+	}
+
+	user, err := eng.Client.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	return launchTUI(ctx, env, eng, user.Login)
 }
 
 type environment struct {
@@ -302,7 +318,6 @@ type environment struct {
 }
 
 func initEnvironment(ctx context.Context) (*environment, context.Context, error) {
-	// 1. Initialize Logger
 	level := &slog.LevelVar{}
 	level.Set(getSlogLevel(logLevel))
 	logger, logCleanup, err := config.SetupLogger(level)
@@ -310,7 +325,6 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 		return nil, nil, fmt.Errorf("error setting up logger: %w", err)
 	}
 
-	// 2. Optional OTel
 	var otelCleanup func()
 	if verbose {
 		var otelErr error
@@ -320,7 +334,6 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 		}
 	}
 
-	// 3. Start Root Span
 	tracer := config.GetTracer()
 	ctx, span := tracer.Start(ctx, "session",
 		trace.WithAttributes(
@@ -338,85 +351,30 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 	}, ctx, nil
 }
 
-type appResources struct {
-	config   *config.Config
-	database *db.DB
-	client   github.Client
-	userID   string
-}
-
-func initResources(ctx context.Context, logger *slog.Logger) (*appResources, error) {
-	// 1. gh CLI Check
-	// Inherit credentials from environment
-
-	// 2. Load Config
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("error loading config: %w", err)
-	}
-
-	// 3. Initialize DB
-	database, err := db.Open(ctx, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error opening database: %w", err)
-	}
-
-	// 4. Initialize API Client
-	client, err := github.NewClient()
-	if err != nil {
-		_ = database.Close()
-		return nil, fmt.Errorf("error creating API client: %w", err)
-	}
-
-	// 5. Get Current User
-	user, err := client.CurrentUser(ctx)
-	if err != nil {
-		_ = database.Close()
-		return nil, fmt.Errorf("error identifying current user: %w", err)
-	}
-
-	return &appResources{
-		config:   cfg,
-		database: database,
-		client:   client,
-		userID:   user.Login,
-	}, nil
-}
-
-func launchTUI(ctx context.Context, env *environment, res *appResources) error {
+func launchTUI(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
 	lifecycle := api.NewAppLifecycle(ctx)
 	defer lifecycle.Shutdown()
 
 	executor := api.NewOSCommandExecutor()
 
-	// Instantiate services via interfaces (Dependency Injection)
-	native := api.NewPlatformNotifier(lifecycle.Context(), executor, env.logger)
-	fallback := api.NewBeeepNotifier(env.logger)
-	alerts := api.NewAlertService(res.config, res.database, native, fallback, executor, env.logger)
-	fetcher := github.NewNotificationFetcher(res.client, env.logger)
-	syncer := api.NewSyncEngine(fetcher, res.database, alerts, env.logger)
-	enricher := api.NewEnrichmentEngine(lifecycle.Context(), res.client, res.database, env.logger)
-	traffic := api.NewAPITrafficController(lifecycle.Context(), env.logger)
-
 	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
-	res.client.SetRateLimitUpdates(traffic.RateLimitUpdates())
+	eng.Client.SetRateLimitUpdates(eng.Traffic.RateLimitUpdates())
 
 	m := tui.NewModel(
-		res.userID,
-		res.config,
+		userID,
+		eng.Config,
 		env.logger,
-		res.database,
-		res.client,
-		syncer,
-		enricher,
-		traffic,
-		alerts,
+		eng.DB,
+		eng.Client,
+		eng.Sync,
+		eng.Enrich,
+		eng.Traffic,
+		eng.Alert,
 		tui.WithExecutor(executor),
 		tui.WithTheme(true),
 		tui.WithVersion(buildinfo.Version),
 	)
 
-	// Use tea.WithAltScreen() correctly if available in v2 or similar option
 	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)

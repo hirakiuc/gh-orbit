@@ -8,8 +8,6 @@ import (
 	models "github.com/hirakiuc/gh-orbit/internal/models"
 	mock "github.com/stretchr/testify/mock"
 
-	tea "charm.land/bubbletea/v2"
-
 	types "github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -152,23 +150,33 @@ func (_c *MockTrafficController_Shutdown_Call) RunAndReturn(run func(context.Con
 }
 
 // Submit provides a mock function with given fields: priority, fn
-func (_m *MockTrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
+func (_m *MockTrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
 	ret := _m.Called(priority, fn)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Submit")
 	}
 
-	var r0 tea.Cmd
-	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) tea.Cmd); ok {
+	var r0 <-chan any
+	var r1 error
+	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) (<-chan any, error)); ok {
+		return rf(priority, fn)
+	}
+	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) <-chan any); ok {
 		r0 = rf(priority, fn)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(tea.Cmd)
+			r0 = ret.Get(0).(<-chan any)
 		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(int, types.TaskFunc) error); ok {
+		r1 = rf(priority, fn)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // MockTrafficController_Submit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Submit'
@@ -190,12 +198,12 @@ func (_c *MockTrafficController_Submit_Call) Run(run func(priority int, fn types
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) Return(_a0 tea.Cmd) *MockTrafficController_Submit_Call {
-	_c.Call.Return(_a0)
+func (_c *MockTrafficController_Submit_Call) Return(_a0 <-chan any, _a1 error) *MockTrafficController_Submit_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.TaskFunc) tea.Cmd) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.TaskFunc) (<-chan any, error)) *MockTrafficController_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }

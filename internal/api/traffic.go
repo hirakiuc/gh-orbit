@@ -2,12 +2,12 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
@@ -23,7 +23,7 @@ type apiTask struct {
 	id       uint64
 	priority int
 	fn       types.TaskFunc
-	resp     chan tea.Msg
+	resp     chan any
 	ctx      context.Context
 }
 
@@ -83,33 +83,31 @@ func (c *APITrafficController) RateLimitUpdates() chan models.RateLimitInfo {
 	return c.rateLimitUpdates
 }
 
-func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) tea.Cmd {
-	return func() tea.Msg {
-		task := &apiTask{
-			id:       atomic.AddUint64(&c.taskCounter, 1),
-			priority: priority,
-			fn:       fn,
-			resp:     make(chan tea.Msg, 1),
-			ctx:      c.ctx,
-		}
-
-		select {
-		case <-c.done:
-			return nil
-		default:
-		}
-
-		switch priority {
-		case PriorityUser:
-			c.high <- task
-		case PrioritySync:
-			c.med <- task
-		default:
-			c.low <- task
-		}
-
-		return <-task.resp
+func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
+	task := &apiTask{
+		id:       atomic.AddUint64(&c.taskCounter, 1),
+		priority: priority,
+		fn:       fn,
+		resp:     make(chan any, 1),
+		ctx:      c.ctx,
 	}
+
+	select {
+	case <-c.done:
+		return nil, fmt.Errorf("traffic controller shutdown")
+	default:
+	}
+
+	switch priority {
+	case PriorityUser:
+		c.high <- task
+	case PrioritySync:
+		c.med <- task
+	default:
+		c.low <- task
+	}
+
+	return task.resp, nil
 }
 
 func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.RateLimitInfo) {

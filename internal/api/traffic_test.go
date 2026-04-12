@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -30,11 +29,12 @@ func TestTrafficController_Concurrency(t *testing.T) {
 	for i := 0; i < taskCount; i++ {
 		go func(id int) {
 			defer wg.Done()
-			cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+			resChan, err := tc.Submit(PriorityEnrich, func(ctx context.Context) any {
 				time.Sleep(50 * time.Millisecond) // Simulate API latency
 				return nil
 			})
-			_ = cmd()
+			assert.NoError(t, err)
+			<-resChan
 		}(i)
 	}
 
@@ -57,7 +57,7 @@ func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 
 	// 1. Flood with low priority slow tasks
 	for i := 0; i < 10; i++ {
-		tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+		_, _ = tc.Submit(PriorityEnrich, func(ctx context.Context) any {
 			time.Sleep(100 * time.Millisecond)
 			return nil
 		})
@@ -67,10 +67,11 @@ func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 	start := time.Now()
 	highDone := make(chan struct{})
 	go func() {
-		cmd := tc.Submit(PriorityUser, func(ctx context.Context) tea.Msg {
+		resChan, err := tc.Submit(PriorityUser, func(ctx context.Context) any {
 			return nil
 		})
-		_ = cmd()
+		assert.NoError(t, err)
+		<-resChan
 		close(highDone)
 	}()
 
@@ -129,12 +130,14 @@ func TestTrafficController_ScalingStress(t *testing.T) {
 			case <-stopTasks:
 				return
 			default:
-				cmd := tc.Submit(PriorityEnrich, func(ctx context.Context) tea.Msg {
+				resChan, err := tc.Submit(PriorityEnrich, func(ctx context.Context) any {
 					time.Sleep(10 * time.Millisecond)
 					atomic.AddInt64(&tasksCompleted, 1)
 					return nil
 				})
-				go cmd()
+				if err == nil {
+					go func() { <-resChan }()
+				}
 				time.Sleep(2 * time.Millisecond)
 			}
 		}

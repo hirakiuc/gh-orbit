@@ -20,7 +20,7 @@ func TestAlertService_Notify(t *testing.T) {
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
 
-	s := NewAlertService(cfg, mockRepo, mockNative, nil, nil, slog.Default())
+	s := NewAlertServiceWithNotifiers(cfg, mockRepo, mockNative, nil, nil, slog.Default())
 
 	t.Run("Standard Alert", func(t *testing.T) {
 		n := github.Notification{
@@ -53,7 +53,7 @@ func TestAlertService_Notify(t *testing.T) {
 func TestAlertService_SyncStart(t *testing.T) {
 	ctx := context.Background()
 	mockRepo := mocks.NewMockAlertRepository(t)
-	s := NewAlertService(&config.Config{}, mockRepo, nil, nil, nil, slog.Default())
+	s := NewAlertServiceWithNotifiers(&config.Config{}, mockRepo, nil, nil, nil, slog.Default())
 
 	t.Run("Initial Baseline Detection", func(t *testing.T) {
 		mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Once()
@@ -71,7 +71,7 @@ func TestAlertService_SyncStart(t *testing.T) {
 func TestAlertService_Metadata(t *testing.T) {
 	mockNative := mocks.NewMockNotifier(t)
 	mockFallback := mocks.NewMockNotifier(t)
-	s := NewAlertService(&config.Config{}, nil, mockNative, mockFallback, nil, slog.Default())
+	s := NewAlertServiceWithNotifiers(&config.Config{}, nil, mockNative, mockFallback, nil, slog.Default())
 
 	// 1. ActiveTierInfo
 	mockNative.EXPECT().Status().Return(types.StatusHealthy).Once()
@@ -95,7 +95,7 @@ func TestAlertService_Throttling(t *testing.T) {
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockNative := mocks.NewMockNotifier(t)
 	mockExecutor := mocks.NewMockCommandExecutor(t)
-	s := NewAlertService(cfg, mockRepo, mockNative, nil, mockExecutor, slog.Default())
+	s := NewAlertServiceWithNotifiers(cfg, mockRepo, mockNative, nil, mockExecutor, slog.Default())
 
 	t.Run("Throttle limit reached", func(t *testing.T) {
 		s.syncAlertCount = 5
@@ -118,7 +118,7 @@ func TestAlertService_RefreshBridgeHealth(t *testing.T) {
 	mockRepo := mocks.NewMockAlertRepository(t)
 	mockExecutor := mocks.NewMockCommandExecutor(t)
 	mockNative := mocks.NewMockNotifier(t)
-	s := NewAlertService(&config.Config{}, mockRepo, mockNative, nil, mockExecutor, slog.Default())
+	s := NewAlertServiceWithNotifiers(&config.Config{}, mockRepo, mockNative, nil, mockExecutor, slog.Default())
 
 	t.Run("Successful Refresh", func(t *testing.T) {
 		mockRepo.EXPECT().UpdateBridgeHealth(mock.Anything, mock.Anything).Return(nil).Twice()

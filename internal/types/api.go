@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 )
@@ -94,12 +93,12 @@ type Enricher interface {
 	Shutdown(ctx context.Context)
 }
 
-// TaskFunc represents an API operation that returns a message.
-type TaskFunc func(context.Context) tea.Msg
+// TaskFunc represents an API operation that returns a generic result.
+type TaskFunc func(context.Context) any
 
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
-	Submit(priority int, fn TaskFunc) tea.Cmd
+	Submit(priority int, fn TaskFunc) (<-chan any, error)
 	UpdateRateLimit(ctx context.Context, info models.RateLimitInfo)
 	Remaining() int
 	RateLimitUpdates() chan models.RateLimitInfo
@@ -112,8 +111,6 @@ type CommandExecutor interface {
 	Execute(ctx context.Context, name string, args ...string) ([]byte, error)
 	// Run executes a command and waits for it to complete.
 	Run(ctx context.Context, name string, args ...string) error
-	// InteractiveGH executes a GitHub CLI command interactively using tea.ExecProcess.
-	InteractiveGH(callback func(error) tea.Msg, args ...string) tea.Cmd
 }
 
 // ErrMsg is a common error message wrapper for Bubble Tea updates.
