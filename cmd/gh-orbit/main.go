@@ -46,11 +46,36 @@ func main() {
 
 	rootCmd.AddCommand(doctorCmd())
 	rootCmd.AddCommand(syncCmd())
+	rootCmd.AddCommand(engineCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func engineCmd() *cobra.Command {
+	var socketPath string
+	var insecure bool
+
+	cmd := &cobra.Command{
+		Use:   "engine",
+		Short: "Start the headless MCP server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if socketPath == "" {
+				socketPath = os.ExpandEnv("$XDG_RUNTIME_DIR/gh-orbit/engine.sock")
+				if socketPath == "" || socketPath == "/gh-orbit/engine.sock" {
+					socketPath = "/tmp/gh-orbit/engine.sock"
+				}
+			}
+			return runEngine(socketPath, insecure)
+		},
+	}
+
+	cmd.Flags().StringVar(&socketPath, "socket", "", "Custom path for the Unix Domain Socket")
+	cmd.Flags().BoolVar(&insecure, "insecure-dev", false, "Disable peer verification for local development")
+
+	return cmd
 }
 
 func doctorCmd() *cobra.Command {
@@ -381,4 +406,31 @@ func launchTUI(ctx context.Context, env *environment, eng *engine.CoreEngine, us
 	}
 
 	return nil
+}
+
+func runEngine(socketPath string, insecure bool) error {
+	env, ctx, err := initEnvironment(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = env.logCleanup() }()
+	if env.otelCleanup != nil {
+		defer env.otelCleanup()
+	}
+	defer env.span.End()
+
+	executor := api.NewOSCommandExecutor()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
+	if err != nil {
+		return err
+	}
+	defer eng.Shutdown(ctx)
+
+	server := engine.NewMCPServer(eng, socketPath, insecure)
+	return server.Serve(ctx)
 }
