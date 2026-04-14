@@ -26,7 +26,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	m.applyFilters()
 
 	// 2. Persistent Local & Remote Update via Traffic Controller
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
 		err := m.db.MarkReadLocally(ctx, id, read)
 		if err != nil {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
@@ -44,7 +44,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 
 // setPriorityByID updates the priority of a notification using only its ID.
 func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
 		err := m.db.SetPriority(ctx, id, priority)
 		if err != nil {
 			return types.ErrMsg{Err: err}
@@ -102,7 +102,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 	// We use PriorityEnrich for proactive discovery to avoid blocking user actions
 	for _, n := range discovery {
 		id, url, st := n.GitHubID, n.SubjectURL, n.SubjectType
-		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+		cmds = append(cmds, m.submitTask(api.PriorityEnrich, func(ctx context.Context) any {
 			res, err := m.enrich.FetchDetail(ctx, url, string(st), force)
 			if err != nil {
 				return types.ErrMsg{Err: err}
@@ -131,7 +131,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 		}
 		chunk := batch[i:end]
 
-		cmds = append(cmds, m.traffic.Submit(api.PriorityEnrich, func(ctx context.Context) tea.Msg {
+		cmds = append(cmds, m.submitTask(api.PriorityEnrich, func(ctx context.Context) any {
 			results := m.enrich.FetchHybridBatch(ctx, chunk, force)
 			return enrichmentBatchCompleteMsg{Results: results}
 		}))
@@ -149,7 +149,7 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 }
 
 func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType, force bool) tea.Cmd {
-	return m.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
 		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType), force)
 		if err != nil {
 			return types.ErrMsg{Err: err}

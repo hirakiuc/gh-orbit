@@ -250,9 +250,19 @@ func (m *Model) Shutdown() {
 	m.alerter.Shutdown(ctx)
 }
 
+func (m *Model) submitTask(priority int, fn types.TaskFunc) tea.Cmd {
+	return func() tea.Msg {
+		resChan, err := m.traffic.Submit(priority, fn)
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+		return <-resChan
+	}
+}
+
 // loadNotifications loads the full list of notifications from local database.
 func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
-	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
+	return m.submitTask(api.PrioritySync, func(ctx context.Context) any {
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
@@ -263,7 +273,7 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
 }
 
 func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
-	return m.traffic.Submit(api.PrioritySync, func(ctx context.Context) tea.Msg {
+	return m.submitTask(api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.sync.Sync(ctx, m.userID, force)
 		if err != nil && err != types.ErrSyncIntervalNotReached {
 			return types.ErrMsg{Err: err}

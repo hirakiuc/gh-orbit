@@ -33,7 +33,18 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(cfg *config.Config, database types.AlertRepository, native types.Notifier, fallback types.Notifier, executor types.CommandExecutor, logger *slog.Logger) *AlertService {
+func NewAlertService(ctx context.Context, cfg *config.Config, logger *slog.Logger, database types.AlertRepository, executor types.CommandExecutor) *AlertService {
+	return NewAlertServiceWithNotifiers(
+		cfg,
+		database,
+		NewPlatformNotifier(ctx, executor, logger),
+		NewBeeepNotifier(logger),
+		executor,
+		logger,
+	)
+}
+
+func NewAlertServiceWithNotifiers(cfg *config.Config, database types.AlertRepository, native types.Notifier, fallback types.Notifier, executor types.CommandExecutor, logger *slog.Logger) *AlertService {
 	return &AlertService{
 		config:         cfg,
 		db:             database,

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -113,7 +114,7 @@ func (i *Interpreter) executeOpenBrowser(u string) tea.Cmd {
 		}
 	}
 
-	return i.model.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+	return i.model.submitTask(api.PriorityUser, func(ctx context.Context) any {
 		i.model.logger.InfoContext(ctx, "opening browser", "url", u)
 		b := browser.New("", nil, nil)
 		if err := b.Browse(u); err != nil {
@@ -135,14 +136,16 @@ func (i *Interpreter) executeCheckoutPR(id, repo, number string) tea.Cmd {
 	// Use background context for logging as this spans across TEA execution cycles
 	i.model.logger.InfoContext(context.Background(), "checking out PR", "repo", repo, "number", number)
 
-	checkoutCmd := i.model.executor.InteractiveGH(func(err error) tea.Msg {
+	// Interactive command: must be handled at the TUI edge
+	// #nosec G204: Intentional dynamic command execution for GitHub CLI
+	checkoutCmd := tea.ExecProcess(exec.Command("gh", "pr", "checkout", number, "-R", repo), func(err error) tea.Msg {
 		if err != nil {
 			i.model.logger.ErrorContext(context.Background(), "checkout failed", "error", err)
 			return types.ErrMsg{Err: err}
 		}
 		i.model.logger.InfoContext(context.Background(), "checkout successful", "repo", repo, "number", number)
 		return actionCompleteMsg{}
-	}, "pr", "checkout", number, "-R", repo)
+	})
 
 	if i.model.config.TUI.AutoReadOnOpen && id != "" {
 		return tea.Batch(checkoutCmd, i.model.MarkReadByID(id, true))
@@ -204,7 +207,7 @@ func (i *Interpreter) executeGHView(ghCmd, repo, arg string) tea.Cmd {
 		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid number: %s", arg)} }
 	}
 
-	return i.model.traffic.Submit(api.PriorityUser, func(ctx context.Context) tea.Msg {
+	return i.model.submitTask(api.PriorityUser, func(ctx context.Context) any {
 		i.model.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
 		if err := i.model.executor.Run(ctx, "gh", ghCmd, "view", arg, "-R", repo, "--web"); err != nil {
 			i.model.logger.ErrorContext(ctx, "gh view command failed", "command", ghCmd, "error", err)

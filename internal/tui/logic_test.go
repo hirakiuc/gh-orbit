@@ -45,7 +45,7 @@ func TestInterpreter_Execute(t *testing.T) {
 	interp := NewInterpreter(m)
 
 	// Mock Submit for all actions that use it
-	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(func() tea.Msg { return nil }).Maybe()
+	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(make(chan any), nil).Maybe()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
 
 	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
