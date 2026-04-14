@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
@@ -44,25 +45,31 @@ func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool) *MCPServ
 }
 
 func (s *MCPServer) Serve(ctx context.Context) error {
-	// 1. Ensure runtime directory exists
-	dir := os.ExpandEnv("$XDG_RUNTIME_DIR/gh-orbit")
-	if dir == "" || dir == "/gh-orbit" {
-		dir = "/tmp/gh-orbit"
-	}
+	// 1. Ensure runtime directory exists for the socket
+	dir := filepath.Dir(s.socket)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create runtime directory: %w", err)
+		return fmt.Errorf("failed to create runtime directory %s: %w", dir, err)
 	}
 
-	// 2. Remove stale socket
-	_ = os.Remove(s.socket)
+	// 2. Handle stale socket via Probe and Purge
+	if err := s.handleStaleSocket(); err != nil {
+		return err
+	}
 
 	// 3. Setup UDS Listener with Peer Verification
 	l, err := net.Listen("unix", s.socket)
 	if err != nil {
-		return fmt.Errorf("failed to listen on UDS: %w", err)
+		return fmt.Errorf("failed to listen on UDS %s: %w", s.socket, err)
 	}
-	defer l.Close()
-	_ = os.Chmod(s.socket, 0600)
+	defer func() {
+		_ = l.Close()
+		_ = os.Remove(s.socket)
+	}()
+
+	// Secure the socket file immediately
+	if err := os.Chmod(s.socket, 0600); err != nil {
+		return fmt.Errorf("failed to secure socket file: %w", err)
+	}
 
 	// Wrap with peer verification
 	verifier := transport.NewDarwinVerifier(s.insecureDev)
@@ -88,7 +95,7 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 				}
 			}
 
-			go s.handleConnection(conn)
+			go s.handleConnection(ctx, conn)
 		}
 	}()
 
@@ -101,9 +108,32 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	}
 }
 
-func (s *MCPServer) handleConnection(conn net.Conn) {
+func (s *MCPServer) handleStaleSocket() error {
+	if _, err := os.Stat(s.socket); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Attempt connection to see if it's alive
+	conn, err := net.Dial("unix", s.socket)
+	if err == nil {
+		_ = conn.Close()
+		return fmt.Errorf("socket %s is already in use by another process", s.socket)
+	}
+
+	// Socket exists but not reachable, purge it
+	s.engine.Logger.Warn("purging stale socket file", "path", s.socket)
+	return os.Remove(s.socket)
+}
+
+func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	s.engine.Logger.Debug("peer connected and verified via UDS")
+
+	// Use mcp-go stdio server wrapper to handle the UDS connection as a stream
+	stdio := server.NewStdioServer(s.server)
+	if err := stdio.Listen(ctx, conn, conn); err != nil {
+		s.engine.Logger.ErrorContext(ctx, "connection error", "error", err)
+	}
 }
 
 func (s *MCPServer) registerTools() {
@@ -189,7 +219,10 @@ func (s *MCPServer) registerResources() {
 			}
 		}
 
-		data, _ := json.Marshal(unread)
+		data, err := json.Marshal(unread)
+		if err != nil {
+			return nil, err
+		}
 
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{

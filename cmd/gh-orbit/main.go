@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -63,10 +64,13 @@ func engineCmd() *cobra.Command {
 		Short: "Start the headless MCP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if socketPath == "" {
-				socketPath = os.ExpandEnv("$XDG_RUNTIME_DIR/gh-orbit/engine.sock")
-				if socketPath == "" || socketPath == "/gh-orbit/engine.sock" {
-					socketPath = "/tmp/gh-orbit/engine.sock"
+				// Use private runtime directory as default
+				runtimeDir := os.ExpandEnv("$XDG_RUNTIME_DIR/gh-orbit")
+				if runtimeDir == "" || runtimeDir == "/gh-orbit" {
+					home, _ := os.UserHomeDir()
+					runtimeDir = filepath.Join(home, ".local/run/gh-orbit")
 				}
+				socketPath = filepath.Join(runtimeDir, "engine.sock")
 			}
 			return runEngine(socketPath, insecure)
 		},

@@ -31,7 +31,9 @@ func (v *DarwinVerifier) Verify(conn net.Conn) (*PeerInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get raw connection: %w", err)
 	}
-	defer rawConn.Close()
+	defer func() {
+		_ = rawConn.Close()
+	}()
 
 	fd := int(rawConn.Fd())
 
@@ -94,19 +96,20 @@ func verifyCodeSignature(pid int) error {
 		return err
 	}
 
-	// Verify the binary at 'path' is signed.
-	// We check for any valid signature for now as a baseline.
-	// In production, we would check for our specific Team ID.
-	cmd := exec.Command("codesign", "-v", path)
+	// Verify the binary at 'path' is signed and trusted.
+	// We use 'anchor apple generic' to ensure it's a validly signed Apple binary or signed by a developer.
+	// #nosec G204: Intentional security check of peer binary identity
+	cmd := exec.Command("codesign", "-v", "-R", "anchor apple generic", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("binary at %s is not validly signed: %s", path, string(out))
+		return fmt.Errorf("binary at %s is not validly signed or fails requirement: %s", path, string(out))
 	}
 
 	return nil
 }
 
 func getPidPath(pid int) (string, error) {
+	// #nosec G204: Intentional PID lookup for security verification
 	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
