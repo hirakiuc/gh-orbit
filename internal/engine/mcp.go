@@ -1,15 +1,20 @@
 package engine
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -125,14 +130,88 @@ func (s *MCPServer) handleStaleSocket() error {
 	return os.Remove(s.socket)
 }
 
+// udsSession implements server.ClientSession for UDS transport.
+type udsSession struct {
+	id            string
+	notifications chan mcp.JSONRPCNotification
+	initialized   atomic.Bool
+	writer        io.Writer
+	writeMu       sync.Mutex
+}
+
+func newUDSSession(writer io.Writer) *udsSession {
+	return &udsSession{
+		id:            uuid.New().String(),
+		notifications: make(chan mcp.JSONRPCNotification, 100),
+		writer:        writer,
+	}
+}
+
+func (s *udsSession) SessionID() string { return s.id }
+func (s *udsSession) Initialize()      { s.initialized.Store(true) }
+func (s *udsSession) Initialized() bool { return s.initialized.Load() }
+func (s *udsSession) NotificationChannel() chan<- mcp.JSONRPCNotification {
+	return s.notifications
+}
+
 func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
+
 	s.engine.Logger.Debug("peer connected and verified via UDS")
 
-	// Use mcp-go stdio server wrapper to handle the UDS connection as a stream
-	stdio := server.NewStdioServer(s.server)
-	if err := stdio.Listen(ctx, conn, conn); err != nil {
-		s.engine.Logger.ErrorContext(ctx, "connection error", "error", err)
+	session := newUDSSession(conn)
+	if err := s.server.RegisterSession(ctx, session); err != nil {
+		s.engine.Logger.ErrorContext(ctx, "failed to register session", "error", err)
+		return
+	}
+	defer s.server.UnregisterSession(ctx, session.SessionID())
+
+	sessionCtx := s.server.WithContext(ctx, session)
+	reader := bufio.NewReader(conn)
+
+	// Start notification dispatcher for this session
+	go func() {
+		for {
+			select {
+			case <-sessionCtx.Done():
+				return
+			case notification := <-session.notifications:
+				data, err := json.Marshal(notification)
+				if err == nil {
+					session.writeMu.Lock()
+					_, _ = fmt.Fprintf(session.writer, "%s\n", data)
+					session.writeMu.Unlock()
+				}
+			}
+		}
+	}()
+
+	// Request/Response loop
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				s.engine.Logger.ErrorContext(ctx, "read error", "error", err)
+			}
+			break
+		}
+
+		var rawMessage json.RawMessage
+		if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
+			continue
+		}
+
+		response := s.server.HandleMessage(sessionCtx, rawMessage)
+		if response != nil {
+			data, err := json.Marshal(response)
+			if err == nil {
+				session.writeMu.Lock()
+				_, _ = fmt.Fprintf(session.writer, "%s\n", data)
+				session.writeMu.Unlock()
+			}
+		}
 	}
 }
 

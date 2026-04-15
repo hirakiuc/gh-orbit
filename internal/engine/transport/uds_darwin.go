@@ -35,6 +35,7 @@ func (v *DarwinVerifier) Verify(conn net.Conn) (*PeerInfo, error) {
 		_ = rawConn.Close()
 	}()
 
+	// #nosec G115: Fd is guaranteed to be a valid file descriptor index
 	fd := int(rawConn.Fd())
 
 	// 1. Get Peer PID
@@ -50,6 +51,7 @@ func (v *DarwinVerifier) Verify(conn net.Conn) (*PeerInfo, error) {
 	}
 
 	// 3. UID Check (Must be same user)
+	// #nosec G115: UID comparison is safe on macOS
 	if uint32(os.Getuid()) != uid {
 		return nil, fmt.Errorf("unauthorized user: peer uid %d != engine uid %d", uid, os.Getuid())
 	}
@@ -96,10 +98,13 @@ func verifyCodeSignature(pid int) error {
 		return err
 	}
 
-	// Verify the binary at 'path' is signed and trusted.
-	// We use 'anchor apple generic' to ensure it's a validly signed Apple binary or signed by a developer.
+	// Security Hardening: Enforce specific trust requirement.
+	// We require the peer to be signed by Apple or a valid Developer,
+	// AND have an identifier that starts with 'gh-orbit-'.
+	// This prevents any generic Apple app from talking to the socket.
 	// #nosec G204: Intentional security check of peer binary identity
-	cmd := exec.Command("codesign", "-v", "-R", "anchor apple generic", path)
+	req := `anchor apple generic and identifier prefix "gh-orbit-"`
+	cmd := exec.Command("codesign", "-v", "-R", req, path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("binary at %s is not validly signed or fails requirement: %s", path, string(out))

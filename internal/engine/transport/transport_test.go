@@ -17,6 +17,7 @@ func (v *mockVerifier) Verify(conn net.Conn) (*PeerInfo, error) {
 	if v.shouldFail {
 		return nil, os.ErrPermission
 	}
+	// #nosec G115: Safe UID conversion for mock
 	return &PeerInfo{PID: os.Getpid(), UID: uint32(os.Getuid())}, nil
 }
 
@@ -37,7 +38,9 @@ func TestListener_Accept(t *testing.T) {
 		t.Logf("Skipping test: cannot listen on %s: %v", socket, err)
 		return
 	}
-	defer l.Close()
+	defer func() {
+		_ = l.Close()
+	}()
 
 	t.Run("Successful Verification", func(t *testing.T) {
 		verifier := &mockVerifier{shouldFail: false}
@@ -73,7 +76,9 @@ func TestListener_Accept(t *testing.T) {
 		defer func() {
 			_ = os.Remove(socket2)
 		}()
-		defer l2.Close()
+		defer func() {
+			_ = l2.Close()
+		}()
 
 		verifier := &mockVerifier{shouldFail: true}
 		secureListener := NewListener(l2, verifier)

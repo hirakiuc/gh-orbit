@@ -36,7 +36,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 	}
 
 	if _, err := l.verifier.Verify(conn); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
