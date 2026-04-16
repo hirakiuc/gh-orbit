@@ -102,8 +102,8 @@ func verifyCodeSignature(pid int) error {
 	// We require the peer to be signed by Apple or a valid Developer,
 	// AND have an identifier that starts with 'gh-orbit-'.
 	// This prevents any generic Apple app from talking to the socket.
-	// #nosec G204: Intentional security check of peer binary identity
 	req := `anchor apple generic and identifier prefix "gh-orbit-"`
+	// #nosec G204: Intentional security check of peer binary identity
 	cmd := exec.Command("codesign", "-v", "-R", req, path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

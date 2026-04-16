@@ -55,7 +55,9 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	// Connect to UDS
 	conn, err := net.Dial("unix", socketPath)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// 1. Send initialize request (MCP uses JSONRPCRequest)
 	// For testing, we send the raw JSON matching mcp-go expectation
@@ -94,5 +96,5 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 
 	// 3. Signal exit
 	cancel()
-	_ = <-errChan
+	<-errChan
 }
