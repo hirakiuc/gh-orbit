@@ -26,7 +26,7 @@ else
     SED_INPLACE := sed -i
 endif
 
-.PHONY: all build cockpit release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task reset-task check quality quality-report
+.PHONY: all build cockpit release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task reset-task check quality quality-report fmt-native lint-native test-native
 
 all: build
 
@@ -52,7 +52,33 @@ cockpit: build
 	@echo "Orbit Cockpit ready at bin/$(COCKPIT_NAME).app"
 
 # Unified quality check
-check: fmt lint test
+check: fmt lint test fmt-native lint-native test-native
+
+# Native Quality Gates
+fmt-native:
+	@echo "Formatting Swift code..."
+	@if command -v swift-format >/dev/null; then \
+		swift-format format -i -r native/OrbitCockpit/Sources native/OrbitCockpit/Tests; \
+	else \
+		echo "Warning: swift-format not found, skipping."; \
+	fi
+
+lint-native:
+	@echo "Linting Swift code..."
+	@if command -v swift-format >/dev/null; then \
+		swift-format lint -r native/OrbitCockpit/Sources native/OrbitCockpit/Tests; \
+	else \
+		echo "Warning: swift-format not found, skipping."; \
+	fi
+	@if command -v swiftlint >/dev/null; then \
+		swiftlint lint native/OrbitCockpit --config native/OrbitCockpit/.swiftlint.yml --reporter github-actions-logging; \
+	else \
+		echo "Warning: swiftlint not found, skipping."; \
+	fi
+
+test-native:
+	@echo "Running Swift tests..."
+	cd native/OrbitCockpit && swift test
 
 # Quantitative Health Check (2026 Standards)
 quality: $(PROJECT_TMP)

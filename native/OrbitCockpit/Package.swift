@@ -21,6 +21,17 @@ let package = Package(
             path: "Sources/OrbitCockpit",
             resources: [
                 .copy("../../Resources")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "OrbitCockpitTests",
+            dependencies: ["OrbitCockpit"],
+            path: "Tests/OrbitCockpitTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
             ]
         )
     ]
