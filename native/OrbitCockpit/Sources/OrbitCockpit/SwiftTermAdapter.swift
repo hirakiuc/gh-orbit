@@ -24,14 +24,20 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewD
     }
     
     func resize(cols: Int, rows: Int) {
-        // SwiftTerm handles internal resizing, but we might need to notify the pty
+        terminalView.process.setWinSize(rows: Int32(rows), cols: Int32(cols))
     }
     
     func getBuffer() -> String {
-        // SwiftTerm doesn't have a direct "get all text" method easily exposed
-        // usually you'd iterate through the lines. For MVP, we return a placeholder
-        // or a basic implementation if available.
-        return ""
+        // SwiftTerm stores content in its buffer. 
+        // For the initial implementation, we iterate through the active lines.
+        var fullText = ""
+        let terminal = terminalView.getTerminal()
+        for i in 0..<terminal.rows {
+            if let line = terminal.getLine(row: i) {
+                fullText += line.toString() + "\n"
+            }
+        }
+        return fullText
     }
     
     func isDarkMode(_ isDark: Bool) {
@@ -47,7 +53,8 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewD
     // MARK: - LocalProcessTerminalViewDelegate
     
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
-        // Notify the parent if necessary
+        // Propagate size changes directly to the underlying process
+        source.process.setWinSize(rows: Int32(newRows), cols: Int32(newCols))
     }
     
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
