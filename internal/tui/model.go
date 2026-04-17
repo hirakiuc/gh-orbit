@@ -91,6 +91,9 @@ type Model struct {
 	focusMode        string
 	interpreter      *Interpreter
 
+	// Connection Mode
+	ConnectionMode string // "Standalone" or "Connected"
+
 	// Background Sync State
 	LastSyncAt        time.Time
 	PollInterval      int
@@ -132,6 +135,13 @@ func WithTheme(isDark bool) Option {
 func WithVersion(v string) Option {
 	return func(m *Model) {
 		m.version = v
+	}
+}
+
+// WithConnectionMode sets the engine connection mode (Standalone/Connected).
+func WithConnectionMode(mode string) Option {
+	return func(m *Model) {
+		m.ConnectionMode = mode
 	}
 }
 

@@ -68,8 +68,8 @@ $(PROJECT_TMP):
 build: $(PROJECT_TMP)
 	go build $(LDFLAGS) -o bin/$(BINARY_NAME) $(CMD_PATH)
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		echo "Ad-hoc signing binary for macOS..."; \
-		codesign -f -s - bin/$(BINARY_NAME); \
+		echo "Ad-hoc signing binary for macOS with identifier..."; \
+		codesign -f -s - -i gh-orbit-cli bin/$(BINARY_NAME); \
 	fi
 
 coverage: $(PROJECT_TMP)

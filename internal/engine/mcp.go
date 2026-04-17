@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -52,7 +53,7 @@ func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool) *MCPServ
 func (s *MCPServer) Serve(ctx context.Context) error {
 	// 1. Ensure runtime directory exists for the socket
 	dir := filepath.Dir(s.socket)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("failed to create runtime directory %s: %w", dir, err)
 	}
 
@@ -72,7 +73,7 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	}()
 
 	// Secure the socket file immediately
-	if err := os.Chmod(s.socket, 0600); err != nil {
+	if err := os.Chmod(s.socket, 0o600); err != nil {
 		return fmt.Errorf("failed to secure socket file: %w", err)
 	}
 
@@ -86,7 +87,10 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 
 	s.engine.Logger.InfoContext(ctx, "MCP server starting", "socket", s.socket)
 
-	// 5. Connection Loop
+	// 5. Internal Event Loop
+	go s.eventLoop(ctx)
+
+	// 6. Connection Loop
 	go func() {
 		for {
 			conn, err := secureListener.Accept()
@@ -110,6 +114,22 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	case sig := <-sigChan:
 		s.engine.Logger.InfoContext(ctx, "received signal, shutting down", "signal", sig)
 		return nil
+	}
+}
+
+func (s *MCPServer) eventLoop(ctx context.Context) {
+	notifCh := s.engine.Bus.Subscribe(EventNotificationsChanged)
+	enrichCh := s.engine.Bus.Subscribe(EventEnrichmentUpdated)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-notifCh:
+			s.server.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
+		case <-enrichCh:
+			s.server.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
+		}
 	}
 }
 
@@ -148,7 +168,7 @@ func newUDSSession(writer io.Writer) *udsSession {
 }
 
 func (s *udsSession) SessionID() string { return s.id }
-func (s *udsSession) Initialize()      { s.initialized.Store(true) }
+func (s *udsSession) Initialize()       { s.initialized.Store(true) }
 func (s *udsSession) Initialized() bool { return s.initialized.Load() }
 func (s *udsSession) NotificationChannel() chan<- mcp.JSONRPCNotification {
 	return s.notifications
@@ -252,8 +272,10 @@ func (s *MCPServer) registerTools() {
 	markReadTool := mcp.NewTool("mark_read",
 		mcp.WithDescription("Mark a notification thread as read"),
 		mcp.WithString("id",
-			mcp.Required(),
 			mcp.Description("The GitHub notification ID"),
+		),
+		mcp.WithBoolean("read",
+			mcp.Description("Whether to mark as read or unread"),
 		),
 	)
 
@@ -268,44 +290,76 @@ func (s *MCPServer) registerTools() {
 			return mcp.NewToolResultError("id is required"), nil
 		}
 
-		if err := s.engine.DB.MarkReadLocally(ctx, id, true); err != nil {
+		read := true
+		if r, ok := args["read"].(bool); ok {
+			read = r
+		}
+
+		if err := s.engine.DB.MarkReadLocally(ctx, id, read); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", err)), nil
 		}
-		if err := s.engine.Client.MarkThreadAsRead(ctx, id); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", err)), nil
+		if read {
+			if err := s.engine.Client.MarkThreadAsRead(ctx, id); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", err)), nil
+			}
 		}
-		return mcp.NewToolResultText("Notification marked as read"), nil
+		return mcp.NewToolResultText("Notification read state updated"), nil
+	})
+
+	// 3. Set Priority Tool
+	setPriorityTool := mcp.NewTool("set_priority",
+		mcp.WithDescription("Update the priority of a notification"),
+		mcp.WithString("id", mcp.Description("The GitHub notification ID")),
+		mcp.WithNumber("level", mcp.Description("Priority level (0-3)")),
+	)
+
+	s.server.AddTool(setPriorityTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		id, _ := args["id"].(string)
+		levelVal, _ := args["level"].(float64)
+		level := int(levelVal)
+
+		if err := s.engine.DB.SetPriority(ctx, id, level); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", err)), nil
+		}
+		return mcp.NewToolResultText("Priority updated"), nil
 	})
 }
 
 func (s *MCPServer) registerResources() {
-	// Notifications Resource
-	res := mcp.NewResource("gh-orbit://notifications/unread", "Unread Notifications",
-		mcp.WithResourceDescription("List of unread notifications from the local database"),
-		mcp.WithMIMEType("application/json"),
+	// Notifications Resource Template
+	tpl := mcp.NewResourceTemplate("gh-orbit://notifications/{category}", "Notifications List",
+		mcp.WithTemplateDescription("List of notifications by category (unread, all)"),
 	)
 
-	s.server.AddResource(res, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	s.server.AddResourceTemplate(tpl, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		uri := request.Params.URI
+
 		notifs, err := s.engine.DB.ListNotifications(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		var unread []any
+		var items []any
 		for _, n := range notifs {
-			if !n.IsReadLocally {
-				unread = append(unread, n)
+			if strings.Contains(uri, "unread") && n.IsReadLocally {
+				continue
 			}
+			items = append(items, n)
 		}
 
-		data, err := json.Marshal(unread)
+		data, err := json.Marshal(items)
 		if err != nil {
 			return nil, err
 		}
 
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
-				URI:      "gh-orbit://notifications/unread",
+				URI:      request.Params.URI,
 				MIMEType: "application/json",
 				Text:     string(data),
 			},

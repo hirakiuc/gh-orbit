@@ -28,25 +28,27 @@ const (
 
 // EnrichmentEngine handles fetching and caching of notification details.
 type EnrichmentEngine struct {
-	client github.Client
-	db     types.EnrichmentRepository
-	logger *slog.Logger
-	cache  map[string]models.EnrichmentResult
-	mu     sync.RWMutex
-	sf     singleflight.Group
-	done   chan struct{}
-	config *config.Config
+	client     github.Client
+	db         types.EnrichmentRepository
+	logger     *slog.Logger
+	cache      map[string]models.EnrichmentResult
+	mu         sync.RWMutex
+	sf         singleflight.Group
+	done       chan struct{}
+	config     *config.Config
+	OnMutation func()
 }
 
 func NewEnrichmentEngine(ctx context.Context, client github.Client, database types.EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
 	cfg, _ := config.Load()
 	e := &EnrichmentEngine{
-		client: client,
-		db:     database,
-		logger: logger,
-		cache:  make(map[string]models.EnrichmentResult),
-		done:   make(chan struct{}),
-		config: cfg,
+		client:     client,
+		db:         database,
+		logger:     logger,
+		cache:      make(map[string]models.EnrichmentResult),
+		done:       make(chan struct{}),
+		config:     cfg,
+		OnMutation: func() {}, // Default no-op
 	}
 
 	// Start background pruning worker with lifecycle-managed context
@@ -306,6 +308,8 @@ func (e *EnrichmentEngine) FetchHybridBatch(ctx context.Context, notifications [
 		}
 		e.fetchByNodeIDs(ctx, nodeIDs[i:end], results)
 	}
+
+	e.OnMutation()
 
 	return results
 }

@@ -25,7 +25,7 @@ func TestListener_Accept(t *testing.T) {
 	cwd, _ := os.Getwd()
 	// Use project-local tmp for sandbox compatibility
 	tmpDir := filepath.Join(cwd, "../../../tmp")
-	_ = os.MkdirAll(tmpDir, 0700)
+	_ = os.MkdirAll(tmpDir, 0o700)
 	socket := filepath.Join(tmpDir, "test-orbit.sock")
 
 	_ = os.Remove(socket)

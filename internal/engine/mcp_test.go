@@ -30,7 +30,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	// Ensure project-local tmp exists for socket
 	cwd, _ := os.Getwd()
 	tmpDir := filepath.Join(cwd, "../../tmp")
-	_ = os.MkdirAll(tmpDir, 0700)
+	_ = os.MkdirAll(tmpDir, 0o700)
 	socketPath := filepath.Join(tmpDir, "mcp-test.sock")
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -84,7 +84,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	var resp mcp.JSONRPCResponse
 	err = json.Unmarshal([]byte(line), &resp)
 	assert.NoError(t, err)
-	
+
 	// id in mcp-go can be a number or string
 	assert.NotNil(t, resp.ID)
 
