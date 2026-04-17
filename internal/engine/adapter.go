@@ -40,6 +40,7 @@ func NewMCPAdapter(c client.MCPClient) *MCPAdapter {
 
 	return a
 }
+
 func (a *MCPAdapter) OnMutation(fn func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
