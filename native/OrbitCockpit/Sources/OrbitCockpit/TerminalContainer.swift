@@ -48,6 +48,7 @@ class ThrottledContainerView: NSView {
             resumeRendering()
         } else {
             // View removed from hierarchy
+            NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
             pauseRendering()
         }
     }
