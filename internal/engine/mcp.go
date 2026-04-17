@@ -265,7 +265,8 @@ func (s *MCPServer) registerTools() {
 			return mcp.NewToolResultError(fmt.Sprintf("sync failed: %v", err)), nil
 		}
 
-		return mcp.NewToolResultText(fmt.Sprintf("Sync complete. Quota remaining: %d/%d", rl.Remaining, rl.Limit)), nil
+		data, _ := json.Marshal(rl)
+		return mcp.NewToolResultText(string(data)), nil
 	})
 
 	// 2. Mark Read Tool

@@ -16,7 +16,7 @@ import (
 
 // MCPAdapter implements core interfaces by proxying to an MCP server.
 type MCPAdapter struct {
-	client *client.Client
+	client client.MCPClient
 
 	onMutation func()
 	mu         sync.RWMutex
@@ -25,20 +25,21 @@ type MCPAdapter struct {
 	debounceMu    sync.Mutex
 }
 
-func NewMCPAdapter(c *client.Client) *MCPAdapter {
+func NewMCPAdapter(c client.MCPClient) *MCPAdapter {
 	a := &MCPAdapter{
 		client: c,
 	}
 
-	c.OnNotification(func(notification mcp.JSONRPCNotification) {
-		if notification.Method == mcp.MethodNotificationResourcesListChanged {
-			a.handleResourceUpdate(notification)
-		}
-	})
+	if c != nil {
+		c.OnNotification(func(notification mcp.JSONRPCNotification) {
+			if notification.Method == mcp.MethodNotificationResourcesListChanged {
+				a.handleResourceUpdate(notification)
+			}
+		})
+	}
 
 	return a
 }
-
 func (a *MCPAdapter) OnMutation(fn func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -172,7 +173,14 @@ func (a *MCPAdapter) Sync(ctx context.Context, userID string, force bool) (model
 		return models.RateLimitInfo{}, fmt.Errorf("sync error: %s", content.Text)
 	}
 
-	return models.RateLimitInfo{}, nil
+	var rl models.RateLimitInfo
+	if len(resp.Content) > 0 {
+		if text, ok := resp.Content[0].(mcp.TextContent); ok {
+			_ = json.Unmarshal([]byte(text.Text), &rl)
+		}
+	}
+
+	return rl, nil
 }
 
 func (a *MCPAdapter) Shutdown(ctx context.Context)     {}

@@ -52,6 +52,7 @@ func (t *UDSClientTransport) Start(ctx context.Context) error {
 
 func (t *UDSClientTransport) readLoop() {
 	defer t.wg.Done()
+	defer t.clearPendingRequests()
 	reader := bufio.NewReader(t.conn)
 
 	for {
@@ -83,6 +84,21 @@ func (t *UDSClientTransport) readLoop() {
 			}
 		}
 	}
+}
+
+func (t *UDSClientTransport) clearPendingRequests() {
+	t.pendingRequests.Range(func(key, value any) bool {
+		ch := value.(chan *transport.JSONRPCResponse)
+		// Send an error response for each pending request
+		ch <- &transport.JSONRPCResponse{
+			Error: &mcp.JSONRPCErrorDetails{
+				Code:    mcp.INTERNAL_ERROR,
+				Message: "connection lost",
+			},
+		}
+		t.pendingRequests.Delete(key)
+		return true
+	})
 }
 
 func (t *UDSClientTransport) SendRequest(ctx context.Context, request transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
