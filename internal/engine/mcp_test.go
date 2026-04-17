@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,7 +85,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	var resp mcp.JSONRPCResponse
 	err = json.Unmarshal([]byte(line), &resp)
 	assert.NoError(t, err)
-	
+
 	// id in mcp-go can be a number or string
 	assert.NotNil(t, resp.ID)
 
@@ -97,4 +98,29 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	// 3. Signal exit
 	cancel()
 	<-errChan
+}
+
+func TestMCPAdapter_Debounce(t *testing.T) {
+	// 1. Setup adapter with a counter
+	a := NewMCPAdapter(nil) // Client can be nil for this test
+	var count int32
+
+	a.OnMutation(func() {
+		atomic.AddInt32(&count, 1)
+	})
+
+	// 2. Trigger multiple rapid updates
+	for i := 0; i < 5; i++ {
+		// Pass an empty notification just to trigger the handler
+		a.handleResourceUpdate(mcp.JSONRPCNotification{})
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 3. Wait for debounce window (200ms) + buffer
+	time.Sleep(500 * time.Millisecond)
+
+	finalCount := atomic.LoadInt32(&count)
+
+	// Expect only 1 mutation signal after 5 rapid triggers
+	assert.Equal(t, int32(1), finalCount, "Should debounce multiple rapid updates into a single mutation signal")
 }

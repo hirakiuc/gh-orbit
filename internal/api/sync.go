@@ -19,18 +19,20 @@ const DefaultPollInterval = 60 // seconds
 
 // SyncEngine orchestrates the synchronization of notifications.
 type SyncEngine struct {
-	fetcher github.Fetcher
-	db      types.SyncRepository
-	alerts  Alerter
-	logger  *slog.Logger
+	fetcher    github.Fetcher
+	db         types.SyncRepository
+	alerts     Alerter
+	logger     *slog.Logger
+	OnMutation func()
 }
 
 func NewSyncEngine(fetcher github.Fetcher, database types.SyncRepository, alerts Alerter, logger *slog.Logger) *SyncEngine {
 	return &SyncEngine{
-		fetcher: fetcher,
-		db:      database,
-		alerts:  alerts,
-		logger:  logger,
+		fetcher:    fetcher,
+		db:         database,
+		alerts:     alerts,
+		logger:     logger,
+		OnMutation: func() {}, // Default no-op
 	}
 }
 
@@ -201,6 +203,8 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 		s.logger.ErrorContext(ctx, "failed to update sync meta at end of cycle", "sync_id", syncID, "error", err)
 		return rlInfo, fmt.Errorf("sync meta update failed: %w", err)
 	}
+
+	s.OnMutation()
 
 	return rlInfo, nil
 }

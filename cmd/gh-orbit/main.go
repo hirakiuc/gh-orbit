@@ -10,13 +10,15 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/dustin/go-humanize"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/buildinfo"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine"
+	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/hirakiuc/gh-orbit/internal/types"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -167,7 +169,7 @@ func runDoctor() error {
 		DataPath:   dataPath,
 		StatePath:  statePath,
 		TracePath:  tracePath,
-		CacheSize:  humanize.Bytes(uint64(getDirSize(dataPath))), // #nosec G115: Safe for doctor report
+		CacheSize:  "0 B", // Placeholder
 	}
 
 	// 3. Config
@@ -254,14 +256,6 @@ func printDoctorReport(r types.DoctorReport) {
 	}
 }
 
-func getDirSize(path string) int64 {
-	var size int64
-	// Non-creative size check
-	_, _ = os.ReadDir(path) // Trigger any FS errors early
-	// Simple approximation for doctor report
-	return size
-}
-
 func runSync() error {
 	env, ctx, err := initEnvironment(context.Background())
 	if err != nil {
@@ -321,6 +315,47 @@ func runTUI() error {
 		return err
 	}
 
+	// 1. Attempt MCP Client Mode
+	runtimeDir := os.ExpandEnv("$XDG_RUNTIME_DIR/gh-orbit")
+	if runtimeDir == "" || runtimeDir == "/gh-orbit" {
+		home, _ := os.UserHomeDir()
+		runtimeDir = filepath.Join(home, ".local/run/gh-orbit")
+	}
+	socketPath := filepath.Join(runtimeDir, "engine.sock")
+
+	if _, err := os.Stat(socketPath); err == nil {
+		env.logger.Debug("detecting headless engine", "socket", socketPath)
+		// Try to connect
+		t := transport.NewUDSClientTransport(socketPath)
+		mcpClient := client.NewClient(t)
+
+		// Attempt start with 2s timeout
+		connectCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		if err := mcpClient.Start(connectCtx); err == nil {
+			// Handshake (Initialize)
+			initResp, err := mcpClient.Initialize(connectCtx, mcp.InitializeRequest{
+				Params: mcp.InitializeParams{
+					ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+					ClientInfo:      mcp.Implementation{Name: "gh-orbit-tui", Version: buildinfo.Version},
+				},
+			})
+
+			if err == nil {
+				env.logger.Info("connected to headless engine", "server", initResp.ServerInfo.Name)
+				adapter := engine.NewMCPAdapter(mcpClient)
+
+				user := "mcp-user" // Placeholder until tool added
+				return launchTUIMCP(ctx, env, adapter, user)
+			}
+			env.logger.Warn("mcp handshake failed, falling back to standalone", "error", err)
+		} else {
+			env.logger.Warn("failed to connect to engine UDS, falling back to standalone", "error", err)
+		}
+	}
+
+	// 2. Standalone Mode (Library access)
 	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
 	if err != nil {
 		return err
@@ -336,7 +371,101 @@ func runTUI() error {
 		return err
 	}
 
-	return launchTUI(ctx, env, eng, user.Login)
+	return launchTUIStandalone(ctx, env, eng, user.Login)
+}
+
+func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdapter, userID string) error {
+	m := tui.NewModel(
+		userID,
+		config.DefaultConfig(), // Placeholder or from engine
+		env.logger,
+		adapter, // Repository
+		nil,     // Client (unused in MCP mode)
+		adapter, // Syncer
+		adapter, // Enricher
+		nil,     // Traffic (Engine handles it)
+		nil,     // Alert (Engine handles it)
+		tui.WithConnectionMode("Connected"),
+		tui.WithVersion(buildinfo.Version),
+	)
+
+	lifecycle := api.NewAppLifecycle(ctx)
+	defer lifecycle.Shutdown()
+
+	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
+
+	// Update model logic if data changes
+	adapter.OnMutation(func() {
+		p.Send(tui.ActionLoadNotifications{IsInitial: false, IsForced: false})
+	})
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	return nil
+}
+
+func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
+	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
+	eng.Client.SetRateLimitUpdates(eng.Traffic.RateLimitUpdates())
+
+	m := tui.NewModel(
+		userID,
+		eng.Config,
+		env.logger,
+		eng.DB,
+		eng.Client,
+		eng.Sync,
+		eng.Enrich,
+		eng.Traffic,
+		eng.Alert,
+		tui.WithExecutor(api.NewOSCommandExecutor()),
+		tui.WithTheme(true),
+		tui.WithConnectionMode("Standalone"),
+		tui.WithVersion(buildinfo.Version),
+	)
+
+	return runProgram(ctx, m)
+}
+
+func runProgram(ctx context.Context, m *tui.Model) error {
+	lifecycle := api.NewAppLifecycle(ctx)
+	defer lifecycle.Shutdown()
+
+	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	return nil
+}
+
+func runEngine(socketPath string, insecure bool) error {
+	env, ctx, err := initEnvironment(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = env.logCleanup() }()
+	if env.otelCleanup != nil {
+		defer env.otelCleanup()
+	}
+	defer env.span.End()
+
+	executor := api.NewOSCommandExecutor()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
+	if err != nil {
+		return err
+	}
+	defer eng.Shutdown(ctx)
+
+	server := engine.NewMCPServer(eng, socketPath, insecure)
+	return server.Serve(ctx)
 }
 
 type environment struct {
@@ -378,63 +507,4 @@ func initEnvironment(ctx context.Context) (*environment, context.Context, error)
 		otelCleanup: otelCleanup,
 		span:        span,
 	}, ctx, nil
-}
-
-func launchTUI(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
-	lifecycle := api.NewAppLifecycle(ctx)
-	defer lifecycle.Shutdown()
-
-	executor := api.NewOSCommandExecutor()
-
-	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
-	eng.Client.SetRateLimitUpdates(eng.Traffic.RateLimitUpdates())
-
-	m := tui.NewModel(
-		userID,
-		eng.Config,
-		env.logger,
-		eng.DB,
-		eng.Client,
-		eng.Sync,
-		eng.Enrich,
-		eng.Traffic,
-		eng.Alert,
-		tui.WithExecutor(executor),
-		tui.WithTheme(true),
-		tui.WithVersion(buildinfo.Version),
-	)
-
-	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("TUI error: %w", err)
-	}
-
-	return nil
-}
-
-func runEngine(socketPath string, insecure bool) error {
-	env, ctx, err := initEnvironment(context.Background())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = env.logCleanup() }()
-	if env.otelCleanup != nil {
-		defer env.otelCleanup()
-	}
-	defer env.span.End()
-
-	executor := api.NewOSCommandExecutor()
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
-	if err != nil {
-		return err
-	}
-	defer eng.Shutdown(ctx)
-
-	server := engine.NewMCPServer(eng, socketPath, insecure)
-	return server.Serve(ctx)
 }

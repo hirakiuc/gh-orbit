@@ -156,6 +156,13 @@ func (m *Model) renderFooter() string {
 	// 6. Version Information
 	vStr := m.styles.SelectedDescription.Render(" " + m.version + " ")
 
+	// 7. Connection Mode
+	modeStyle := m.styles.Subscribed
+	if m.ConnectionMode == "Connected" {
+		modeStyle = m.styles.Assign
+	}
+	modeStr := modeStyle.Render(" Mode: " + m.ConnectionMode + " ")
+
 	statusLine := lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		statusMsg,
@@ -165,7 +172,9 @@ func (m *Model) renderFooter() string {
 		focusIndicator,
 		" ",
 		rlStatus,
-		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(focusIndicator)-lipgloss.Width(rlStatus)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-8, lipgloss.Right, vStr+" "+health),
+		" ",
+		modeStr,
+		lipgloss.PlaceHorizontal(m.width-lipgloss.Width(statusMsg)-lipgloss.Width(filters)-lipgloss.Width(focusIndicator)-lipgloss.Width(rlStatus)-lipgloss.Width(modeStr)-lipgloss.Width(bridge)-lipgloss.Width(vStr)-10, lipgloss.Right, vStr+" "+health),
 	)
 
 	if !m.showHelp {

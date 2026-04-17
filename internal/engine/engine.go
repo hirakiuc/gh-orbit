@@ -16,6 +16,7 @@ import (
 type CoreEngine struct {
 	Config  *config.Config
 	Logger  *slog.Logger
+	Bus     *EventBus
 	DB      types.Repository
 	Client  github.Client
 	Sync    types.Syncer
@@ -65,8 +66,12 @@ func NewCoreEngine(
 	}
 
 	// 3. Initialize Services
+	bus := NewEventBus()
 	traffic := api.NewAPITrafficController(ctx, logger)
+
 	enricher := api.NewEnrichmentEngine(ctx, client, database, logger)
+	enricher.OnMutation = func() { bus.Publish(EventEnrichmentUpdated) }
+
 	alerter := api.NewAlertService(ctx, cfg, logger, database, executor)
 
 	fetcher := github.NewNotificationFetcher(client, logger)
@@ -77,10 +82,12 @@ func NewCoreEngine(
 		syncAlerter = nil
 	}
 	syncer := api.NewSyncEngine(fetcher, database, syncAlerter, logger)
+	syncer.OnMutation = func() { bus.Publish(EventNotificationsChanged) }
 
 	return &CoreEngine{
 		Config:  cfg,
 		Logger:  logger,
+		Bus:     bus,
 		DB:      database,
 		Client:  client,
 		Sync:    syncer,
