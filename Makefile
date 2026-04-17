@@ -1,5 +1,6 @@
 # Project variables
 BINARY_NAME=gh-orbit
+COCKPIT_NAME=OrbitCockpit
 CMD_PATH=./cmd/gh-orbit
 GOLANGCI_LINT_VERSION=v2.11.3
 
@@ -25,9 +26,30 @@ else
     SED_INPLACE := sed -i
 endif
 
-.PHONY: all build release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task reset-task check quality quality-report
+.PHONY: all build cockpit release-build test lint vulncheck fmt clean clean-tmp help generate serena coverage coverage-summary artifacts roadmap task reset-task check quality quality-report
 
 all: build
+
+# Native macOS Cockpit Build
+cockpit: build
+	@echo "Building Orbit Cockpit (macOS)..."
+	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/MacOS
+	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/Helpers
+	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/Resources
+	# 1. Build Swift App
+	cd native/OrbitCockpit && swift build -c release
+	cp native/OrbitCockpit/.build/release/$(COCKPIT_NAME) bin/$(COCKPIT_NAME).app/Contents/MacOS/
+	# 2. Bundle Go Engine
+	cp bin/$(BINARY_NAME) bin/$(COCKPIT_NAME).app/Contents/Helpers/
+	# 3. Bundle Metadata
+	cp native/OrbitCockpit/Resources/Info.plist bin/$(COCKPIT_NAME).app/Contents/
+	# 4. Ad-hoc Sign everything
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		echo "Signing Cockpit bundle components..."; \
+		codesign -f -s - -i gh-orbit-cli bin/$(COCKPIT_NAME).app/Contents/Helpers/$(BINARY_NAME); \
+		codesign -f -s - -i gh-orbit-cockpit bin/$(COCKPIT_NAME).app/Contents/MacOS/$(COCKPIT_NAME); \
+	fi
+	@echo "Orbit Cockpit ready at bin/$(COCKPIT_NAME).app"
 
 # Unified quality check
 check: fmt lint test
