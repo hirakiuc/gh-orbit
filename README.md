@@ -1,17 +1,17 @@
 # 🛰️ gh-orbit
 
-**Manage your GitHub notifications without leaving the terminal.**
+**High-fidelity triage and multi-agent AI orchestration for GitHub.**
 
 > [!IMPORTANT]
 > This project is currently under active development. There is no official support provided at this time.
 
-`gh-orbit` is a GitHub CLI extension that provides a high-performance TUI for triaging notifications. It's designed for speed, security, and "Zero-Config" ease of use.
+`gh-orbit` is a "Hybrid Host" triage system. It combines a high-performance **Headless Go Engine** with both a **Terminal UI (TUI)** and a native **macOS Cockpit** to provide a unified command center for managing GitHub notifications and AI-assisted code reviews.
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
+### Installation (CLI)
 
 Ensure you have the [GitHub CLI](https://cli.github.com/) installed, then run:
 
@@ -19,7 +19,7 @@ Ensure you have the [GitHub CLI](https://cli.github.com/) installed, then run:
 gh extension install hirakiuc/gh-orbit
 ```
 
-### Usage
+### Usage (TUI)
 
 Simply run:
 
@@ -28,6 +28,16 @@ gh orbit
 ```
 
 *No API keys or Personal Access Tokens required. It inherits your existing `gh` credentials automatically.*
+
+---
+
+## 🏛️ Architecture
+
+`gh-orbit` follows a decoupled architecture using the **Model Context Protocol (MCP)** over secure Unix Domain Sockets:
+
+1. **Headless Engine (Go)**: The sole owner of the local SQLite database and GitHub API interactions. It broadcasts real-time mutation events via an internal event bus.
+2. **Terminal UI (MCP Client)**: The standard cross-platform triage interface.
+3. **Orbit Cockpit (macOS)**: A native SwiftUI application that hosts multiple terminal panes for TUI navigation and real-time AI agent execution logs.
 
 ---
 
@@ -49,27 +59,40 @@ gh orbit
 
 ---
 
-## 🛠️ Requirements
+## 🛠️ Development
 
-To ensure the TUI renders correctly, your terminal should support:
+### Prerequisites
 
-- **[Nerd Fonts](https://www.nerdfonts.com/font-downloads)**: Required for status and resource icons.
-- **TrueColor**: Required for high-fidelity styling.
+- **Go 1.22+**: Required for the core engine.
+- **Xcode 16.0+ / Swift 6.0+**: Required for the native macOS Cockpit.
+- **Nerd Fonts**: Required for icons.
+
+### Building
+
+The project uses a namespaced `Makefile` for multi-language orchestration:
+
+```bash
+make build          # Build the Go core binary
+make cockpit        # Build the native macOS .app bundle
+make check          # Run all quality gates (Go + Native)
+```
+
+Run `make help` for a complete list of `go/` and `native/` specific targets.
 
 ---
 
 ## 🔒 Security & Privacy
 
-- **Local-First**: Your triage state (priorities, mutes) is stored in a private local SQLite database.
-- **Strict Permissions**: All local data and logs are secured with `0700/0600` permissions.
-- **Auth Scopes**: Uses your existing `gh` token with `notifications` and `repo` scopes.
-- **Telemetry**: Optional OpenTelemetry traces are stored locally and encrypted via file permissions.
+- **Local-First**: Triage state is stored in a private local SQLite database (`modernc.org/sqlite`).
+- **MCP Security**: Unix Domain Sockets use mandatory **Peer Verification** (PID + Code Signature).
+- **Sandbox Note**: The macOS Cockpit has sandboxing disabled to allow for native PTY management and subprocess control.
+- **Auth**: Inherits credentials from the `gh` host environment.
 
 ---
 
 ## 🩺 Health Check
 
-If you encounter issues with notifications or rendering, run the diagnostic suite:
+If you encounter issues, run the diagnostic suite:
 
 ```bash
 gh orbit doctor
@@ -81,4 +104,4 @@ gh orbit doctor
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-*For technical depth and contribution guides, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).*
+*For technical depth, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [AGENTS.md](AGENTS.md).*
