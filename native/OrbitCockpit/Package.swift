@@ -1,16 +1,17 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "OrbitCockpit",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "OrbitCockpit", targets: ["OrbitCockpit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.0.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "0.10.0")
     ],
     targets: [
         .executableTarget(
@@ -28,7 +29,10 @@ let package = Package(
         ),
         .testTarget(
             name: "OrbitCockpitTests",
-            dependencies: ["OrbitCockpit"],
+            dependencies: [
+                "OrbitCockpit",
+                .product(name: "Testing", package: "swift-testing")
+            ],
             path: "Tests/OrbitCockpitTests",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
