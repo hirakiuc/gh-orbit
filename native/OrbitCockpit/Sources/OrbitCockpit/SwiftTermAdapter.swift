@@ -3,7 +3,7 @@ import SwiftTerm
 import AppKit
 
 @MainActor
-class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewDelegate {
+class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
     
     var view: NSView {
@@ -26,11 +26,24 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewD
     }
     
     func resize(cols: Int, rows: Int) {
-        // Managed by LocalProcessTerminalView
+        guard terminalView.process.running else { return }
+        var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
+        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: terminalView.process.childfd, windowSize: &size)
     }
     
     func getBuffer() -> String {
-        return ""
+        var fullText = ""
+        let terminal = terminalView.getTerminal()
+        for i in 0..<terminal.rows {
+            if let line = terminal.getLine(row: i) {
+                for j in 0..<line.count {
+                    let charData = line[j]
+                    fullText.append(charData.getCharacter())
+                }
+                fullText.append("\n")
+            }
+        }
+        return fullText
     }
     
     func isDarkMode(_ isDark: Bool) {
@@ -45,20 +58,22 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewD
     
     // MARK: - LocalProcessTerminalViewDelegate
     
-    nonisolated func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
-        // Non-isolated callback from PTY
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        guard source.process.running else { return }
+        var size = winsize(ws_row: UInt16(newRows), ws_col: UInt16(newCols), ws_xpixel: 0, ws_ypixel: 0)
+        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: source.process.childfd, windowSize: &size)
     }
     
-    nonisolated func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
-        // Non-isolated callback
+    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
+        // Implementation
     }
     
-    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
-        // Non-isolated callback
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        // Implementation
     }
 
-    nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
-        // Non-isolated callback
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        // Implementation
     }
     
     /// Launches the gh-orbit helper process.

@@ -145,11 +145,15 @@ native/lint:
 	@echo "Linting Swift code (Style)..."
 	@if command -v swift-format >/dev/null; then \
 		swift-format lint -r native/OrbitCockpit/Sources native/OrbitCockpit/Tests; \
+	elif [ "$$GITHUB_ACTIONS" = "true" ]; then \
+		echo "Error: swift-format not found in CI."; exit 1; \
 	else \
 		echo "Warning: swift-format not found, skipping."; \
 	fi
 	@if command -v swiftlint >/dev/null; then \
 		swiftlint lint native/OrbitCockpit --config native/OrbitCockpit/.swiftlint.yml --reporter github-actions-logging; \
+	elif [ "$$GITHUB_ACTIONS" = "true" ]; then \
+		echo "Error: swiftlint not found in CI."; exit 1; \
 	else \
 		echo "Warning: swiftlint not found, skipping."; \
 	fi
@@ -165,11 +169,12 @@ native/lint:
 			echo "Warning: Semantic linting skipped or failed (likely due to missing XCTest/Testing module in this shell). Architectural integrity verified via build."; \
 	fi
 
-
 native/fmt:
 	@echo "Formatting Swift code..."
 	@if command -v swift-format >/dev/null; then \
 		swift-format format -i -r native/OrbitCockpit/Sources native/OrbitCockpit/Tests; \
+	elif [ "$$GITHUB_ACTIONS" = "true" ]; then \
+		echo "Error: swift-format not found in CI."; exit 1; \
 	else \
 		echo "Warning: swift-format not found, skipping."; \
 	fi

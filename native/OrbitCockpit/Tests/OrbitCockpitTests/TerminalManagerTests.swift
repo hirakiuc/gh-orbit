@@ -19,6 +19,7 @@ struct TerminalManagerTests {
         let mockEngine = SwiftTermAdapter()
         
         manager.engines["TUI"] = mockEngine
-        #expect(manager.engines["TUI"] === mockEngine)
+        let stored = try #require(manager.engines["TUI"])
+        #expect(stored === mockEngine)
     }
 }

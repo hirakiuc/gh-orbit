@@ -10,8 +10,7 @@ let package = Package(
         .executable(name: "OrbitCockpit", targets: ["OrbitCockpit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.0.0"),
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "0.10.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.0.0")
     ],
     targets: [
         .executableTarget(
@@ -30,8 +29,7 @@ let package = Package(
         .testTarget(
             name: "OrbitCockpitTests",
             dependencies: [
-                "OrbitCockpit",
-                .product(name: "Testing", package: "swift-testing")
+                "OrbitCockpit"
             ],
             path: "Tests/OrbitCockpitTests",
             swiftSettings: [
