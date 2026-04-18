@@ -11,7 +11,6 @@ disabled_rules:
 opt_in_rules:
   - force_unwrapping
   - force_cast
-  - strict_concurrency
   - fatal_error_message
   - empty_count
   - contains_over_first_not_nil
@@ -20,7 +19,13 @@ opt_in_rules:
 
 force_unwrapping: error
 force_cast: error
-strict_concurrency: error
+
+identifier_name:
+  excluded:
+    - i
+    - j
+    - x
+    - y
 
 included:
   - Sources

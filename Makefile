@@ -151,7 +151,8 @@ native/lint:
 		echo "Warning: swift-format not found, skipping."; \
 	fi
 	@if command -v swiftlint >/dev/null; then \
-		swiftlint lint native/OrbitCockpit --config native/OrbitCockpit/.swiftlint.yml --reporter github-actions-logging; \
+		mkdir -p $(PROJECT_TMP)/swiftlint-cache; \
+		swiftlint lint native/OrbitCockpit --config native/OrbitCockpit/.swiftlint.yml --reporter github-actions-logging --cache-path $(PROJECT_TMP)/swiftlint-cache; \
 	elif [ "$$GITHUB_ACTIONS" = "true" ]; then \
 		echo "Error: swiftlint not found in CI."; exit 1; \
 	else \
