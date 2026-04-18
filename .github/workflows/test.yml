@@ -57,10 +57,10 @@ jobs:
           ${{ runner.os }}-spm-
 
     - name: Format Check
-      run: make fmt-native
+      run: make native/fmt
 
     - name: Lint Check
-      run: make lint-native
+      run: make native/lint
 
     - name: Run Swift Tests
-      run: make test-native
+      run: make native/test
