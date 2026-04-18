@@ -1,45 +1,51 @@
+import AppKit
 import Foundation
 import SwiftTerm
-import AppKit
 
-class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewDelegate {
+@MainActor
+class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
-    
+
     var view: NSView {
         return terminalView
     }
-    
-    init(frame: CGRect = .zero) {
-        self.terminalView = LocalProcessTerminalView(frame: frame)
+
+    override init() {
+        self.terminalView = LocalProcessTerminalView(frame: .zero)
         super.init()
         self.terminalView.processDelegate = self
     }
-    
+
     func feed(data: Data) {
-        terminalView.feed(data: data)
+        let bytes = [UInt8](data)
+        terminalView.feed(byteArray: bytes[...])
     }
-    
+
     func send(string: String) {
-        terminalView.send(string)
+        terminalView.send(txt: string)
     }
-    
+
     func resize(cols: Int, rows: Int) {
-        terminalView.process.setWinSize(rows: Int32(rows), cols: Int32(cols))
+        guard terminalView.process.running else { return }
+        var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
+        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: terminalView.process.childfd, windowSize: &size)
     }
-    
+
     func getBuffer() -> String {
-        // SwiftTerm stores content in its buffer. 
-        // For the initial implementation, we iterate through the active lines.
         var fullText = ""
         let terminal = terminalView.getTerminal()
         for i in 0..<terminal.rows {
             if let line = terminal.getLine(row: i) {
-                fullText += line.toString() + "\n"
+                for j in 0..<line.count {
+                    let charData = line[j]
+                    fullText.append(charData.getCharacter())
+                }
+                fullText.append("\n")
             }
         }
         return fullText
     }
-    
+
     func isDarkMode(_ isDark: Bool) {
         if isDark {
             terminalView.nativeBackgroundColor = .black
@@ -49,22 +55,27 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, LocalProcessTerminalViewD
             terminalView.nativeForegroundColor = .black
         }
     }
-    
+
     // MARK: - LocalProcessTerminalViewDelegate
-    
+
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
-        // Propagate size changes directly to the underlying process
-        source.process.setWinSize(rows: Int32(newRows), cols: Int32(newCols))
+        guard source.process.running else { return }
+        var size = winsize(ws_row: UInt16(newRows), ws_col: UInt16(newCols), ws_xpixel: 0, ws_ypixel: 0)
+        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: source.process.childfd, windowSize: &size)
     }
-    
+
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
-        // Update window title
+        // Implementation
     }
-    
-    func processTerminated(source: LocalProcessTerminalView, exitCode: Int32?) {
-        // Handle process exit
+
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        // Implementation
     }
-    
+
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        // Implementation
+    }
+
     /// Launches the gh-orbit helper process.
     func startProcess(executable: URL, args: [String], environment: [String]?) {
         terminalView.startProcess(

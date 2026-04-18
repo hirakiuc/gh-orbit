@@ -16,8 +16,8 @@ The Cockpit is designed to be a "host" for terminal-based workflows. It uses a p
 
 ### Prerequisites
 
-- macOS 13.0+
-- Xcode 15.0+ or Swift 5.9+ toolchain.
+- macOS 16.0+
+- Xcode 17.0+ or Swift 6.0+ toolchain.
 - Go 1.22+ (to build the helper).
 
 ### Building via root Makefile

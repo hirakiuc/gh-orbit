@@ -1,10 +1,10 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "OrbitCockpit",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "OrbitCockpit", targets: ["OrbitCockpit"])
@@ -21,6 +21,19 @@ let package = Package(
             path: "Sources/OrbitCockpit",
             resources: [
                 .copy("../../Resources")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "OrbitCockpitTests",
+            dependencies: [
+                "OrbitCockpit"
+            ],
+            path: "Tests/OrbitCockpitTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
             ]
         )
     ]

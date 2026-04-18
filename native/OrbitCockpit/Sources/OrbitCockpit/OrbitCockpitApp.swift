@@ -1,6 +1,7 @@
 import SwiftUI
 
 @main
+@MainActor
 struct OrbitCockpitApp: App {
     var body: some Scene {
         WindowGroup {
@@ -9,10 +10,11 @@ struct OrbitCockpitApp: App {
     }
 }
 
+@MainActor
 struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
     @Environment(\.colorScheme) var colorScheme
-    
+
     // In a real app, these would be managed in a ViewModel/Store
     @StateObject private var terminalManager = TerminalManager()
 
@@ -28,8 +30,8 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .onChange(of: colorScheme) { newScheme in
-            terminalManager.updateTheme(isDark: newScheme == .dark)
+        .onChange(of: colorScheme) { _, newValue in
+            terminalManager.updateTheme(isDark: newValue == .dark)
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
@@ -37,6 +39,7 @@ struct ContentView: View {
     }
 }
 
+@MainActor
 struct Sidebar: View {
     @Binding var selectedPane: String?
 
@@ -46,7 +49,7 @@ struct Sidebar: View {
                 Label("TUI", systemImage: "terminal")
                     .tag("TUI")
             }
-            
+
             Section("AI Agents") {
                 Label("Agent Alpha", systemImage: "bolt.fill")
                     .tag("Agent Alpha")
@@ -58,6 +61,7 @@ struct Sidebar: View {
     }
 }
 
+@MainActor
 struct TerminalHostView: View {
     let paneName: String
     @EnvironmentObject var terminalManager: TerminalManager
@@ -66,7 +70,6 @@ struct TerminalHostView: View {
         VStack {
             if let engine = terminalManager.engines[paneName] {
                 TerminalContainer(engine: engine, isFocused: true)
-                    .equatable()
             } else {
                 ProgressView("Launching \(paneName)...")
                     .onAppear {
@@ -78,10 +81,11 @@ struct TerminalHostView: View {
     }
 }
 
+@MainActor
 class TerminalManager: ObservableObject {
     @Published var engines: [String: OrbitTerminalEngine] = [:]
     private var isDark: Bool = true
-    
+
     func updateTheme(isDark: Bool) {
         self.isDark = isDark
         for engine in engines.values {
@@ -92,16 +96,16 @@ class TerminalManager: ObservableObject {
     func launch(_ name: String) {
         let adapter = SwiftTermAdapter()
         adapter.isDarkMode(isDark)
-        
+
         // Robust binary resolution
         if let executableURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
             var args: [String] = []
             if name == "TUI" {
-                args = [] // Normal TUI mode
+                args = []  // Normal TUI mode
             } else {
-                args = ["agent", "--name", name] // Conceptual agent mode
+                args = ["agent", "--name", name]  // Conceptual agent mode
             }
-            
+
             adapter.startProcess(executable: executableURL, args: args, environment: nil)
             engines[name] = adapter
         } else {
