@@ -33,7 +33,7 @@ func TestCLI_Bootstrap(t *testing.T) {
 
 	// Ensure binary exists
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
-		t.Skip("gh-orbit binary not found in bin/. Run 'make build' first.")
+		t.Skip("gh-orbit binary not found in bin/. Run 'make go/build' first.")
 	}
 
 	// 3. Run 'gh-orbit doctor'
@@ -116,7 +116,7 @@ func TestCLI_Version(t *testing.T) {
 
 	// Ensure binary exists
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
-		t.Skip("gh-orbit binary not found in bin/. Run 'make build' first.")
+		t.Skip("gh-orbit binary not found in bin/. Run 'make go/build' first.")
 	}
 
 	// Run 'gh-orbit --version'
