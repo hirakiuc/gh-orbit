@@ -141,7 +141,7 @@ native/test:
 		fi \
 	fi
 
-lint-native:
+native/lint:
 	@echo "Linting Swift code (Style)..."
 	@if command -v swift-format >/dev/null; then \
 		swift-format lint -r native/OrbitCockpit/Sources native/OrbitCockpit/Tests; \
