@@ -25,6 +25,14 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
+        ),
+        .testTarget(
+            name: "OrbitCockpitTests",
+            dependencies: ["OrbitCockpit"],
+            path: "Tests/OrbitCockpitTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         )
     ]
 )
