@@ -184,6 +184,9 @@ native/check: native/fmt native/lint native/test
 
 native/clean:
 	rm -rf native/OrbitCockpit/.build/
+	rm -rf $(PROJECT_TMP)/swiftlint-cache
+	rm -rf $(PROJECT_TMP)/swift-build
+	rm -rf $(PROJECT_TMP)/swift-home
 
 # --- Helper & Maintenance Targets ---
 
