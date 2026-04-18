@@ -113,3 +113,4 @@ coverage.out
 coverage.html
 artifacts/
 /bin/gh-orbit
+native/OrbitCockpit/.build/

@@ -36,9 +36,11 @@ cockpit: build
 	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/MacOS
 	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/Helpers
 	@mkdir -p bin/$(COCKPIT_NAME).app/Contents/Resources
-	# 1. Build Swift App
-	cd native/OrbitCockpit && swift build -c release
-	cp native/OrbitCockpit/.build/release/$(COCKPIT_NAME) bin/$(COCKPIT_NAME).app/Contents/MacOS/
+	# 1. Build Swift App with sandbox-safe paths
+	cd native/OrbitCockpit && \
+		HOME=$(PROJECT_TMP)/swift-home \
+		swift build -c release --disable-sandbox --build-path $(PROJECT_TMP)/swift-build
+	cp $(PROJECT_TMP)/swift-build/release/$(COCKPIT_NAME) bin/$(COCKPIT_NAME).app/Contents/MacOS/
 	# 2. Bundle Go Engine
 	cp bin/$(BINARY_NAME) bin/$(COCKPIT_NAME).app/Contents/Helpers/
 	# 3. Bundle Metadata
@@ -78,7 +80,9 @@ lint-native:
 
 test-native:
 	@echo "Running Swift tests..."
-	cd native/OrbitCockpit && swift test
+	cd native/OrbitCockpit && \
+		HOME=$(PROJECT_TMP)/swift-home \
+		swift test --disable-sandbox --build-path $(PROJECT_TMP)/swift-build
 
 # Quantitative Health Check (2026 Standards)
 quality: $(PROJECT_TMP)

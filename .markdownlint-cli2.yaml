@@ -11,6 +11,7 @@ globs:
   - "!.git/**"
   - "!node_modules/**"
   - "!tmp/**"
+  - "!native/OrbitCockpit/.build/**"
 
 # Rule configurations (Inherited from defaults, can be overridden here)
 config:

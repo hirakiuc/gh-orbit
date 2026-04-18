@@ -1,6 +1,7 @@
 import SwiftUI
 
 @main
+@MainActor
 struct OrbitCockpitApp: App {
     var body: some Scene {
         WindowGroup {
@@ -9,6 +10,7 @@ struct OrbitCockpitApp: App {
     }
 }
 
+@MainActor
 struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
     @Environment(\.colorScheme) var colorScheme
@@ -37,6 +39,7 @@ struct ContentView: View {
     }
 }
 
+@MainActor
 struct Sidebar: View {
     @Binding var selectedPane: String?
 
@@ -58,6 +61,7 @@ struct Sidebar: View {
     }
 }
 
+@MainActor
 struct TerminalHostView: View {
     let paneName: String
     @EnvironmentObject var terminalManager: TerminalManager
@@ -66,7 +70,6 @@ struct TerminalHostView: View {
         VStack {
             if let engine = terminalManager.engines[paneName] {
                 TerminalContainer(engine: engine, isFocused: true)
-                    .equatable()
             } else {
                 ProgressView("Launching \(paneName)...")
                     .onAppear {
@@ -78,6 +81,7 @@ struct TerminalHostView: View {
     }
 }
 
+@MainActor
 class TerminalManager: ObservableObject {
     @Published var engines: [String: OrbitTerminalEngine] = [:]
     private var isDark: Bool = true

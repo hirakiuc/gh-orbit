@@ -1,7 +1,8 @@
 import SwiftUI
 import AppKit
 
-struct TerminalContainer: NSViewRepresentable, Equatable {
+@MainActor
+struct TerminalContainer: NSViewRepresentable {
     let engine: OrbitTerminalEngine
     let isFocused: Bool
     
@@ -17,13 +18,10 @@ struct TerminalContainer: NSViewRepresentable, Equatable {
             }
         }
     }
-    
-    static func == (lhs: TerminalContainer, rhs: TerminalContainer) -> Bool {
-        return lhs.engine === rhs.engine && lhs.isFocused == rhs.isFocused
-    }
 }
 
 /// A container view that detects visibility and occlusions to pause terminal rendering.
+@MainActor
 class ThrottledContainerView: NSView {
     private let engine: OrbitTerminalEngine
     
@@ -73,9 +71,6 @@ class ThrottledContainerView: NSView {
     }
     
     private func pauseRendering() {
-        // Implementation varies by engine. 
-        // SwiftTerm doesn't have a formal pause, but we can set visibility 
-        // or potentially stop drawing updates.
         engine.view.isHidden = true
     }
     

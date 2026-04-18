@@ -3,6 +3,7 @@ import AppKit
 
 /// OrbitTerminalEngine defines the interface for terminal rendering engines.
 /// This allows the Orbit Cockpit to swap between SwiftTerm, libghostty, or other engines.
+@MainActor
 protocol OrbitTerminalEngine: AnyObject {
     /// The actual view to be embedded in the SwiftUI hierarchy.
     var view: NSView { get }
