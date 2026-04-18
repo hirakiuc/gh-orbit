@@ -30,8 +30,8 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .onChange(of: colorScheme) { newScheme in
-            terminalManager.updateTheme(isDark: newScheme == .dark)
+        .onChange(of: colorScheme) { _, newValue in
+            terminalManager.updateTheme(isDark: newValue == .dark)
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
