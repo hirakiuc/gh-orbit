@@ -51,19 +51,21 @@ This project uses the extension's standard "Workbench" files:
 - **PR Requirement**: No Pull Request will be merged unless `make check` passes 100%.
 - **Resilience**: Locally, gates may skip specific tools with a warning if they are missing, but the CI pipeline is strict and will block on any failure.
 
----
-
 ## 2. Sandbox & Environment Constraints (macOS Seatbelt)
 
-AI agents operate in a restricted sandbox. You MUST adhere to these path redirections:
+AI agents operate in a restricted sandbox. You MUST adhere to these path redirections and environment settings:
 
-- **Mandatory ./tmp usage**: All caching and build artifacts MUST reside in the project-local `./tmp`.
-- **Environment Variables**: Always prepend the following to shell commands:
+- **Operation not permitted**: If you encounter this error (or "Permission denied"), it is likely due to sandbox constraints. Do not attempt to work around these by modifying system paths.
+- **Mandatory ./tmp usage**: All caching, builds, and transient artifacts MUST reside in the project-local `./tmp`.
+- **Environment Variables**: Always prepend or export the following when running build or test tools:
   - `GOCACHE=$(pwd)/tmp/go-cache`
   - `GOLANGCI_LINT_CACHE=$(pwd)/tmp/lint-cache`
   - `TMPDIR=$(pwd)/tmp`
   - `HOME=$(pwd)/tmp/swift-home`
-- **SwiftPM Logic**: Use `--disable-sandbox` and `--build-path ./tmp/swift-build` for all native builds.
+- **Swift Command Redirection**: When building or testing native components, always append:
+  - `--disable-sandbox`
+  - `--build-path ./tmp/swift-build`
+- **Prefer Makefile**: Use namespaced `make` targets (e.g., `make go/build`, `make native/check`) as they are already configured to respect these sandbox-friendly paths.
 
 ---
 
@@ -71,6 +73,6 @@ AI agents operate in a restricted sandbox. You MUST adhere to these path redirec
 
 To minimize redundancy, this project delegates foundational logic to the `agentic-core` extension:
 
-- **Shell Safety**: Strictly follow the high-precision piping patterns in the extension's `rules/shell-safety.md`.
+- **Shell Safety**: Strictly follow the shell safety protocols defined by the **agentic-core** extension.
 - **GitHub API**: Use the extension's `github-operations` skill for all GraphQL/Rest interactions.
 - **Review Protocol**: Follow the extension's `reviewer-role` SIGN-OFF protocol.
