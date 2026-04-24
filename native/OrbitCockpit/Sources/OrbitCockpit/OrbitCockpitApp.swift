@@ -68,13 +68,32 @@ struct TerminalHostView: View {
 
     var body: some View {
         VStack {
-            if let engine = terminalManager.engines[paneName] {
-                TerminalContainer(engine: engine, isFocused: true)
-            } else {
-                ProgressView("Launching \(paneName)...")
-                    .onAppear {
+            if let error = terminalManager.launchError {
+                VStack(spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.yellow)
+                    Text(error)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        terminalManager.launchError = nil
                         terminalManager.launch(paneName)
                     }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            } else if let engine = terminalManager.engines[paneName] {
+                TerminalContainer(engine: engine, isFocused: true)
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Initializing Engine...")
+                        .foregroundColor(.secondary)
+                }
+                .onAppear {
+                    terminalManager.launch(paneName)
+                }
             }
         }
         .navigationTitle(paneName)
@@ -84,6 +103,9 @@ struct TerminalHostView: View {
 @MainActor
 class TerminalManager: ObservableObject {
     @Published var engines: [String: OrbitTerminalEngine] = [:]
+    @Published var engineManager = NativeEngineManager()
+    @Published var launchError: String?
+
     private var isDark: Bool = true
 
     func updateTheme(isDark: Bool) {
@@ -94,24 +116,42 @@ class TerminalManager: ObservableObject {
     }
 
     func launch(_ name: String) {
-        let adapter = SwiftTermAdapter()
-        adapter.isDarkMode(isDark)
+        Task {
+            let adapter = SwiftTermAdapter()
+            adapter.isDarkMode(isDark)
 
-        // Robust binary resolution
-        if let executableURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
-            var args: [String] = []
-            if name == "TUI" {
-                args = []  // Normal TUI mode
+            // 1. Resolve binary
+            let executableURL: URL
+            if let auxURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
+                executableURL = auxURL
             } else {
-                args = ["agent", "--name", name]  // Conceptual agent mode
+                executableURL = URL(fileURLWithPath: "bin/gh-orbit")
             }
 
-            adapter.startProcess(executable: executableURL, args: args, environment: nil)
-            engines[name] = adapter
-        } else {
-            // Fallback for dev environment
-            let devPath = URL(fileURLWithPath: "bin/gh-orbit")
-            adapter.startProcess(executable: devPath, args: [], environment: nil)
+            guard FileManager.default.fileExists(atPath: executableURL.path) else {
+                self.launchError = "gh-orbit binary not found at \(executableURL.path)"
+                return
+            }
+
+            // 2. Ensure Engine is running
+            await engineManager.startEngine(executable: executableURL)
+
+            // 3. Launch TUI
+            var args: [String] = []
+            if name != "TUI" {
+                args = ["agent", "--name", name]
+            }
+
+            // Propagate environment including GH_TOKEN if available
+            var env = ProcessInfo.processInfo.environment
+            // Ensure XDG_RUNTIME_DIR is set so TUI finds the same socket
+            if env["XDG_RUNTIME_DIR"] == nil {
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
+                env["XDG_RUNTIME_DIR"] = home + "/.local/run"
+            }
+
+            adapter.startProcess(
+                executable: executableURL, args: args, environment: env.map { "\($0.key)=\($0.value)" })
             engines[name] = adapter
         }
     }
