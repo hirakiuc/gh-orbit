@@ -5,8 +5,8 @@ import Foundation
 @MainActor
 class ProcessSupervisor: ObservableObject {
     @Published var isRunning: Bool = false
-    @Published var exitCode: Int32? = nil
-    @Published var lastError: String? = nil
+    @Published var exitCode: Int32?
+    @Published var lastError: String?
 
     private var process: Process?
     private let outputPipe = Pipe()

@@ -104,7 +104,7 @@ struct TerminalHostView: View {
 class TerminalManager: ObservableObject {
     @Published var engines: [String: OrbitTerminalEngine] = [:]
     @Published var engineManager = NativeEngineManager()
-    @Published var launchError: String? = nil
+    @Published var launchError: String?
 
     private var isDark: Bool = true
 
