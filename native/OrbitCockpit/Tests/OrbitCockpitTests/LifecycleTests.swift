@@ -33,13 +33,11 @@ struct LifecycleTests {
     func testUDSRetryLogicFailure() async throws {
         // Use a path that will never exist to test timeout/retry failure
         let fakeSocket = "/tmp/non_existent_orbit_\(UUID().uuidString).sock"
-        let manager = NativeEngineManager(socketPath: fakeSocket)
+        // Optimize: use 1ms base delay and 5 attempts for fast testing (~60ms total)
+        let manager = NativeEngineManager(socketPath: fakeSocket, maxAttempts: 5, baseDelayNS: 1_000_000)
 
         #expect(!manager.isEngineReady)
 
-        // We use a non-existent binary to fail start but we want to test waitForSocket
-        // But startEngine guards with supervisor.isRunning
-        // Let's test the retry logic by using a binary that does nothing (like true)
         let trueURL = URL(fileURLWithPath: "/usr/bin/true")
 
         let startTime = Date()
@@ -47,7 +45,8 @@ struct LifecycleTests {
         let duration = Date().timeIntervalSince(startTime)
 
         #expect(!manager.isEngineReady)
-        // 10 attempts with exponential backoff should take at least a few hundred ms
-        #expect(duration > 0.5)
+        // 5 attempts with 1ms base should take at least ~60ms (2+4+8+16+32)
+        #expect(duration > 0.05)
     }
+
 }

@@ -7,7 +7,13 @@ class NativeEngineManager: ObservableObject {
     private var engineSupervisor = ProcessSupervisor()
     private var socketPath: String
 
-    init(socketPath: String? = nil) {
+    private let maxAttempts: Int
+    private let baseDelayNS: UInt64
+
+    init(socketPath: String? = nil, maxAttempts: Int = 10, baseDelayNS: UInt64 = 50_000_000) {
+        self.maxAttempts = maxAttempts
+        self.baseDelayNS = baseDelayNS
+
         if let socketPath = socketPath {
             self.socketPath = socketPath
         } else {
@@ -38,14 +44,13 @@ class NativeEngineManager: ObservableObject {
     }
 
     private func waitForSocket(path: String) async -> Bool {
-        let maxAttempts = 10
         for attempt in 1...maxAttempts {
             if FileManager.default.fileExists(atPath: path) {
                 // Attempt to probe the socket
                 return true
             }
             // Exponential backoff
-            let delay = UInt64(pow(2.0, Double(attempt)) * 50_000_000)  // nanoseconds
+            let delay = UInt64(pow(2.0, Double(attempt)) * Double(baseDelayNS))
             try? await Task.sleep(nanoseconds: delay)
         }
         return false
