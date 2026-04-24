@@ -119,6 +119,13 @@ func getSlogLevel(l string) slog.Level {
 	}
 }
 
+func resolveLogLevel(baseLevel string, isVerbose bool) slog.Level {
+	if isVerbose {
+		return slog.LevelDebug
+	}
+	return getSlogLevel(baseLevel)
+}
+
 func runDoctor() error {
 	if testMode {
 		return nil
@@ -477,7 +484,7 @@ type environment struct {
 
 func initEnvironment(ctx context.Context) (*environment, context.Context, error) {
 	level := &slog.LevelVar{}
-	level.Set(getSlogLevel(logLevel))
+	level.Set(resolveLogLevel(logLevel, verbose))
 	logger, logCleanup, err := config.SetupLogger(level)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error setting up logger: %w", err)
