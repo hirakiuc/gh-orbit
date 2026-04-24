@@ -132,7 +132,7 @@ func runDoctor() error {
 	}
 	ctx := context.Background()
 	level := &slog.LevelVar{}
-	level.Set(getSlogLevel(logLevel))
+	level.Set(resolveLogLevel(logLevel, verbose))
 
 	logger, logCleanup, err := config.SetupLogger(level)
 	if err != nil {
