@@ -42,7 +42,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	}
 	defer eng.Shutdown(ctx)
 
-	server := NewMCPServer(eng, socketPath, true) // insecureDev=true for testing
+	server := NewMCPServer(eng, socketPath, true, false) // insecureDev=true for testing
 
 	// Run server in background
 	errChan := make(chan error, 1)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,9 +28,18 @@ type MCPServer struct {
 	server      *server.MCPServer
 	socket      string
 	insecureDev bool
+	verbose     bool
 }
 
-func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool) *MCPServer {
+func (s *MCPServer) redact(msg string) string {
+	// Redact GitHub Tokens
+	// Patterns: ghp_..., github_pat_...
+	re := `(ghp_|github_pat_)[a-zA-Z0-9]+`
+	r := regexp.MustCompile(re)
+	return r.ReplaceAllString(msg, "[REDACTED]")
+}
+
+func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool, verbose bool) *MCPServer {
 	s := server.NewMCPServer(
 		"gh-orbit",
 		"0.1.0",
@@ -42,6 +52,7 @@ func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool) *MCPServ
 		server:      s,
 		socket:      socketPath,
 		insecureDev: insecure,
+		verbose:     verbose,
 	}
 
 	m.registerTools()
@@ -200,6 +211,9 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 			case notification := <-session.notifications:
 				data, err := json.Marshal(notification)
 				if err == nil {
+					if s.verbose {
+						s.engine.Logger.Debug("MCP notification", "msg", s.redact(string(data)))
+					}
 					session.writeMu.Lock()
 					_, _ = fmt.Fprintf(session.writer, "%s\n", data)
 					session.writeMu.Unlock()
@@ -218,6 +232,10 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 			break
 		}
 
+		if s.verbose {
+			s.engine.Logger.Debug("MCP request", "msg", s.redact(line))
+		}
+
 		var rawMessage json.RawMessage
 		if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
 			continue
@@ -227,6 +245,9 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 		if response != nil {
 			data, err := json.Marshal(response)
 			if err == nil {
+				if s.verbose {
+					s.engine.Logger.Debug("MCP response", "msg", s.redact(string(data)))
+				}
 				session.writeMu.Lock()
 				_, _ = fmt.Fprintf(session.writer, "%s\n", data)
 				session.writeMu.Unlock()

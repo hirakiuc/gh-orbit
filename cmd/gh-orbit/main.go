@@ -464,7 +464,7 @@ func runEngine(socketPath string, insecure bool) error {
 	}
 	defer eng.Shutdown(ctx)
 
-	server := engine.NewMCPServer(eng, socketPath, insecure)
+	server := engine.NewMCPServer(eng, socketPath, insecure, verbose)
 	return server.Serve(ctx)
 }
 
