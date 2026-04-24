@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
@@ -78,13 +80,10 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on UDS %s: %w", s.socket, err)
 	}
-	defer func() {
-		_ = l.Close()
-		_ = os.Remove(s.socket)
-	}()
 
 	// Secure the socket file immediately
 	if err := os.Chmod(s.socket, 0o600); err != nil {
+		_ = l.Close()
 		return fmt.Errorf("failed to secure socket file: %w", err)
 	}
 
@@ -102,15 +101,25 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	go s.eventLoop(ctx)
 
 	// 6. Connection Loop
+	done := make(chan struct{})
+	var isClosing atomic.Bool
+
 	go func() {
+		defer close(done)
 		for {
 			conn, err := secureListener.Accept()
 			if err != nil {
+				if isClosing.Load() || errors.Is(err, net.ErrClosed) {
+					return
+				}
+
 				select {
 				case <-ctx.Done():
 					return
 				default:
 					s.engine.Logger.ErrorContext(ctx, "failed to accept connection", "error", err)
+					// Small backoff to prevent log flooding
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 			}
@@ -119,13 +128,27 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 		}
 	}()
 
+	var serveErr error
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		serveErr = ctx.Err()
 	case sig := <-sigChan:
 		s.engine.Logger.InfoContext(ctx, "received signal, shutting down", "signal", sig)
-		return nil
 	}
+
+	// 7. Graceful Shutdown
+	isClosing.Store(true)
+	_ = l.Close()
+	_ = os.Remove(s.socket)
+
+	// Wait for connection loop to exit
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		s.engine.Logger.WarnContext(ctx, "connection loop did not exit gracefully")
+	}
+
+	return serveErr
 }
 
 func (s *MCPServer) eventLoop(ctx context.Context) {
