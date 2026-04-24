@@ -33,8 +33,8 @@ type MCPServer struct {
 
 func (s *MCPServer) redact(msg string) string {
 	// Redact GitHub Tokens
-	// Patterns: ghp_..., github_pat_...
-	re := `(ghp_|github_pat_)[a-zA-Z0-9]+`
+	// Patterns: ghp_..., gho_..., ghs_..., ghr_..., github_pat_...
+	re := `(ghp_|gho_|ghs_|ghr_|github_pat_)[a-zA-Z0-9]+`
 	r := regexp.MustCompile(re)
 	return r.ReplaceAllString(msg, "[REDACTED]")
 }

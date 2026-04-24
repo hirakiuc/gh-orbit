@@ -7,12 +7,16 @@ class NativeEngineManager: ObservableObject {
     private var engineSupervisor = ProcessSupervisor()
     private var socketPath: String
 
-    init() {
-        // Resolve socket path
-        let runtimeDir =
-            ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-            ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
-        self.socketPath = runtimeDir + "/engine.sock"
+    init(socketPath: String? = nil) {
+        if let socketPath = socketPath {
+            self.socketPath = socketPath
+        } else {
+            // Resolve socket path
+            let runtimeDir =
+                ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
+                ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
+            self.socketPath = runtimeDir + "/engine.sock"
+        }
     }
 
     func startEngine(executable: URL) async {
