@@ -21,21 +21,22 @@ struct PathResolver {
         fileSystem: FileSystem = RealFileSystem(),
         env: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
-
-        // 1. GH_ORBIT_BIN environment override
-        if let envPath = env["GH_ORBIT_BIN"], !envPath.isEmpty {
-            let url = URL(fileURLWithPath: envPath)
-            if fileSystem.fileExists(atPath: url.path) {
-                return url
-            }
-        }
-
-        // 2. App Bundle (Production)
+        // 1. App Bundle (Production Highest Priority - Prevents Hijacking)
         if let bundleURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
             return bundleURL
         }
 
-        // 3. Project Root (Debug/Development only)
+        // 2. GH_ORBIT_BIN environment override (Debug/Development Only)
+        #if DEBUG
+            if let envPath = env["GH_ORBIT_BIN"], !envPath.isEmpty {
+                let url = URL(fileURLWithPath: envPath)
+                if fileSystem.fileExists(atPath: url.path) {
+                    return url
+                }
+            }
+        #endif
+
+        // 3. Project Root (Debug/Development Only)
         #if DEBUG
             if let devURL = resolveDevBinary(fileSystem: fileSystem) {
                 return devURL

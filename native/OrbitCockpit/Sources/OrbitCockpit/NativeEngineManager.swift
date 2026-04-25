@@ -10,6 +10,9 @@ class NativeEngineManager: ObservableObject {
     private let maxAttempts: Int
     private let baseDelayNS: UInt64
 
+    // App Group for shared communication within Sandbox
+    private let appGroupID = "com.github.hirakiuc.gh-orbit"
+
     init(socketPath: String? = nil, maxAttempts: Int = 10, baseDelayNS: UInt64 = 50_000_000) {
         self.maxAttempts = maxAttempts
         self.baseDelayNS = baseDelayNS
@@ -17,11 +20,16 @@ class NativeEngineManager: ObservableObject {
         if let socketPath = socketPath {
             self.socketPath = socketPath
         } else {
-            // Resolve socket path
-            let runtimeDir =
-                ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-                ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
-            self.socketPath = runtimeDir + "/engine.sock"
+            // Resolve socket path: prioritize shared App Group container for Sandbox compliance
+            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
+                self.socketPath = groupURL.appendingPathComponent("engine.sock").path
+            } else {
+                // Fallback for non-sandboxed dev mode
+                let runtimeDir =
+                    ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
+                    ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
+                self.socketPath = runtimeDir + "/engine.sock"
+            }
         }
     }
 
@@ -46,7 +54,6 @@ class NativeEngineManager: ObservableObject {
     private func waitForSocket(path: String) async -> Bool {
         for attempt in 1...maxAttempts {
             if FileManager.default.fileExists(atPath: path) {
-                // Attempt to probe the socket
                 return true
             }
             // Exponential backoff

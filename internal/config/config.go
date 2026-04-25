@@ -7,10 +7,15 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
+
+// AppGroupID is the shared container ID for sandboxed communication on macOS.
+// This matches the entitlement in native/OrbitCockpit.
+const AppGroupID = "com.github.hirakiuc.gh-orbit"
 
 // Config represents the application configuration.
 type Config struct {
@@ -275,8 +280,40 @@ func AuditPermissions(ctx context.Context, logger *slog.Logger, root string) err
 	})
 }
 
-// ResolveConfigPath returns the path to config.yml (XDG_CONFIG_HOME/gh/extensions/gh-orbit).
+// isSandboxed returns true if the process is running within a macOS App Sandbox.
+func isSandboxed() bool {
+	return os.Getenv("APP_SANDBOX_CONTAINER_ID") != ""
+}
+
+// resolveAppGroupDir returns the path to the shared App Group container on macOS.
+func resolveAppGroupDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	// Shared App Group container path
+	return filepath.Join(home, "Library/Group Containers", AppGroupID), nil
+}
+
+// resolveDarwinAppSupport returns the sandboxed Application Support path.
+func resolveDarwinAppSupport() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Library/Application Support/gh-orbit"), nil
+}
+
+// ResolveConfigPath returns the path to config.yml.
 func ResolveConfigPath() (string, error) {
+	if runtime.GOOS == "darwin" && isSandboxed() {
+		dir, err := resolveDarwinAppSupport()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(dir, "config.yml"), nil
+	}
+
 	dir, err := resolveXDG("XDG_CONFIG_HOME", ".config")
 	if err != nil {
 		return "", err
@@ -284,8 +321,12 @@ func ResolveConfigPath() (string, error) {
 	return filepath.Join(dir, "gh", "extensions", "gh-orbit", "config.yml"), nil
 }
 
-// ResolveDataDir returns the path to the data directory (XDG_DATA_HOME).
+// ResolveDataDir returns the path to the data directory.
 func ResolveDataDir() (string, error) {
+	if runtime.GOOS == "darwin" && isSandboxed() {
+		return resolveAppGroupDir()
+	}
+
 	dir, err := resolveXDG("XDG_DATA_HOME", ".local/share")
 	if err != nil {
 		return "", err
@@ -293,8 +334,12 @@ func ResolveDataDir() (string, error) {
 	return filepath.Join(dir, "gh-orbit"), nil
 }
 
-// ResolveStateDir returns the path to the state directory (XDG_STATE_HOME).
+// ResolveStateDir returns the path to the state directory.
 func ResolveStateDir() (string, error) {
+	if runtime.GOOS == "darwin" && isSandboxed() {
+		return resolveAppGroupDir()
+	}
+
 	dir, err := resolveXDG("XDG_STATE_HOME", ".local/state")
 	if err != nil {
 		return "", err
@@ -302,7 +347,7 @@ func ResolveStateDir() (string, error) {
 	return filepath.Join(dir, "gh-orbit"), nil
 }
 
-// ResolveTracePath returns the path to orbit.traces.json (XDG_STATE_HOME/gh-orbit/orbit.traces.json).
+// ResolveTracePath returns the path to orbit.traces.json.
 func ResolveTracePath() (string, error) {
 	dir, err := ResolveStateDir()
 	if err != nil {

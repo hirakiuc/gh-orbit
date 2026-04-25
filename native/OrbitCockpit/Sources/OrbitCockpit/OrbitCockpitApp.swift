@@ -137,8 +137,12 @@ class TerminalManager: ObservableObject {
 
             // Propagate environment including GH_TOKEN if available
             var env = ProcessInfo.processInfo.environment
-            // Ensure XDG_RUNTIME_DIR is set so TUI finds the same socket
-            if env["XDG_RUNTIME_DIR"] == nil {
+
+            // Prioritize App Group container for Sandbox IPC
+            let appGroupID = "com.github.hirakiuc.gh-orbit"
+            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
+                env["XDG_RUNTIME_DIR"] = groupURL.path
+            } else if env["XDG_RUNTIME_DIR"] == nil {
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
                 env["XDG_RUNTIME_DIR"] = home + "/.local/run"
             }
