@@ -101,45 +101,33 @@ struct LifecycleTests {
         #expect(url5 == nil)  // Should not find the binary because search stops at go.mod
     }
 
-    @Test("ProcessSupervisor log publication")
-    func testLogPublication() async throws {
-        let supervisor = ProcessSupervisor()
+    @Test("ActivityMonitor aggregation and debouncing")
+    func testActivityMonitor() async throws {
+        let monitor = ActivityMonitor()
 
-        // Use /bin/echo to generate output
-        let echoURL = URL(fileURLWithPath: "/bin/echo")
-        try supervisor.start(executable: echoURL, arguments: ["hello-world"], environment: nil)
+        #expect(monitor.fullLog.isEmpty)
 
-        // Wait for process and debouncer (0.1s interval)
+        monitor.log(component: "[App]", message: "Launch started")
+
+        // Wait for debouncer (0.1s interval)
         for _ in 0..<20 {
-            if !supervisor.fullLog.isEmpty { break }
+            if !monitor.fullLog.isEmpty { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
 
-        #expect(supervisor.fullLog.contains("hello-world"))
-        supervisor.stop()
-    }
+        #expect(monitor.fullLog.contains("[App] Launch started"))
 
-    @Test("Manager log propagation")
-    func testManagerLogPropagation() async throws {
-        // Since we can't easily mock the internal supervisor in NativeEngineManager,
-        // we'll rely on the fact that NativeEngineManager starts an engine that prints to stderr.
-        // We'll use a fast-retry manager for testing.
-        let manager = NativeEngineManager(maxAttempts: 2, baseDelayNS: 10_000_000)
+        // Test multi-source aggregation
+        monitor.log(component: "[Engine]", message: "Engine started")
 
-        // We use a binary that just prints something to stderr
-        let bashURL = URL(fileURLWithPath: "/bin/bash")
-        await manager.startEngine(executable: bashURL)
-
-        // NativeEngineManager currently starts the process with "engine" argument
-        // bash -c "echo error >&2" would be better but startEngine signature is fixed.
-        // But even if bash fails (command not found), it prints to stderr.
-
+        // Wait for debouncer again
         for _ in 0..<20 {
-            if !manager.engineLog.isEmpty { break }
+            if monitor.fullLog.contains("[Engine]") { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
 
-        #expect(!manager.engineLog.isEmpty)
-        manager.stopEngine()
+        let logs = monitor.getLogs()
+        #expect(logs.contains("[App] Launch started"))
+        #expect(logs.contains("[Engine] Engine started"))
     }
 }

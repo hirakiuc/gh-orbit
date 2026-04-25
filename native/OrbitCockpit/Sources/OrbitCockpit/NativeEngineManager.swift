@@ -6,9 +6,6 @@ import Foundation
 class NativeEngineManager: ObservableObject {
     @Published var isEngineReady: Bool = false
 
-    /// The log stream from the underlying engine process.
-    @Published var engineLog: String = ""
-
     private var engineSupervisor = ProcessSupervisor()
     private var socketPath: String
 
@@ -18,9 +15,12 @@ class NativeEngineManager: ObservableObject {
     // App Group for shared communication within Sandbox
     private let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
 
-    private var cancellables = Set<AnyCancellable>()
-
-    init(socketPath: String? = nil, maxAttempts: Int = 10, baseDelayNS: UInt64 = 50_000_000) {
+    init(
+        socketPath: String? = nil,
+        maxAttempts: Int = 10,
+        baseDelayNS: UInt64 = 50_000_000,
+        onLog: ((String) -> Void)? = nil
+    ) {
         self.maxAttempts = maxAttempts
         self.baseDelayNS = baseDelayNS
 
@@ -39,14 +39,10 @@ class NativeEngineManager: ObservableObject {
             }
         }
 
-        // Bind logs from supervisor to our published property using explicit sink
-        // to ensure MainActor safety and prevent reference cycles.
-        engineSupervisor.$fullLog
-            .receive(on: RunLoop.main)
-            .sink { [weak self] logs in
-                self?.engineLog = logs
-            }
-            .store(in: &cancellables)
+        // Set the supervisor's logging closure
+        engineSupervisor.onLog = { message in
+            onLog?(message)
+        }
     }
 
     func startEngine(executable: URL) async {

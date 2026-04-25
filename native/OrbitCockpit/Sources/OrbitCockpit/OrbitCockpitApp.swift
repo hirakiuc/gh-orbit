@@ -4,9 +4,19 @@ import SwiftUI
 @main
 @MainActor
 struct OrbitCockpitApp: App {
+    @StateObject private var activityMonitor = ActivityMonitor()
+
+    init() {
+        // App Lifecycle Logging (Safe: No environment variables exposed)
+        let monitor = ActivityMonitor()
+        monitor.log(component: "[App]", message: "Launched Orbit Cockpit")
+        _activityMonitor = StateObject(wrappedValue: monitor)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(activityMonitor)
         }
     }
 }
@@ -16,6 +26,7 @@ struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
     @State private var showDebugLogs: Bool = false
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var activityMonitor: ActivityMonitor
 
     // In a real app, these would be managed in a ViewModel/Store
     @StateObject private var terminalManager = TerminalManager()
@@ -37,7 +48,7 @@ struct ContentView: View {
 
                 if showDebugLogs {
                     Divider()
-                    LogConsoleView(logs: terminalManager.engineManager.engineLog)
+                    LogConsoleView(logs: activityMonitor.fullLog)
                         .frame(height: 200)
                 }
             }
@@ -48,7 +59,7 @@ struct ContentView: View {
                     Label("Debug Logs", systemImage: "ladybug")
                         .foregroundColor(showDebugLogs ? .accentColor : .secondary)
                 }
-                .help("Toggle Engine Debug Logs")
+                .help("Toggle Activity Monitor")
             }
         }
         .onChange(of: colorScheme) { _, newValue in
@@ -56,6 +67,8 @@ struct ContentView: View {
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
+            // Inject the monitor into the manager
+            terminalManager.setMonitor(activityMonitor)
         }
     }
 }
@@ -72,7 +85,7 @@ struct Sidebar: View {
                     Label("TUI", systemImage: "terminal")
                     Spacer()
                     Circle()
-                        .fill(terminalManager.engineManager.isEngineReady ? Color.green : Color.yellow)
+                        .fill(terminalManager.engineManager?.isEngineReady == true ? Color.green : Color.yellow)
                         .frame(width: 8, height: 8)
                 }
                 .tag("TUI")
@@ -131,18 +144,28 @@ struct TerminalHostView: View {
 @MainActor
 class TerminalManager: ObservableObject {
     @Published var engines: [String: OrbitTerminalEngine] = [:]
-    @Published var engineManager = NativeEngineManager()
+    @Published var engineManager: NativeEngineManager?
     @Published var launchError: String?
 
     private var isDark: Bool = true
     private var cancellables = Set<AnyCancellable>()
 
-    init() {
-        engineManager.objectWillChange
+    init() {}
+
+    func setMonitor(_ monitor: ActivityMonitor) {
+        guard engineManager == nil else { return }
+
+        let newManager = NativeEngineManager(onLog: { msg in
+            monitor.log(component: "[Engine]", message: msg)
+        })
+
+        newManager.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        self.engineManager = newManager
     }
 
     func updateTheme(isDark: Bool) {
@@ -164,7 +187,9 @@ class TerminalManager: ObservableObject {
             }
 
             // 2. Ensure Engine is running
-            await engineManager.startEngine(executable: executableURL)
+            if let engineMgr = engineManager {
+                await engineMgr.startEngine(executable: executableURL)
+            }
 
             // 3. Launch TUI
             var args: [String] = []
