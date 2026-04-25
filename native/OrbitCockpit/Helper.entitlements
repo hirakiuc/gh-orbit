@@ -6,9 +6,5 @@
     <true/>
     <key>com.apple.security.inherit</key>
     <true/>
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>$(TEAM_ID).group.com.hirakiuc.gh-orbit.cockpit</string>
-    </array>
 </dict>
 </plist>

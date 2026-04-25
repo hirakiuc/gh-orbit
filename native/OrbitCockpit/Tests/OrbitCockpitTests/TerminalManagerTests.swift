@@ -10,14 +10,16 @@ struct TerminalManagerTests {
     @Test("Manager initial state")
     @MainActor
     func testInitialization() async throws {
-        let manager = TerminalManager()
+        let monitor = ActivityMonitor()
+        let manager = TerminalManager(monitor: monitor)
         #expect(manager.engines.isEmpty)
     }
 
     @Test("Engine mapping preservation")
     @MainActor
     func testEngineStorage() async throws {
-        let manager = TerminalManager()
+        let monitor = ActivityMonitor()
+        let manager = TerminalManager(monitor: monitor)
         let mockEngine = SwiftTermAdapter()
 
         manager.engines["TUI"] = mockEngine
@@ -28,9 +30,8 @@ struct TerminalManagerTests {
     @Test("Nested State Propagation")
     @MainActor
     func testNestedStatePropagation() async throws {
-        let manager = TerminalManager()
         let monitor = ActivityMonitor()
-        manager.setMonitor(monitor)
+        let manager = TerminalManager(monitor: monitor)
 
         var didFire = false
 
