@@ -13,6 +13,7 @@ struct OrbitCockpitApp: App {
 @MainActor
 struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
+    @State private var showDebugLogs: Bool = false
     @Environment(\.colorScheme) var colorScheme
 
     // In a real app, these would be managed in a ViewModel/Store
@@ -21,13 +22,32 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             Sidebar(selectedPane: $selectedPane)
+                .environmentObject(terminalManager)
         } detail: {
-            if let selectedPane = selectedPane {
-                TerminalHostView(paneName: selectedPane)
-                    .environmentObject(terminalManager)
-            } else {
-                Text("Select a pane")
-                    .foregroundColor(.secondary)
+            VStack(spacing: 0) {
+                if let selectedPane = selectedPane {
+                    TerminalHostView(paneName: selectedPane)
+                        .environmentObject(terminalManager)
+                } else {
+                    Text("Select a pane")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                if showDebugLogs {
+                    Divider()
+                    LogConsoleView(logs: terminalManager.engineManager.engineLog)
+                        .frame(height: 200)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button(action: { showDebugLogs.toggle() }) {
+                    Label("Debug Logs", systemImage: "ladybug")
+                        .foregroundColor(showDebugLogs ? .accentColor : .secondary)
+                }
+                .help("Toggle Engine Debug Logs")
             }
         }
         .onChange(of: colorScheme) { _, newValue in
@@ -42,12 +62,19 @@ struct ContentView: View {
 @MainActor
 struct Sidebar: View {
     @Binding var selectedPane: String?
+    @EnvironmentObject var terminalManager: TerminalManager
 
     var body: some View {
         List(selection: $selectedPane) {
             Section("Triage") {
-                Label("TUI", systemImage: "terminal")
-                    .tag("TUI")
+                HStack {
+                    Label("TUI", systemImage: "terminal")
+                    Spacer()
+                    Circle()
+                        .fill(terminalManager.engineManager.isEngineReady ? Color.green : Color.yellow)
+                        .frame(width: 8, height: 8)
+                }
+                .tag("TUI")
             }
 
             Section("AI Agents") {
