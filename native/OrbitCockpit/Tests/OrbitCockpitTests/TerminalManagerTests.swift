@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 
@@ -22,5 +23,24 @@ struct TerminalManagerTests {
         manager.engines["TUI"] = mockEngine
         let stored = try #require(manager.engines["TUI"])
         #expect(stored === mockEngine)
+    }
+
+    @Test("Nested State Propagation")
+    @MainActor
+    func testNestedStatePropagation() async throws {
+        let manager = TerminalManager()
+        var didFire = false
+
+        let cancellable = manager.objectWillChange.sink { _ in
+            didFire = true
+        }
+
+        manager.engineManager.engineLog = "Test log entry"
+
+        // Yield to allow Combine to process the event
+        try await Task.sleep(nanoseconds: 10_000_000)
+
+        #expect(didFire)
+        cancellable.cancel()
     }
 }
