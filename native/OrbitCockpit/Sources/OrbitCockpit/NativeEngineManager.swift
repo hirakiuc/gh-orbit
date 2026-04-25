@@ -11,7 +11,7 @@ class NativeEngineManager: ObservableObject {
     private let baseDelayNS: UInt64
 
     // App Group for shared communication within Sandbox
-    private let appGroupID = "com.github.hirakiuc.gh-orbit"
+    private let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
 
     init(socketPath: String? = nil, maxAttempts: Int = 10, baseDelayNS: UInt64 = 50_000_000) {
         self.maxAttempts = maxAttempts

@@ -15,7 +15,7 @@ import (
 
 // AppGroupID is the shared container ID for sandboxed communication on macOS.
 // This matches the entitlement in native/OrbitCockpit.
-const AppGroupID = "com.github.hirakiuc.gh-orbit"
+const AppGroupID = "com.hirakiuc.gh-orbit.cockpit"
 
 // Config represents the application configuration.
 type Config struct {

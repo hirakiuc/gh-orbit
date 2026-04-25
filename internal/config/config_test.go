@@ -214,7 +214,7 @@ func TestResolvePaths_Sandbox(t *testing.T) {
 	})
 
 	t.Run("Sandboxed Resolution", func(t *testing.T) {
-		t.Setenv("APP_SANDBOX_CONTAINER_ID", "com.github.hirakiuc.gh-orbit")
+		t.Setenv("APP_SANDBOX_CONTAINER_ID", "com.hirakiuc.gh-orbit.cockpit")
 
 		// In sandbox, ResolveStateDir and ResolveDataDir should point to Library/Group Containers
 		state, err := ResolveStateDir()
