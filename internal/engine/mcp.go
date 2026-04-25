@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -31,14 +31,6 @@ type MCPServer struct {
 	socket      string
 	insecureDev bool
 	verbose     bool
-}
-
-func (s *MCPServer) redact(msg string) string {
-	// Redact GitHub Tokens
-	// Patterns: ghp_..., gho_..., ghs_..., ghr_..., github_pat_...
-	re := `(ghp_|gho_|ghs_|ghr_|github_pat_)[a-zA-Z0-9]+`
-	r := regexp.MustCompile(re)
-	return r.ReplaceAllString(msg, "[REDACTED]")
 }
 
 func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool, verbose bool) *MCPServer {
@@ -235,7 +227,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 				data, err := json.Marshal(notification)
 				if err == nil {
 					if s.verbose {
-						s.engine.Logger.Debug("MCP notification", "msg", s.redact(string(data)))
+						s.engine.Logger.Debug("MCP notification", "msg", config.RedactSecrets(string(data)))
 					}
 					session.writeMu.Lock()
 					_, _ = fmt.Fprintf(session.writer, "%s\n", data)
@@ -256,7 +248,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 
 		if s.verbose {
-			s.engine.Logger.Debug("MCP request", "msg", s.redact(line))
+			s.engine.Logger.Debug("MCP request", "msg", config.RedactSecrets(line))
 		}
 
 		var rawMessage json.RawMessage
@@ -269,7 +261,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 			data, err := json.Marshal(response)
 			if err == nil {
 				if s.verbose {
-					s.engine.Logger.Debug("MCP response", "msg", s.redact(string(data)))
+					s.engine.Logger.Debug("MCP response", "msg", config.RedactSecrets(string(data)))
 				}
 				session.writeMu.Lock()
 				_, _ = fmt.Fprintf(session.writer, "%s\n", data)
