@@ -8,7 +8,7 @@
     <true/>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>$(TEAM_ID).group.com.github.hirakiuc.gh-orbit</string>
+        <string>$(TEAM_ID).group.com.hirakiuc.gh-orbit.cockpit</string>
     </array>
 </dict>
 </plist>

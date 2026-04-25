@@ -139,7 +139,7 @@ class TerminalManager: ObservableObject {
             var env = ProcessInfo.processInfo.environment
 
             // Prioritize App Group container for Sandbox IPC
-            let appGroupID = "com.github.hirakiuc.gh-orbit"
+            let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
             if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
                 env["XDG_RUNTIME_DIR"] = groupURL.path
             } else if env["XDG_RUNTIME_DIR"] == nil {
