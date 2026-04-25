@@ -4,32 +4,32 @@ import SwiftUI
 @main
 @MainActor
 struct OrbitCockpitApp: App {
-    @StateObject private var activityMonitor = ActivityMonitor()
+    @StateObject private var activityMonitor: ActivityMonitor
+    @StateObject private var terminalManager: TerminalManager
 
     init() {
         // App Lifecycle Logging (Safe: No environment variables exposed)
         let monitor = ActivityMonitor()
         monitor.log(component: "[App]", message: "Launched Orbit Cockpit")
         _activityMonitor = StateObject(wrappedValue: monitor)
+        _terminalManager = StateObject(wrappedValue: TerminalManager(monitor: monitor))
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(activityMonitor)
+                .environmentObject(terminalManager)
         }
     }
 }
-
 @MainActor
 struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
     @State private var showDebugLogs: Bool = false
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var activityMonitor: ActivityMonitor
-
-    // In a real app, these would be managed in a ViewModel/Store
-    @StateObject private var terminalManager = TerminalManager()
+    @EnvironmentObject var terminalManager: TerminalManager
 
     var body: some View {
         NavigationSplitView {
@@ -67,8 +67,6 @@ struct ContentView: View {
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
-            // Inject the monitor into the manager
-            terminalManager.setMonitor(activityMonitor)
         }
     }
 }
@@ -150,11 +148,7 @@ class TerminalManager: ObservableObject {
     private var isDark: Bool = true
     private var cancellables = Set<AnyCancellable>()
 
-    init() {}
-
-    func setMonitor(_ monitor: ActivityMonitor) {
-        guard engineManager == nil else { return }
-
+    init(monitor: ActivityMonitor) {
         let newManager = NativeEngineManager(onLog: { msg in
             monitor.log(component: "[Engine]", message: msg)
         })
