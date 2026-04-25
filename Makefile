@@ -118,13 +118,17 @@ native/build: go/build
 	cp bin/$(BINARY_NAME) bin/$(COCKPIT_NAME).app/Contents/Helpers/
 	# 3. Bundle Metadata
 	cp native/OrbitCockpit/Resources/Info.plist bin/$(COCKPIT_NAME).app/Contents/
-	# 4. Ad-hoc Sign everything
+	# 4. Inside-out Signing (Helper first, then App)
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		echo "Signing Cockpit bundle components..."; \
-		codesign -f -s - -i gh-orbit-cli bin/$(COCKPIT_NAME).app/Contents/Helpers/$(BINARY_NAME); \
-		codesign -f -s - -i gh-orbit-cockpit bin/$(COCKPIT_NAME).app/Contents/MacOS/$(COCKPIT_NAME); \
+		echo "Signing Cockpit bundle components (inside-out)..."; \
+		codesign -f -s - --options runtime --entitlements native/OrbitCockpit/Helper.entitlements -i com.github.hirakiuc.gh-orbit.helper bin/$(COCKPIT_NAME).app/Contents/Helpers/$(BINARY_NAME); \
+		codesign -f -s - --options runtime --entitlements native/OrbitCockpit/OrbitCockpit.entitlements -i com.github.hirakiuc.gh-orbit bin/$(COCKPIT_NAME).app/Contents/MacOS/$(COCKPIT_NAME); \
 	fi
 	@echo "Orbit Cockpit ready at bin/$(COCKPIT_NAME).app"
+
+.PHONY: native/dist
+native/dist: native/build ## Verify bundle integrity
+	codesign -vvv --deep --strict bin/$(COCKPIT_NAME).app
 
 native/test:
 	@echo "Running Swift tests..."

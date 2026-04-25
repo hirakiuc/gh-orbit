@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -196,4 +197,37 @@ func TestConfig_AuditPermissions(t *testing.T) {
 	fInfo, err := os.Stat(fPath)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), fInfo.Mode().Perm())
+}
+
+func TestResolvePaths_Sandbox(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Sandbox path resolution is only applicable on Darwin")
+	}
+
+	t.Run("Standard (XDG) Resolution", func(t *testing.T) {
+		t.Setenv("APP_SANDBOX_CONTAINER_ID", "")
+		t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
+
+		path, err := ResolveConfigPath()
+		require.NoError(t, err)
+		assert.Contains(t, path, "/tmp/xdg")
+	})
+
+	t.Run("Sandboxed Resolution", func(t *testing.T) {
+		t.Setenv("APP_SANDBOX_CONTAINER_ID", "com.github.hirakiuc.gh-orbit")
+
+		// In sandbox, ResolveStateDir and ResolveDataDir should point to Library/Group Containers
+		state, err := ResolveStateDir()
+		require.NoError(t, err)
+		assert.Contains(t, state, "Library/Group Containers/"+AppGroupID)
+
+		data, err := ResolveDataDir()
+		require.NoError(t, err)
+		assert.Contains(t, data, "Library/Group Containers/"+AppGroupID)
+
+		// Config should point to Library/Application Support
+		config, err := ResolveConfigPath()
+		require.NoError(t, err)
+		assert.Contains(t, config, "Library/Application Support/gh-orbit")
+	})
 }

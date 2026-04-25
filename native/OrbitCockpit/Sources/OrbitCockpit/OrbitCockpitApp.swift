@@ -121,15 +121,8 @@ class TerminalManager: ObservableObject {
             adapter.isDarkMode(isDark)
 
             // 1. Resolve binary
-            let executableURL: URL
-            if let auxURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
-                executableURL = auxURL
-            } else {
-                executableURL = URL(fileURLWithPath: "bin/gh-orbit")
-            }
-
-            guard FileManager.default.fileExists(atPath: executableURL.path) else {
-                self.launchError = "gh-orbit binary not found at \(executableURL.path)"
+            guard let executableURL = PathResolver.resolveBinary() else {
+                self.launchError = "gh-orbit binary not found. Please ensure it's in your PATH or set GH_ORBIT_BIN."
                 return
             }
 
@@ -144,8 +137,12 @@ class TerminalManager: ObservableObject {
 
             // Propagate environment including GH_TOKEN if available
             var env = ProcessInfo.processInfo.environment
-            // Ensure XDG_RUNTIME_DIR is set so TUI finds the same socket
-            if env["XDG_RUNTIME_DIR"] == nil {
+
+            // Prioritize App Group container for Sandbox IPC
+            let appGroupID = "com.github.hirakiuc.gh-orbit"
+            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
+                env["XDG_RUNTIME_DIR"] = groupURL.path
+            } else if env["XDG_RUNTIME_DIR"] == nil {
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
                 env["XDG_RUNTIME_DIR"] = home + "/.local/run"
             }
