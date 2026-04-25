@@ -101,4 +101,21 @@ struct LifecycleTests {
         #expect(url5 == nil)  // Should not find the binary because search stops at go.mod
     }
 
+    @Test("ProcessSupervisor log publication")
+    func testLogPublication() async throws {
+        let supervisor = ProcessSupervisor()
+
+        // Use /bin/echo to generate output
+        let echoURL = URL(fileURLWithPath: "/bin/echo")
+        try supervisor.start(executable: echoURL, arguments: ["hello-world"], environment: nil)
+
+        // Wait for process and debouncer (0.1s interval)
+        for _ in 0..<20 {
+            if !supervisor.fullLog.isEmpty { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        #expect(supervisor.fullLog.contains("hello-world"))
+        supervisor.stop()
+    }
 }

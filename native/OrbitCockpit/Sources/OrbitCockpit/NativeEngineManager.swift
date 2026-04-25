@@ -1,9 +1,14 @@
+import Combine
 import Foundation
 
 /// NativeEngineManager manages the persistent gh-orbit engine process.
 @MainActor
 class NativeEngineManager: ObservableObject {
     @Published var isEngineReady: Bool = false
+
+    /// The log stream from the underlying engine process.
+    @Published var engineLog: String = ""
+
     private var engineSupervisor = ProcessSupervisor()
     private var socketPath: String
 
@@ -12,6 +17,8 @@ class NativeEngineManager: ObservableObject {
 
     // App Group for shared communication within Sandbox
     private let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
+
+    private var cancellables = Set<AnyCancellable>()
 
     init(socketPath: String? = nil, maxAttempts: Int = 10, baseDelayNS: UInt64 = 50_000_000) {
         self.maxAttempts = maxAttempts
@@ -31,6 +38,11 @@ class NativeEngineManager: ObservableObject {
                 self.socketPath = runtimeDir + "/engine.sock"
             }
         }
+
+        // Bind logs from supervisor to our published property
+        engineSupervisor.$fullLog
+            .assign(to: \.engineLog, on: self)
+            .store(in: &cancellables)
     }
 
     func startEngine(executable: URL) async {
