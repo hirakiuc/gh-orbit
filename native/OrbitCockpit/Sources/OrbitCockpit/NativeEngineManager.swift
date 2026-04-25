@@ -48,7 +48,7 @@ class NativeEngineManager: ObservableObject {
         }
     }
 
-    func startEngine(executable: URL) async {
+    func startEngine(executable: URL, environment: [String: String]? = nil) async {
         guard !engineSupervisor.isRunning else { return }
 
         do {
@@ -57,7 +57,7 @@ class NativeEngineManager: ObservableObject {
             try engineSupervisor.start(
                 executable: executable,
                 arguments: ["engine", "--socket", socketPath, "--insecure-dev"],
-                environment: nil
+                environment: environment
             )
 
             // Wait for socket to appear with retries
