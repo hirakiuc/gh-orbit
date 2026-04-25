@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 @main
@@ -134,6 +135,15 @@ class TerminalManager: ObservableObject {
     @Published var launchError: String?
 
     private var isDark: Bool = true
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        engineManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+    }
 
     func updateTheme(isDark: Bool) {
         self.isDark = isDark

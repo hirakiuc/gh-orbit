@@ -58,10 +58,10 @@ struct PathResolver {
             }
         #endif
 
-        // 5. Standard Absolute Fallbacks
+        // 4. Standard Absolute Fallbacks
         let fallbacks = [
             "/usr/local/bin/gh-orbit",
-            "/opt/homebrew/bin/gh-orbit",
+            "/opt/homebrew/bin/gh-orbit"
         ]
         for path in fallbacks {
             let url = URL(fileURLWithPath: path)

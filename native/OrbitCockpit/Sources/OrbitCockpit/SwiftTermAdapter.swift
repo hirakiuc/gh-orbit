@@ -69,7 +69,10 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     }
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
-        // Implementation
+        let code = exitCode ?? -1
+        let message = "\r\n\r\n[Process terminated with exit code \(code)]\r\n"
+        let bytes = [UInt8](message.utf8)
+        source.feed(byteArray: bytes[...])
     }
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
