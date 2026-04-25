@@ -49,4 +49,11 @@ struct LifecycleTests {
         #expect(duration > 0.05)
     }
 
+    @Test("PathResolver binary discovery")
+    func testResolveBinary() async throws {
+        let url = PathResolver.resolveBinary()
+        if let binURL = url {
+            #expect(binURL.path.contains("gh-orbit"))
+        }
+    }
 }
