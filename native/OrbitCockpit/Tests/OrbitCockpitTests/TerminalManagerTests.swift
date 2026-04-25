@@ -29,13 +29,16 @@ struct TerminalManagerTests {
     @MainActor
     func testNestedStatePropagation() async throws {
         let manager = TerminalManager()
+        let monitor = ActivityMonitor()
+        manager.setMonitor(monitor)
+
         var didFire = false
 
         let cancellable = manager.objectWillChange.sink { _ in
             didFire = true
         }
 
-        manager.engineManager.engineLog = "Test log entry"
+        manager.engineManager?.isEngineReady = true
 
         // Yield to allow Combine to process the event
         try await Task.sleep(nanoseconds: 10_000_000)
