@@ -90,11 +90,17 @@ class ProcessSupervisor: ObservableObject {
     }
 
     private func appendLog(_ line: String) {
+        let isFirstLog = logBuffer.isEmpty
         logBuffer.append(line)
         if logBuffer.count > maxLogLines {
             logBuffer.removeFirst()
         }
-        pendingLogs = true
+
+        if isFirstLog {
+            publishLogs()
+        } else {
+            pendingLogs = true
+        }
     }
 
     private func startLogTimer() {

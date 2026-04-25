@@ -118,4 +118,28 @@ struct LifecycleTests {
         #expect(supervisor.fullLog.contains("hello-world"))
         supervisor.stop()
     }
+
+    @Test("Manager log propagation")
+    func testManagerLogPropagation() async throws {
+        // Since we can't easily mock the internal supervisor in NativeEngineManager,
+        // we'll rely on the fact that NativeEngineManager starts an engine that prints to stderr.
+        // We'll use a fast-retry manager for testing.
+        let manager = NativeEngineManager(maxAttempts: 2, baseDelayNS: 10_000_000)
+
+        // We use a binary that just prints something to stderr
+        let bashURL = URL(fileURLWithPath: "/bin/bash")
+        await manager.startEngine(executable: bashURL)
+
+        // NativeEngineManager currently starts the process with "engine" argument
+        // bash -c "echo error >&2" would be better but startEngine signature is fixed.
+        // But even if bash fails (command not found), it prints to stderr.
+
+        for _ in 0..<20 {
+            if !manager.engineLog.isEmpty { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        #expect(!manager.engineLog.isEmpty)
+        manager.stopEngine()
+    }
 }
