@@ -10,7 +10,7 @@ struct OrbitCockpitApp: App {
     init() {
         // App Lifecycle Logging (Safe: No environment variables exposed)
         let monitor = ActivityMonitor()
-        monitor.log(component: "[App]", message: "Launched Orbit Cockpit")
+        monitor.log(component: "[App]", level: .info, message: "Launched Orbit Cockpit")
         _activityMonitor = StateObject(wrappedValue: monitor)
         _terminalManager = StateObject(wrappedValue: TerminalManager(monitor: monitor))
     }
@@ -23,6 +23,7 @@ struct OrbitCockpitApp: App {
         }
     }
 }
+
 @MainActor
 struct ContentView: View {
     @State private var selectedPane: String? = "TUI"
@@ -48,7 +49,7 @@ struct ContentView: View {
 
                 if showDebugLogs {
                     Divider()
-                    LogConsoleView(logs: activityMonitor.fullLog)
+                    LogConsoleView(logs: activityMonitor.logs)
                         .frame(height: 200)
                 }
             }
@@ -147,10 +148,16 @@ class TerminalManager: ObservableObject {
 
     private var isDark: Bool = true
     private var cancellables = Set<AnyCancellable>()
+    private var onLog: ((String, LogLevel) -> Void)?
 
     init(monitor: ActivityMonitor) {
-        let newManager = NativeEngineManager(onLog: { msg in
-            monitor.log(component: "[Engine]", message: msg)
+        let logFunc: (String, LogLevel) -> Void = { msg, level in
+            monitor.log(component: "[App]", level: level, message: msg)
+        }
+        self.onLog = logFunc
+
+        let newManager = NativeEngineManager(onLog: { msg, level in
+            monitor.log(component: "[Engine]", level: level, message: msg)
         })
 
         newManager.objectWillChange
@@ -174,14 +181,18 @@ class TerminalManager: ObservableObject {
             let adapter = SwiftTermAdapter()
             adapter.isDarkMode(isDark)
 
+            onLog?("Resolving gh-orbit binary...", .debug)
             // 1. Resolve binary
-            guard let executableURL = PathResolver.resolveBinary() else {
+            guard let executableURL = PathResolver.resolveBinary(onLog: onLog) else {
+                onLog?("gh-orbit binary not found. Launch aborted.", .error)
                 self.launchError = "gh-orbit binary not found. Please ensure it's in your PATH or set GH_ORBIT_BIN."
                 return
             }
+            onLog?("Final binary resolved to: \(executableURL.path)", .debug)
 
             // 2. Ensure Engine is running
             if let engineMgr = engineManager {
+                onLog?("Delegating to NativeEngineManager to start background engine...", .debug)
                 await engineMgr.startEngine(executable: executableURL)
             }
 
@@ -198,11 +209,14 @@ class TerminalManager: ObservableObject {
             let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
             if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
                 env["XDG_RUNTIME_DIR"] = groupURL.path
+                onLog?("Set TUI XDG_RUNTIME_DIR to App Group container: \(groupURL.path)", .debug)
             } else if env["XDG_RUNTIME_DIR"] == nil {
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
                 env["XDG_RUNTIME_DIR"] = home + "/.local/run"
+                onLog?("Set TUI XDG_RUNTIME_DIR to Fallback: \(home)/.local/run", .debug)
             }
 
+            onLog?("Launching TUI process with args: \(args)", .debug)
             adapter.startProcess(
                 executable: executableURL, args: args, environment: env.map { "\($0.key)=\($0.value)" })
             engines[name] = adapter

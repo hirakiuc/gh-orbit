@@ -19,24 +19,27 @@ struct RealFileSystem: FileSystem {
 struct PathResolver {
     static func resolveBinary(
         fileSystem: FileSystem = RealFileSystem(),
-        env: [String: String] = ProcessInfo.processInfo.environment
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        onLog: ((String, LogLevel) -> Void)? = nil
     ) -> URL? {
+        onLog?("Starting binary resolution...", .debug)
 
         // 1. App Bundle (Production Highest Priority - Prevents Hijacking)
-        // Standard API lookup
         if let bundleURL = Bundle.main.url(forAuxiliaryExecutable: "gh-orbit") {
+            onLog?("Found binary via Bundle.main at: \(bundleURL.path)", .debug)
             return bundleURL
         }
 
         // 2. Manual Bundle Lookup Fallback (Defensive)
-        // If we are running from a bundle but standard API fails, look relative to executable
         if let executableURL = Bundle.main.executableURL {
             let helpersURL =
                 executableURL
                 .deletingLastPathComponent()  // MacOS
                 .deletingLastPathComponent()  // Contents
                 .appendingPathComponent("Helpers/gh-orbit")
+            onLog?("Checking manual fallback at: \(helpersURL.path)", .debug)
             if fileSystem.fileExists(atPath: helpersURL.path) {
+                onLog?("Found binary via manual fallback at: \(helpersURL.path)", .debug)
                 return helpersURL
             }
         }
@@ -45,7 +48,9 @@ struct PathResolver {
         #if DEBUG
             if let envPath = env["GH_ORBIT_BIN"], !envPath.isEmpty {
                 let url = URL(fileURLWithPath: envPath)
+                onLog?("Checking GH_ORBIT_BIN at: \(url.path)", .debug)
                 if fileSystem.fileExists(atPath: url.path) {
+                    onLog?("Found binary via GH_ORBIT_BIN at: \(url.path)", .debug)
                     return url
                 }
             }
@@ -53,49 +58,54 @@ struct PathResolver {
 
         // 4. Project Root (Debug/Development Only)
         #if DEBUG
-            if let devURL = resolveDevBinary(fileSystem: fileSystem) {
+            if let devURL = resolveDevBinary(fileSystem: fileSystem, onLog: onLog) {
                 return devURL
             }
         #endif
 
-        // 4. Standard Absolute Fallbacks
+        // 5. Standard Absolute Fallbacks
         let fallbacks = [
             "/usr/local/bin/gh-orbit",
             "/opt/homebrew/bin/gh-orbit",
         ]
         for path in fallbacks {
             let url = URL(fileURLWithPath: path)
+            onLog?("Checking absolute fallback at: \(url.path)", .debug)
             if fileSystem.fileExists(atPath: url.path) {
+                onLog?("Found binary via fallback at: \(url.path)", .debug)
                 return url
             }
         }
 
+        onLog?("Failed to find gh-orbit binary.", .error)
         return nil
     }
 
     #if DEBUG
-        private static func resolveDevBinary(fileSystem: FileSystem) -> URL? {
+        private static func resolveDevBinary(fileSystem: FileSystem, onLog: ((String, LogLevel) -> Void)?) -> URL? {
             let currentDir = fileSystem.currentDirectoryPath
             var searchURL = URL(fileURLWithPath: currentDir)
+            onLog?("Starting project root walk-up from: \(currentDir)", .debug)
 
-            // Walk up at most 5 levels to find project root (containing bin/gh-orbit)
-            for _ in 0..<5 {
+            for level in 0..<5 {
                 let binURL = searchURL.appendingPathComponent("bin/gh-orbit")
+                onLog?("Checking level \(level) at: \(binURL.path)", .debug)
+
                 if fileSystem.fileExists(atPath: binURL.path) {
+                    onLog?("Found binary via project root at: \(binURL.path)", .debug)
                     return binURL
                 }
 
-                // Look for project sentinels
                 let goModURL = searchURL.appendingPathComponent("go.mod")
                 let agentsURL = searchURL.appendingPathComponent("AGENTS.md")
 
-                // Stop if we hit user home or root or find project markers
                 if searchURL.path == "/" || searchURL.path == "/Users" {
+                    onLog?("Hit system boundary at \(searchURL.path), stopping walk-up.", .debug)
                     break
                 }
 
-                // If we find markers but bin/gh-orbit wasn't there, stop anyway
                 if fileSystem.fileExists(atPath: goModURL.path) || fileSystem.fileExists(atPath: agentsURL.path) {
+                    onLog?("Hit project sentinel at \(searchURL.path), stopping walk-up.", .debug)
                     break
                 }
 

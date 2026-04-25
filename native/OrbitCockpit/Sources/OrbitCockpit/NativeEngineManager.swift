@@ -19,29 +19,32 @@ class NativeEngineManager: ObservableObject {
         socketPath: String? = nil,
         maxAttempts: Int = 10,
         baseDelayNS: UInt64 = 50_000_000,
-        onLog: ((String) -> Void)? = nil
+        onLog: ((String, LogLevel) -> Void)? = nil
     ) {
         self.maxAttempts = maxAttempts
         self.baseDelayNS = baseDelayNS
 
         if let socketPath = socketPath {
             self.socketPath = socketPath
+            onLog?("Using explicit socket path: \(self.socketPath)", .debug)
         } else {
             // Resolve socket path: prioritize shared App Group container for Sandbox compliance
             if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
                 self.socketPath = groupURL.appendingPathComponent("engine.sock").path
+                onLog?("Resolved App Group socket path: \(self.socketPath)", .debug)
             } else {
                 // Fallback for non-sandboxed dev mode
                 let runtimeDir =
                     ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
                     ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
                 self.socketPath = runtimeDir + "/engine.sock"
+                onLog?("Resolved Fallback socket path: \(self.socketPath)", .debug)
             }
         }
 
         // Set the supervisor's logging closure
-        engineSupervisor.onLog = { message in
-            onLog?(message)
+        engineSupervisor.onLog = { message, level in
+            onLog?(message, level)
         }
     }
 
@@ -49,6 +52,7 @@ class NativeEngineManager: ObservableObject {
         guard !engineSupervisor.isRunning else { return }
 
         do {
+            engineSupervisor.onLog?("Starting gh-orbit engine with executable: \(executable.path)", .debug)
             // Start engine with verbose logging for debugging
             try engineSupervisor.start(
                 executable: executable,
@@ -58,7 +62,13 @@ class NativeEngineManager: ObservableObject {
 
             // Wait for socket to appear with retries
             isEngineReady = await waitForSocket(path: socketPath)
+            if isEngineReady {
+                engineSupervisor.onLog?("Engine is ready (socket found).", .info)
+            } else {
+                engineSupervisor.onLog?("Engine failed to become ready (socket not found).", .error)
+            }
         } catch {
+            engineSupervisor.onLog?("Failed to start engine: \(error)", .error)
             print("Failed to start engine: \(error)")
         }
     }
@@ -76,6 +86,7 @@ class NativeEngineManager: ObservableObject {
     }
 
     func stopEngine() {
+        engineSupervisor.onLog?("Stopping gh-orbit engine.", .info)
         engineSupervisor.stop()
         isEngineReady = false
     }

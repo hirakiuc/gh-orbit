@@ -122,7 +122,7 @@ native/build: go/build
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		echo "Signing Cockpit bundle components (inside-out)..."; \
 		codesign -f -s - --options runtime --entitlements native/OrbitCockpit/Helper.entitlements -i com.hirakiuc.gh-orbit.cockpit.helper bin/$(COCKPIT_NAME).app/Contents/Helpers/$(BINARY_NAME); \
-		codesign -f -s - --options runtime --entitlements native/OrbitCockpit/OrbitCockpit.entitlements -i com.hirakiuc.gh-orbit.cockpit bin/$(COCKPIT_NAME).app/Contents/MacOS/$(COCKPIT_NAME); \
+		codesign -f -s - --options runtime --entitlements native/OrbitCockpit/OrbitCockpit.entitlements -i com.hirakiuc.gh-orbit.cockpit bin/$(COCKPIT_NAME).app; \
 	fi
 	@echo "Orbit Cockpit ready at bin/$(COCKPIT_NAME).app"
 

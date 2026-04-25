@@ -12,7 +12,20 @@ class ProcessSupervisor: ObservableObject {
     private let errorPipe = Pipe()
 
     /// Closure to push logs to a central monitor.
-    var onLog: ((String) -> Void)?
+    var onLog: ((String, LogLevel) -> Void)?
+
+    nonisolated func parseLogLevel(from line: String, defaultLevel: LogLevel) -> LogLevel {
+        if line.contains("\"level\":\"DEBUG\"") || line.contains("\"level\":\"debug\"") {
+            return .debug
+        } else if line.contains("\"level\":\"INFO\"") || line.contains("\"level\":\"info\"") {
+            return .info
+        } else if line.contains("\"level\":\"WARN\"") || line.contains("\"level\":\"warn\"") {
+            return .warning
+        } else if line.contains("\"level\":\"ERROR\"") || line.contains("\"level\":\"error\"") {
+            return .error
+        }
+        return defaultLevel
+    }
 
     func start(executable: URL, arguments: [String], environment: [String: String]?) throws {
         let process = Process()
@@ -38,8 +51,9 @@ class ProcessSupervisor: ObservableObject {
             let data = handle.availableData
             guard !data.isEmpty else { return }
             if let line = String(data: data, encoding: .utf8) {
+                let level = self?.parseLogLevel(from: line, defaultLevel: .error) ?? .error
                 DispatchQueue.main.async {
-                    self?.onLog?(line)
+                    self?.onLog?(line, level)
                     self?.lastError = line
                 }
             }
@@ -50,8 +64,9 @@ class ProcessSupervisor: ObservableObject {
             let data = handle.availableData
             guard !data.isEmpty else { return }
             if let line = String(data: data, encoding: .utf8) {
+                let level = self?.parseLogLevel(from: line, defaultLevel: .info) ?? .info
                 DispatchQueue.main.async {
-                    self?.onLog?(line)
+                    self?.onLog?(line, level)
                 }
             }
         }

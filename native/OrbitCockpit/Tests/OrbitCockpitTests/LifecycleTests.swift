@@ -105,29 +105,48 @@ struct LifecycleTests {
     func testActivityMonitor() async throws {
         let monitor = ActivityMonitor()
 
-        #expect(monitor.fullLog.isEmpty)
+        #expect(monitor.logs.isEmpty)
 
-        monitor.log(component: "[App]", message: "Launch started")
+        monitor.log(component: "[App]", level: .info, message: "Launch started")
 
         // Wait for debouncer (0.1s interval)
         for _ in 0..<20 {
-            if !monitor.fullLog.isEmpty { break }
+            if !monitor.logs.isEmpty { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
 
-        #expect(monitor.fullLog.contains("[App] Launch started"))
+        #expect(monitor.logs.contains(where: { $0.component == "[App]" && $0.message == "Launch started" }))
 
         // Test multi-source aggregation
-        monitor.log(component: "[Engine]", message: "Engine started")
+        monitor.log(component: "[Engine]", level: .debug, message: "Engine started")
 
         // Wait for debouncer again
         for _ in 0..<20 {
-            if monitor.fullLog.contains("[Engine]") { break }
+            if monitor.logs.count > 1 { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
 
         let logs = monitor.getLogs()
-        #expect(logs.contains("[App] Launch started"))
-        #expect(logs.contains("[Engine] Engine started"))
+        let hasAppLog = logs.contains(where: { $0.component == "[App]" && $0.message == "Launch started" })
+        #expect(hasAppLog)
+
+        let hasEngineLog = logs.contains(where: {
+            $0.component == "[Engine]" && $0.message == "Engine started" && $0.level == .debug
+        })
+        #expect(hasEngineLog)
+    }
+
+    @Test("Structured log parsing")
+    func testStructuredLogParsing() async throws {
+        let supervisor = ProcessSupervisor()
+
+        let debugLog = supervisor.parseLogLevel(from: "{\"level\":\"DEBUG\",\"msg\":\"testing\"}", defaultLevel: .error)
+        #expect(debugLog == .debug)
+
+        let infoLog = supervisor.parseLogLevel(from: "{\"level\":\"INFO\",\"msg\":\"testing\"}", defaultLevel: .error)
+        #expect(infoLog == .info)
+
+        let unknownLog = supervisor.parseLogLevel(from: "just a raw string", defaultLevel: .error)
+        #expect(unknownLog == .error)
     }
 }
