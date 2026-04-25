@@ -10,5 +10,9 @@
     <array>
         <string>$(TEAM_ID).group.com.hirakiuc.gh-orbit.cockpit</string>
     </array>
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+    <array>
+        <string>/.config/gh</string>
+    </array>
 </dict>
 </plist>

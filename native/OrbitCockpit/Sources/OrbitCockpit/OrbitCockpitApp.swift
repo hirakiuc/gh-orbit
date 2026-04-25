@@ -190,20 +190,15 @@ class TerminalManager: ObservableObject {
             }
             onLog?("Final binary resolved to: \(executableURL.path)", .debug)
 
-            // 2. Ensure Engine is running
-            if let engineMgr = engineManager {
-                onLog?("Delegating to NativeEngineManager to start background engine...", .debug)
-                await engineMgr.startEngine(executable: executableURL)
-            }
-
-            // 3. Launch TUI
-            var args: [String] = []
-            if name != "TUI" {
-                args = ["agent", "--name", name]
-            }
-
             // Propagate environment including GH_TOKEN if available
             var env = ProcessInfo.processInfo.environment
+
+            // Resolve real user home directory to bypass sandbox redirection for gh config
+            if let passwdEntry = getpwuid(getuid()), let dir = passwdEntry.pointee.pw_dir {
+                let realHome = String(cString: dir)
+                env["GH_CONFIG_DIR"] = realHome + "/.config/gh"
+                onLog?("Set GH_CONFIG_DIR to: \(realHome)/.config/gh", .debug)
+            }
 
             // Prioritize App Group container for Sandbox IPC
             let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
@@ -214,6 +209,18 @@ class TerminalManager: ObservableObject {
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
                 env["XDG_RUNTIME_DIR"] = home + "/.local/run"
                 onLog?("Set TUI XDG_RUNTIME_DIR to Fallback: \(home)/.local/run", .debug)
+            }
+
+            // 2. Ensure Engine is running
+            if let engineMgr = engineManager {
+                onLog?("Delegating to NativeEngineManager to start background engine...", .debug)
+                await engineMgr.startEngine(executable: executableURL, environment: env)
+            }
+
+            // 3. Launch TUI
+            var args: [String] = []
+            if name != "TUI" {
+                args = ["agent", "--name", name]
             }
 
             onLog?("Launching TUI process with args: \(args)", .debug)
