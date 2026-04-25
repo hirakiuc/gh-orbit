@@ -39,9 +39,13 @@ class NativeEngineManager: ObservableObject {
             }
         }
 
-        // Bind logs from supervisor to our published property
+        // Bind logs from supervisor to our published property using explicit sink
+        // to ensure MainActor safety and prevent reference cycles.
         engineSupervisor.$fullLog
-            .assign(to: \.engineLog, on: self)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] logs in
+                self?.engineLog = logs
+            }
             .store(in: &cancellables)
     }
 
