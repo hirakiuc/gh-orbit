@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -119,19 +120,30 @@ func getSlogLevel(l string) slog.Level {
 	}
 }
 
+func resolveLogLevel(baseLevel string, isVerbose bool) slog.Level {
+	if isVerbose {
+		return slog.LevelDebug
+	}
+	return getSlogLevel(baseLevel)
+}
+
 func runDoctor() error {
 	if testMode {
 		return nil
 	}
 	ctx := context.Background()
-	level := &slog.LevelVar{}
-	level.Set(getSlogLevel(logLevel))
 
-	logger, logCleanup, err := config.SetupLogger(level)
+	// Pass os.Stderr for doctor if verbose is set, otherwise use file
+	var sink io.Writer
+	if verbose {
+		sink = os.Stderr
+	}
+
+	env, ctx, err := initEnvironment(ctx, sink)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = logCleanup() }()
+	defer func() { _ = env.logCleanup() }()
 
 	executor := api.NewOSCommandExecutor()
 
@@ -181,7 +193,7 @@ func runDoctor() error {
 	}
 
 	// 4. Bridge
-	native := api.NewPlatformNotifier(ctx, executor, logger)
+	native := api.NewPlatformNotifier(ctx, executor, env.logger)
 	report.BridgeStatus = native.Status()
 	report.ActiveTier = "Native"
 	if report.BridgeStatus != types.StatusHealthy {
@@ -257,7 +269,7 @@ func printDoctorReport(r types.DoctorReport) {
 }
 
 func runSync() error {
-	env, ctx, err := initEnvironment(context.Background())
+	env, ctx, err := initEnvironment(context.Background(), nil)
 	if err != nil {
 		return err
 	}
@@ -299,7 +311,7 @@ func runSync() error {
 }
 
 func runTUI() error {
-	env, ctx, err := initEnvironment(context.Background())
+	env, ctx, err := initEnvironment(context.Background(), nil)
 	if err != nil {
 		return err
 	}
@@ -442,7 +454,8 @@ func runProgram(ctx context.Context, m *tui.Model) error {
 }
 
 func runEngine(socketPath string, insecure bool) error {
-	env, ctx, err := initEnvironment(context.Background())
+	// engine mode ALWAYS logs to stderr for process supervisor visibility
+	env, ctx, err := initEnvironment(context.Background(), os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -475,10 +488,10 @@ type environment struct {
 	span        trace.Span
 }
 
-func initEnvironment(ctx context.Context) (*environment, context.Context, error) {
+func initEnvironment(ctx context.Context, sink io.Writer) (*environment, context.Context, error) {
 	level := &slog.LevelVar{}
-	level.Set(getSlogLevel(logLevel))
-	logger, logCleanup, err := config.SetupLogger(level)
+	level.Set(resolveLogLevel(logLevel, verbose))
+	logger, logCleanup, err := config.SetupLogger(level, sink)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error setting up logger: %w", err)
 	}

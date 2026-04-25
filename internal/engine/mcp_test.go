@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -98,6 +100,54 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	// 3. Signal exit
 	cancel()
 	<-errChan
+}
+
+func TestMCPServer_GracefulShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg := config.DefaultConfig()
+
+	executor := api.NewOSCommandExecutor()
+
+	cwd, _ := os.Getwd()
+	tmpDir := filepath.Join(cwd, "../../tmp")
+	_ = os.MkdirAll(tmpDir, 0o700)
+	socketPath := filepath.Join(tmpDir, "mcp-shutdown-test.sock")
+
+	// Use a buffer to capture logs
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	eng, err := NewCoreEngine(ctx, cfg, logger, executor)
+	if err != nil {
+		t.Logf("Skipping test: %v", err)
+		return
+	}
+	defer eng.Shutdown(ctx)
+
+	server := NewMCPServer(eng, socketPath, true, false)
+
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- server.Serve(ctx)
+	}()
+
+	// Give it a moment to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Trigger shutdown
+	cancel()
+
+	select {
+	case err := <-errChan:
+		assert.True(t, errors.Is(err, context.Canceled) || err == nil)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not shut down gracefully within timeout")
+	}
+
+	// Verify no "failed to accept connection" errors in log
+	assert.NotContains(t, logBuf.String(), "failed to accept connection")
 }
 
 func TestMCPAdapter_Debounce(t *testing.T) {

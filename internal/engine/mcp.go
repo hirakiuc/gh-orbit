@@ -4,19 +4,21 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -29,14 +31,6 @@ type MCPServer struct {
 	socket      string
 	insecureDev bool
 	verbose     bool
-}
-
-func (s *MCPServer) redact(msg string) string {
-	// Redact GitHub Tokens
-	// Patterns: ghp_..., gho_..., ghs_..., ghr_..., github_pat_...
-	re := `(ghp_|gho_|ghs_|ghr_|github_pat_)[a-zA-Z0-9]+`
-	r := regexp.MustCompile(re)
-	return r.ReplaceAllString(msg, "[REDACTED]")
 }
 
 func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool, verbose bool) *MCPServer {
@@ -78,13 +72,10 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on UDS %s: %w", s.socket, err)
 	}
-	defer func() {
-		_ = l.Close()
-		_ = os.Remove(s.socket)
-	}()
 
 	// Secure the socket file immediately
 	if err := os.Chmod(s.socket, 0o600); err != nil {
+		_ = l.Close()
 		return fmt.Errorf("failed to secure socket file: %w", err)
 	}
 
@@ -102,15 +93,25 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 	go s.eventLoop(ctx)
 
 	// 6. Connection Loop
+	done := make(chan struct{})
+	var isClosing atomic.Bool
+
 	go func() {
+		defer close(done)
 		for {
 			conn, err := secureListener.Accept()
 			if err != nil {
+				if isClosing.Load() || errors.Is(err, net.ErrClosed) {
+					return
+				}
+
 				select {
 				case <-ctx.Done():
 					return
 				default:
 					s.engine.Logger.ErrorContext(ctx, "failed to accept connection", "error", err)
+					// Small backoff to prevent log flooding
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 			}
@@ -119,13 +120,27 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 		}
 	}()
 
+	var serveErr error
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		serveErr = ctx.Err()
 	case sig := <-sigChan:
 		s.engine.Logger.InfoContext(ctx, "received signal, shutting down", "signal", sig)
-		return nil
 	}
+
+	// 7. Graceful Shutdown
+	isClosing.Store(true)
+	_ = l.Close()
+	_ = os.Remove(s.socket)
+
+	// Wait for connection loop to exit
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		s.engine.Logger.WarnContext(ctx, "connection loop did not exit gracefully")
+	}
+
+	return serveErr
 }
 
 func (s *MCPServer) eventLoop(ctx context.Context) {
@@ -212,7 +227,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 				data, err := json.Marshal(notification)
 				if err == nil {
 					if s.verbose {
-						s.engine.Logger.Debug("MCP notification", "msg", s.redact(string(data)))
+						s.engine.Logger.Debug("MCP notification", "msg", config.RedactSecrets(string(data)))
 					}
 					session.writeMu.Lock()
 					_, _ = fmt.Fprintf(session.writer, "%s\n", data)
@@ -233,7 +248,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 
 		if s.verbose {
-			s.engine.Logger.Debug("MCP request", "msg", s.redact(line))
+			s.engine.Logger.Debug("MCP request", "msg", config.RedactSecrets(line))
 		}
 
 		var rawMessage json.RawMessage
@@ -246,7 +261,7 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 			data, err := json.Marshal(response)
 			if err == nil {
 				if s.verbose {
-					s.engine.Logger.Debug("MCP response", "msg", s.redact(string(data)))
+					s.engine.Logger.Debug("MCP response", "msg", config.RedactSecrets(string(data)))
 				}
 				session.writeMu.Lock()
 				_, _ = fmt.Fprintf(session.writer, "%s\n", data)
