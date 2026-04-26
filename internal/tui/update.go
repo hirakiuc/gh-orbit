@@ -562,9 +562,27 @@ func (m *Model) handleTransitionError(msg types.ErrMsg) {
 }
 
 func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
-	switch {
-	case msg.String() == "ctrl+c":
+	if msg.String() == "ctrl+c" {
 		return []Action{ActionQuit{}}
+	}
+
+	if actions := m.handleNavigationKeys(msg); actions != nil {
+		return actions
+	}
+
+	if actions := m.handleTabKeys(msg); actions != nil {
+		return actions
+	}
+
+	if actions := m.handleFilteringKeys(msg); actions != nil {
+		return actions
+	}
+
+	return m.handlePriorityKeys(msg)
+}
+
+func (m *Model) handleNavigationKeys(msg tea.KeyMsg) []Action {
+	switch {
 	case key.Matches(msg, m.keys.Quit):
 		if !m.listView.list.Help.ShowAll {
 			return m.handleQuitTransition()
@@ -579,6 +597,16 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 		m.showHelp = !m.showHelp
 		m.help.ShowAll = m.showHelp
 		m.syncSubModelSizes()
+	case key.Matches(msg, m.keys.OpenBrowser):
+		return m.handleOpenBrowserKey()
+	case key.Matches(msg, m.keys.CheckoutPR):
+		return m.handleCheckoutPRKey()
+	}
+	return nil
+}
+
+func (m *Model) handleTabKeys(msg tea.KeyMsg) []Action {
+	switch {
 	case key.Matches(msg, m.keys.NextTab):
 		m.cycleTab(1)
 	case key.Matches(msg, m.keys.PrevTab):
@@ -591,17 +619,28 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 		m.setActiveTab(TabTriaged)
 	case key.Matches(msg, m.keys.Tab4):
 		m.setActiveTab(TabAll)
-	case key.Matches(msg, m.keys.OpenBrowser):
-		return m.handleOpenBrowserKey()
-	case key.Matches(msg, m.keys.CheckoutPR):
-		return m.handleCheckoutPRKey()
+	default:
+		return nil
+	}
+	return []Action{} // State changed, but no imperative actions
+}
+
+func (m *Model) handleFilteringKeys(msg tea.KeyMsg) []Action {
+	switch {
 	case key.Matches(msg, m.keys.FilterPR):
 		m.toggleResourceFilter(triage.SubjectPullRequest, "PRs")
 	case key.Matches(msg, m.keys.FilterIssue):
 		m.toggleResourceFilter(triage.SubjectIssue, "Issues")
 	case key.Matches(msg, m.keys.FilterDiscussion):
 		m.toggleResourceFilter(triage.SubjectDiscussion, "Discussions")
+	default:
+		return nil
+	}
+	return []Action{}
+}
 
+func (m *Model) handlePriorityKeys(msg tea.KeyMsg) []Action {
+	switch {
 	case key.Matches(msg, m.keys.PriorityUp):
 		return m.handlePriorityKey(1)
 	case key.Matches(msg, m.keys.PriorityDown):
