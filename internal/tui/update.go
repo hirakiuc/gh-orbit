@@ -193,33 +193,37 @@ func (m *Model) getVisibleNotifications(force bool) []triage.NotificationWithSta
 
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
-			// 1. Skip if already inflight (with 30s TTL to prevent permanent blocking)
-			// UNLESS we are forcing a refresh
-			if !force {
-				if started, ok := m.inflightEnrichments[i.notification.GitHubID]; ok {
-					if now.Sub(started) < 30*time.Second {
-						continue
-					}
-				}
-			}
-
-			// 2. Skip if already enriched and fresh
-			// UNLESS we are forcing a refresh
-			var isExpired bool
-			if i.notification.IsEnriched {
-				if i.notification.EnrichedAt.Valid {
-					isExpired = time.Since(i.notification.EnrichedAt.Time) > statusTTL
-				} else {
-					isExpired = true
-				}
-			}
-
-			if force || !i.notification.IsEnriched || isExpired {
+			if m.isEnrichmentNeeded(i, statusTTL, force, now) {
 				items = append(items, i.notification)
 			}
 		}
 	}
 	return items
+}
+
+func (m *Model) isEnrichmentNeeded(i item, ttl time.Duration, force bool, now time.Time) bool {
+	// 1. Skip if already inflight (with 30s TTL to prevent permanent blocking)
+	// UNLESS we are forcing a refresh
+	if !force {
+		if started, ok := m.inflightEnrichments[i.notification.GitHubID]; ok {
+			if now.Sub(started) < 30*time.Second {
+				return false
+			}
+		}
+	}
+
+	// 2. Refresh if forced or not yet enriched
+	if force || !i.notification.IsEnriched {
+		return true
+	}
+
+	// 3. Check TTL for enriched items
+	if i.notification.EnrichedAt.Valid {
+		return now.Sub(i.notification.EnrichedAt.Time) > ttl
+	}
+
+	// Enriched flag set but timestamp missing? Force refresh for safety.
+	return true
 }
 
 func (m *Model) refreshDetailView() {
@@ -274,54 +278,72 @@ func (m *Model) applyFilters() {
 		selectedID = i.notification.GitHubID
 	}
 
+	currentFilter := m.listView.list.FilterValue()
+
+	m.listView.list.SetItems(m.filterItems())
+
+	m.restoreFilterState(currentFilter)
+	m.restoreSelection(selectedID)
+}
+
+func (m *Model) filterItems() []list.Item {
 	var filtered []list.Item
+	now := time.Now()
+
 	for _, n := range m.allNotifications {
-		keep := false
-		switch m.listView.activeTab {
-		case TabInbox:
-			keep = !n.IsReadLocally && n.Status != "archived"
-		case TabUnread:
-			keep = !n.IsReadLocally
-		case TabTriaged:
-			keep = n.Priority > 0
-		case TabAll:
-			keep = true
-		}
-
-		if keep && m.listView.resourceFilter != "" {
-			if n.SubjectType != m.listView.resourceFilter {
-				keep = false
-			}
-		}
-
-		if keep && !m.isNotificationWithinVisibleAge(n, time.Now()) {
-			keep = false
-		}
-
-		if keep {
+		if m.shouldKeepNotification(n, now) {
 			filtered = append(filtered, item{notification: n})
 		}
 	}
+	return filtered
+}
 
-	// Preserve existing fuzzy filter state
-	// Maintenance Note: This manually syncs the FilterInput sub-component.
-	// Library upgrades to bubbles/v2 may change this internal structure.
-	currentFilter := m.listView.list.FilterValue()
-
-	m.listView.list.SetItems(filtered)
-
-	// Restore fuzzy filter BEFORE restoring selection to ensure index mapping is correct
-	if currentFilter != "" {
-		m.listView.list.FilterInput.SetValue(currentFilter)
-		m.listView.list.SetFilterText(currentFilter)
+func (m *Model) shouldKeepNotification(n triage.NotificationWithState, now time.Time) bool {
+	keep := false
+	switch m.listView.activeTab {
+	case TabInbox:
+		keep = !n.IsReadLocally && n.Status != "archived"
+	case TabUnread:
+		keep = !n.IsReadLocally
+	case TabTriaged:
+		keep = n.Priority > 0
+	case TabAll:
+		keep = true
 	}
 
-	if selectedID != "" {
-		for index, li := range m.listView.list.Items() {
-			if i, ok := li.(item); ok && i.notification.GitHubID == selectedID {
-				m.listView.list.Select(index)
-				break
-			}
+	if keep && m.listView.resourceFilter != "" {
+		if n.SubjectType != m.listView.resourceFilter {
+			keep = false
+		}
+	}
+
+	if keep && !m.isNotificationWithinVisibleAge(n, now) {
+		keep = false
+	}
+
+	return keep
+}
+
+func (m *Model) restoreFilterState(filter string) {
+	if filter == "" {
+		return
+	}
+
+	// Maintenance Note: This manually syncs the FilterInput sub-component.
+	// Library upgrades to bubbles/v2 may change this internal structure.
+	m.listView.list.FilterInput.SetValue(filter)
+	m.listView.list.SetFilterText(filter)
+}
+
+func (m *Model) restoreSelection(selectedID string) {
+	if selectedID == "" {
+		return
+	}
+
+	for index, li := range m.listView.list.Items() {
+		if i, ok := li.(item); ok && i.notification.GitHubID == selectedID {
+			m.listView.list.Select(index)
+			break
 		}
 	}
 }

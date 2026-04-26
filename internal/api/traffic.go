@@ -45,8 +45,10 @@ type APITrafficController struct {
 	lockoutUntil atomic.Pointer[time.Time]
 
 	// Workers
-	workerLimit int32
-	done        chan struct{}
+	workerLimit        int32
+	activeWorkersCount int32
+	done               chan struct{}
+	workerWG           sync.WaitGroup
 
 	rateLimitUpdates chan models.RateLimitInfo
 }
@@ -66,11 +68,16 @@ func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITraff
 	// Initialize rate limit info with safe defaults
 	c.rlInfo.Store(&models.RateLimitInfo{Remaining: 5000})
 
-	// Start supervisor
-	go c.supervisor()
-	// Start background rate limit listener
-	// #nosec G118: Background listener longevity tied to traffic controller done signal
-	go c.rateLimitListener()
+	// Start background routines
+	c.workerWG.Add(2)
+	go func() {
+		defer c.workerWG.Done()
+		c.supervisor()
+	}()
+	go func() {
+		defer c.workerWG.Done()
+		c.rateLimitListener()
+	}()
 
 	return c
 }
@@ -136,41 +143,52 @@ func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.
 }
 
 func (c *APITrafficController) supervisor() {
+	// We use a ticker to periodically check for workers becoming available
+	// while avoiding tight loop spinning.
+	ticker := time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-c.done:
 			return
 		default:
-			if atomic.LoadInt32(&activeWorkersCount) < atomic.LoadInt32(&c.workerLimit) {
+			if atomic.LoadInt32(&c.activeWorkersCount) < atomic.LoadInt32(&c.workerLimit) {
 				select {
 				case <-c.done:
 					return
 				case t := <-c.high:
-					go c.runTask(t)
+					c.spawnTask(t)
 				case t := <-c.med:
-					go c.runTask(t)
+					c.spawnTask(t)
 				case t := <-c.low:
-					go c.runTask(t)
-				case <-time.After(10 * time.Millisecond):
+					c.spawnTask(t)
+				case <-ticker.C:
 					// No tasks, continue loop
 				}
 			} else {
-				// At worker limit, wait a bit
+				// At worker limit, wait for a worker to finish
 				select {
 				case <-c.done:
 					return
-				case <-time.After(10 * time.Millisecond):
+				case <-ticker.C:
 				}
 			}
 		}
 	}
 }
 
-var activeWorkersCount int32
+func (c *APITrafficController) spawnTask(t *apiTask) {
+	atomic.AddInt32(&c.activeWorkersCount, 1)
+	c.workerWG.Add(1)
+	go func() {
+		defer c.workerWG.Done()
+		c.runTask(t)
+	}()
+}
 
 func (c *APITrafficController) runTask(t *apiTask) {
-	atomic.AddInt32(&activeWorkersCount, 1)
-	defer atomic.AddInt32(&activeWorkersCount, -1)
+	defer atomic.AddInt32(&c.activeWorkersCount, -1)
 
 	// Check lockout
 	if until := c.lockoutUntil.Load(); until != nil && time.Now().Before(*until) {
@@ -218,5 +236,24 @@ func (c *APITrafficController) Shutdown(ctx context.Context) {
 	close(c.done)
 	// Ensure listener goroutine stops
 	close(c.rateLimitUpdates)
+
+	// Drain remaining tasks to unblock any callers
+	c.drainQueue(c.high)
+	c.drainQueue(c.med)
+	c.drainQueue(c.low)
+
+	// Wait for all background goroutines (supervisor, listener, and active workers)
+	c.workerWG.Wait()
 	c.logger.DebugContext(ctx, "traffic controller shutdown complete")
+}
+
+func (c *APITrafficController) drainQueue(q chan *apiTask) {
+	for {
+		select {
+		case t := <-q:
+			t.resp <- nil
+		default:
+			return
+		}
+	}
 }
