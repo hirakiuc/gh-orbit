@@ -102,6 +102,49 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	<-errChan
 }
 
+func TestMCPServer_ProtocolChaos(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg := config.DefaultConfig()
+	executor := api.NewOSCommandExecutor()
+	logger := slog.Default()
+
+	cwd, _ := os.Getwd()
+	tmpDir := filepath.Join(cwd, "../../tmp")
+	_ = os.MkdirAll(tmpDir, 0o700)
+	socketPath := filepath.Join(tmpDir, "mcp-chaos-test.sock")
+
+	eng, err := NewCoreEngine(ctx, cfg, logger, executor)
+	if err != nil {
+		t.Skip("skipping integration test")
+		return
+	}
+	defer eng.Shutdown(ctx)
+
+	server := NewMCPServer(eng, socketPath, true, false)
+	go func() { _ = server.Serve(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+
+	t.Run("Malformed JSON", func(t *testing.T) {
+		conn, err := net.Dial("unix", socketPath)
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		_, _ = fmt.Fprintf(conn, "{invalid-json\n")
+		// Server should not crash and should be ready for next message
+		time.Sleep(50 * time.Millisecond)
+	})
+
+	t.Run("Unexpected Disconnect", func(t *testing.T) {
+		conn, err := net.Dial("unix", socketPath)
+		require.NoError(t, err)
+		// Immediate close
+		_ = conn.Close()
+		time.Sleep(50 * time.Millisecond)
+	})
+}
+
 func TestMCPServer_GracefulShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

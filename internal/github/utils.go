@@ -1,6 +1,7 @@
 package github
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 var (
@@ -138,4 +140,20 @@ func ParseLinkHeader(header string) map[string]string {
 		}
 	}
 	return links
+}
+
+// MapHTTPError converts an HTTP status code into a standard internal sentinel error.
+func MapHTTPError(statusCode int) error {
+	switch statusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent, http.StatusNotModified:
+		return nil
+	case http.StatusUnauthorized:
+		return types.ErrUnauthorized
+	case http.StatusForbidden, http.StatusTooManyRequests:
+		return types.ErrRateLimited
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return types.ErrInternalServerError
+	default:
+		return fmt.Errorf("github: unexpected status code %d", statusCode)
+	}
 }

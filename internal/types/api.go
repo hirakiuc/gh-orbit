@@ -12,6 +12,10 @@ import (
 // Sentinel errors for common failure modes.
 var (
 	ErrSyncIntervalNotReached = errors.New("sync: polling interval not reached")
+	ErrUnauthorized           = errors.New("github: unauthorized (401)")
+	ErrRateLimited            = errors.New("github: rate limited (403)")
+	ErrInternalServerError    = errors.New("github: internal server error (500)")
+	ErrNetworkTimeout         = errors.New("github: network timeout")
 )
 
 // BridgeStatus represents the functional state of the native system bridge.
