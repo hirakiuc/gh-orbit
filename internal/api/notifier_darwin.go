@@ -49,6 +49,9 @@ func (n *DarwinNotifier) Status() types.BridgeStatus {
 
 // CheckFocusMode detects if "Do Not Disturb" or other focus modes are active.
 func CheckFocusMode(executor types.CommandExecutor) string {
+	if executor == nil {
+		return "Unknown"
+	}
 	// macOS Sequoia/Sonoma: uses 'dnd -status' via osascript (approximated)
 	out, err := executor.Execute(context.Background(), "defaults", "read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes")
 	if err != nil {
