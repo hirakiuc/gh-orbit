@@ -203,6 +203,7 @@ func NewModel(
 		heartbeatInterval:   time.Duration(cfg.Notifications.SyncInterval) * time.Second,
 		clockInterval:       1 * time.Minute,
 		inflightEnrichments: make(map[string]time.Time),
+		executor:            api.NewOSCommandExecutor(), // Default executor
 	}
 
 	// Apply options
@@ -262,6 +263,11 @@ func (m *Model) Shutdown() {
 
 func (m *Model) submitTask(priority int, fn types.TaskFunc) tea.Cmd {
 	return func() tea.Msg {
+		if m.traffic == nil {
+			// In MCP mode or if traffic controller is missing, execute immediately
+			return fn(context.Background())
+		}
+
 		resChan, err := m.traffic.Submit(priority, fn)
 		if err != nil {
 			return types.ErrMsg{Err: err}
