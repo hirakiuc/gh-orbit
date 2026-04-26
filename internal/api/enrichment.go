@@ -329,6 +329,62 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 	ctx, span := tracer.Start(ctx, "enrichment.gql_batch")
 	defer span.End()
 
+	data, err := e.executeGQLBatch(ctx, ids)
+	if err != nil {
+		e.logger.ErrorContext(ctx, "enrichment: graphql batch fetch failed", "error", err)
+		return
+	}
+
+	if e.logger.Enabled(ctx, slog.LevelDebug) {
+		e.logger.DebugContext(ctx, "enrichment: graphql batch fetch complete",
+			"cost", data.RateLimit.Cost,
+			"remaining", data.RateLimit.Remaining,
+			"node_count", len(data.Nodes))
+	}
+
+	e.client.ReportRateLimit(models.RateLimitInfo{
+		Limit:     data.RateLimit.Cost + data.RateLimit.Remaining,
+		Remaining: data.RateLimit.Remaining,
+		Used:      data.RateLimit.Cost,
+	})
+
+	span.SetAttributes(
+		attribute.Int("gql.cost", data.RateLimit.Cost),
+		attribute.Int("gql.nodes", len(data.Nodes)),
+	)
+
+	for _, node := range data.Nodes {
+		if node.ID == "" {
+			continue
+		}
+
+		state, subState := parseNodeState(node.Typename, node.State, node.Merged, node.IsDraft, node.ReviewDecision, node.StateReason, node.Closed)
+		if state != "" || subState != "" {
+			e.updateNodeState(ctx, node.ID, state, subState, results)
+		}
+	}
+}
+
+type gqlNode struct {
+	Typename       string  `json:"__typename"`
+	ID             string  `json:"id"`
+	State          string  `json:"state"`
+	Merged         bool    `json:"merged"`
+	IsDraft        bool    `json:"isDraft"`
+	ReviewDecision string  `json:"reviewDecision"`
+	StateReason    *string `json:"stateReason"`
+	Closed         bool    `json:"closed"`
+}
+
+type gqlBatchResponse struct {
+	Nodes []gqlNode `json:"nodes"`
+	RateLimit struct {
+		Cost      int `json:"cost"`
+		Remaining int `json:"remaining"`
+	} `json:"rateLimit"`
+}
+
+func (e *EnrichmentEngine) executeGQLBatch(ctx context.Context, ids []string) (*gqlBatchResponse, error) {
 	queryString := `
 		query($ids: [ID!]!) {
 			nodes(ids: $ids) {
@@ -359,86 +415,87 @@ func (e *EnrichmentEngine) fetchByNodeIDs(ctx context.Context, ids []string, res
 		} `json:"rateLimit"`
 	}
 
-	// Best Practice: Use DoWithContext for generic context propagation in go-gh GQL
-	// Signature: DoWithContext(ctx, query, variables, response)
 	err := e.client.GQL().DoWithContext(ctx, queryString, variables, &data)
 	if err != nil {
-		e.logger.ErrorContext(ctx, "enrichment: graphql batch fetch failed", "error", err)
-		return
+		return nil, err
 	}
 
-	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.DebugContext(ctx, "enrichment: graphql batch fetch complete",
-			"cost", data.RateLimit.Cost,
-			"remaining", data.RateLimit.Remaining,
-			"node_count", len(data.Nodes))
+	// Map to named struct for decomposition helpers
+	resp := &gqlBatchResponse{
+		RateLimit: struct {
+			Cost      int `json:"cost"`
+			Remaining int `json:"remaining"`
+		}{
+			Cost:      data.RateLimit.Cost,
+			Remaining: data.RateLimit.Remaining,
+		},
 	}
 
-	e.client.ReportRateLimit(models.RateLimitInfo{
-		Limit:     data.RateLimit.Cost + data.RateLimit.Remaining, // Best guess for Limit
-		Remaining: data.RateLimit.Remaining,
-		Used:      data.RateLimit.Cost,
-	})
+	for _, n := range data.Nodes {
+		resp.Nodes = append(resp.Nodes, gqlNode{
+			Typename:       n.Typename,
+			ID:             n.ID,
+			State:          n.State,
+			Merged:         n.Merged,
+			IsDraft:        n.IsDraft,
+			ReviewDecision: n.ReviewDecision,
+			StateReason:    n.StateReason,
+			Closed:         n.Closed,
+		})
+	}
 
-	span.SetAttributes(
-		attribute.Int("gql.cost", data.RateLimit.Cost),
-		attribute.Int("gql.nodes", len(data.Nodes)),
-	)
+	return resp, nil
+}
 
-	for _, node := range data.Nodes {
-		if node.ID == "" {
-			continue
+func parseNodeState(typename, nodeState string, merged, isDraft bool, reviewDecision string, stateReason *string, closed bool) (string, string) {
+	state := ""
+	subState := ""
+
+	switch triage.SubjectType(typename) {
+	case triage.SubjectPullRequest:
+		if merged {
+			state = "Merged"
+		} else if isDraft {
+			state = "Draft"
+		} else if nodeState != "" {
+			state = strings.ToUpper(nodeState[:1]) + strings.ToLower(nodeState[1:])
 		}
-
-		state := ""
-		subState := ""
-
-		switch triage.SubjectType(node.Typename) {
-		case triage.SubjectPullRequest:
-			if node.Merged {
-				state = "Merged"
-			} else if node.IsDraft {
-				state = "Draft"
-			} else if node.State != "" {
-				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
-			}
-			subState = node.ReviewDecision
-		case triage.SubjectIssue:
-			if node.State != "" {
-				state = strings.ToUpper(node.State[:1]) + strings.ToLower(node.State[1:])
-			}
-			if node.StateReason != nil {
-				subState = *node.StateReason
-			}
-		case triage.SubjectDiscussion:
-			if node.Closed {
-				state = "Closed"
-			} else {
-				state = "Open"
-			}
-			if node.StateReason != nil {
-				subState = *node.StateReason
-			}
+		subState = reviewDecision
+	case triage.SubjectIssue:
+		if nodeState != "" {
+			state = strings.ToUpper(nodeState[:1]) + strings.ToLower(nodeState[1:])
 		}
-
-		if state != "" || subState != "" {
-			// Observability: Log transition
-			e.logger.DebugContext(ctx, "enrichment: node state fetched",
-				"node_id", node.ID,
-				"new_state", state,
-				"new_substate", subState)
-
-			if err := e.db.UpdateResourceStateByNodeID(ctx, node.ID, state, subState); err != nil {
-				e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", node.ID, "error", err)
-			}
-
-			// Populate results for immediate TUI refresh
-			results[node.ID] = models.EnrichmentResult{
-				ResourceState:    state,
-				ResourceSubState: subState,
-				FetchedAt:        time.Now(),
-			}
+		if stateReason != nil {
+			subState = *stateReason
 		}
+	case triage.SubjectDiscussion:
+		if closed {
+			state = "Closed"
+		} else {
+			state = "Open"
+		}
+		if stateReason != nil {
+			subState = *stateReason
+		}
+	}
+
+	return state, subState
+}
+
+func (e *EnrichmentEngine) updateNodeState(ctx context.Context, nodeID, state, subState string, results map[string]models.EnrichmentResult) {
+	e.logger.DebugContext(ctx, "enrichment: node state fetched",
+		"node_id", nodeID,
+		"new_state", state,
+		"new_substate", subState)
+
+	if err := e.db.UpdateResourceStateByNodeID(ctx, nodeID, state, subState); err != nil {
+		e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", nodeID, "error", err)
+	}
+
+	results[nodeID] = models.EnrichmentResult{
+		ResourceState:    state,
+		ResourceSubState: subState,
+		FetchedAt:        time.Now(),
 	}
 }
 

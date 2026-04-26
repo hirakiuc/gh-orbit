@@ -207,37 +207,53 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 
 	s.engine.Logger.Debug("peer connected and verified via UDS")
 
-	session := newUDSSession(conn)
-	if err := s.server.RegisterSession(ctx, session); err != nil {
-		s.engine.Logger.ErrorContext(ctx, "failed to register session", "error", err)
+	session, sessionCtx, cleanup, err := s.setupSession(ctx, conn)
+	if err != nil {
+		s.engine.Logger.ErrorContext(ctx, "failed to setup session", "error", err)
 		return
 	}
-	defer s.server.UnregisterSession(ctx, session.SessionID())
-
-	sessionCtx := s.server.WithContext(ctx, session)
-	reader := bufio.NewReader(conn)
+	defer cleanup()
 
 	// Start notification dispatcher for this session
-	go func() {
-		for {
-			select {
-			case <-sessionCtx.Done():
-				return
-			case notification := <-session.notifications:
-				data, err := json.Marshal(notification)
-				if err == nil {
-					if s.verbose {
-						s.engine.Logger.Debug("MCP notification", "msg", config.RedactSecrets(string(data)))
-					}
-					session.writeMu.Lock()
-					_, _ = fmt.Fprintf(session.writer, "%s\n", data)
-					session.writeMu.Unlock()
+	go s.runNotificationDispatcher(sessionCtx, session)
+
+	// Process incoming requests
+	s.processRequestLoop(sessionCtx, session, conn)
+}
+
+func (s *MCPServer) setupSession(ctx context.Context, conn net.Conn) (*udsSession, context.Context, func(), error) {
+	session := newUDSSession(conn)
+	if err := s.server.RegisterSession(ctx, session); err != nil {
+		return nil, nil, nil, err
+	}
+
+	sessionCtx := s.server.WithContext(ctx, session)
+	cleanup := func() {
+		s.server.UnregisterSession(ctx, session.SessionID())
+	}
+
+	return session, sessionCtx, cleanup, nil
+}
+
+func (s *MCPServer) runNotificationDispatcher(ctx context.Context, session *udsSession) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case notification := <-session.notifications:
+			data, err := json.Marshal(notification)
+			if err == nil {
+				if s.verbose {
+					s.engine.Logger.Debug("MCP notification", "msg", config.RedactSecrets(string(data)))
 				}
+				s.sendJSONRPCMessage(session, data)
 			}
 		}
-	}()
+	}
+}
 
-	// Request/Response loop
+func (s *MCPServer) processRequestLoop(ctx context.Context, session *udsSession, conn io.Reader) {
+	reader := bufio.NewReader(conn)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -247,28 +263,36 @@ func (s *MCPServer) handleConnection(ctx context.Context, conn net.Conn) {
 			break
 		}
 
-		if s.verbose {
-			s.engine.Logger.Debug("MCP request", "msg", config.RedactSecrets(line))
-		}
+		s.handleSingleMessage(ctx, session, line)
+	}
+}
 
-		var rawMessage json.RawMessage
-		if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
-			continue
-		}
+func (s *MCPServer) handleSingleMessage(ctx context.Context, session *udsSession, line string) {
+	if s.verbose {
+		s.engine.Logger.Debug("MCP request", "msg", config.RedactSecrets(line))
+	}
 
-		response := s.server.HandleMessage(sessionCtx, rawMessage)
-		if response != nil {
-			data, err := json.Marshal(response)
-			if err == nil {
-				if s.verbose {
-					s.engine.Logger.Debug("MCP response", "msg", config.RedactSecrets(string(data)))
-				}
-				session.writeMu.Lock()
-				_, _ = fmt.Fprintf(session.writer, "%s\n", data)
-				session.writeMu.Unlock()
+	var rawMessage json.RawMessage
+	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
+		return
+	}
+
+	response := s.server.HandleMessage(ctx, rawMessage)
+	if response != nil {
+		data, err := json.Marshal(response)
+		if err == nil {
+			if s.verbose {
+				s.engine.Logger.Debug("MCP response", "msg", config.RedactSecrets(string(data)))
 			}
+			s.sendJSONRPCMessage(session, data)
 		}
 	}
+}
+
+func (s *MCPServer) sendJSONRPCMessage(session *udsSession, data []byte) {
+	session.writeMu.Lock()
+	defer session.writeMu.Unlock()
+	_, _ = fmt.Fprintf(session.writer, "%s\n", data)
 }
 
 func (s *MCPServer) registerTools() {
