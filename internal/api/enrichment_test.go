@@ -49,7 +49,12 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res.Repository.PullRequest.ReviewDecision = "APPROVED"
 		}).Return(nil).Once()
 
-		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+			Client: mockClient,
+			DB:     mockRepo,
+			Logger: slog.Default(),
+		})
+		assert.NoError(t, err)
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
 		res, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest", false)
@@ -78,7 +83,12 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res.StateReason = &reason
 		}).Return(nil).Once()
 
-		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+			Client: mockClient,
+			DB:     mockRepo,
+			Logger: slog.Default(),
+		})
+		assert.NoError(t, err)
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
 		res, err := engine.FetchDetail(ctx, "url", "Issue", false)
@@ -89,7 +99,12 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 	})
 
 	t.Run("Cache Hit", func(t *testing.T) {
-		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+			Client: mockClient,
+			DB:     mockRepo,
+			Logger: slog.Default(),
+		})
+		assert.NoError(t, err)
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
 		cached := models.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
@@ -116,7 +131,12 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 			res.Body = "fresh"
 		}).Return(nil).Once()
 
-		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+			Client: mockClient,
+			DB:     mockRepo,
+			Logger: slog.Default(),
+		})
+		assert.NoError(t, err)
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
 		cached := models.EnrichmentResult{Body: "cached", FetchedAt: time.Now()}
@@ -176,7 +196,12 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 		mockRepo.EXPECT().UpdateResourceStateByNodeID(mock.Anything, "issue1", "Closed", "COMPLETED").Return(nil).Once()
 		mockRepo.EXPECT().UpdateResourceStateByNodeID(mock.Anything, "disc1", "Closed", "COMPLETED").Return(nil).Once()
 
-		engine := NewEnrichmentEngine(ctx, mockClient, mockRepo, slog.Default())
+		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+			Client: mockClient,
+			DB:     mockRepo,
+			Logger: slog.Default(),
+		})
+		assert.NoError(t, err)
 		t.Cleanup(func() { engine.Shutdown(ctx) })
 
 		notifs := []triage.NotificationWithState{
@@ -196,7 +221,11 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 
 func TestEnrichmentEngine_Pruning(t *testing.T) {
 	ctx := context.Background()
-	engine := NewEnrichmentEngine(ctx, nil, nil, slog.Default())
+	engine, _ := NewEnrichmentEngine(ctx, EnrichParams{
+		Client: mocks.NewMockGitHubClient(t),
+		DB:     mocks.NewMockEnrichmentRepository(t),
+		Logger: slog.Default(),
+	})
 
 	engine.mu.Lock()
 	engine.cache["old"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-20 * time.Minute)}
@@ -209,4 +238,29 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 	defer engine.mu.RUnlock()
 	assert.NotContains(t, engine.cache, "old")
 	assert.Contains(t, engine.cache, "new")
+}
+
+func TestNewEnrichmentEngine_Guards(t *testing.T) {
+	ctx := context.Background()
+	mockClient := mocks.NewMockGitHubClient(t)
+	mockRepo := mocks.NewMockEnrichmentRepository(t)
+	logger := slog.Default()
+
+	t.Run("Missing Client", func(t *testing.T) {
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{DB: mockRepo, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "github client is required")
+	})
+
+	t.Run("Missing DB", func(t *testing.T) {
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "database is required")
+	})
+
+	t.Run("Missing Logger", func(t *testing.T) {
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "logger is required")
+	})
 }

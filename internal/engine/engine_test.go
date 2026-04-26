@@ -34,3 +34,28 @@ func TestCoreEngine_Initialization(t *testing.T) {
 	assert.NotNil(t, eng.Alert)
 	assert.NotNil(t, eng.DB)
 }
+
+func TestNewCoreEngine_Guards(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	logger := slog.Default()
+	executor := api.NewOSCommandExecutor()
+
+	t.Run("Missing Config", func(t *testing.T) {
+		_, err := NewCoreEngine(ctx, nil, logger, executor)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "config is required")
+	})
+
+	t.Run("Missing Logger", func(t *testing.T) {
+		_, err := NewCoreEngine(ctx, cfg, nil, executor)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "logger is required")
+	})
+
+	t.Run("Missing Executor", func(t *testing.T) {
+		_, err := NewCoreEngine(ctx, cfg, logger, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "executor is required")
+	})
+}

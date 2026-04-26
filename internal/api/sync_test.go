@@ -53,8 +53,14 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockRepo.EXPECT().MarkNotifiedBatch(mock.Anything, []string{"1"}).Return(nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
-		engine := NewSyncEngine(mockFetcher, mockRepo, mockAlerter, logger)
-		_, err := engine.Sync(ctx, userID, false)
+		engine, err := NewSyncEngine(SyncParams{
+			Fetcher: mockFetcher,
+			DB:      mockRepo,
+			Alerts:  mockAlerter,
+			Logger:  logger,
+		})
+		assert.NoError(t, err)
+		_, err = engine.Sync(ctx, userID, false)
 
 		require.NoError(t, err)
 	})
@@ -72,8 +78,13 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(recentMeta, nil).Once()
 
-		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
-		_, err := engine.Sync(ctx, userID, false)
+		engine, err := NewSyncEngine(SyncParams{
+			Fetcher: mockFetcher,
+			DB:      mockRepo,
+			Logger:  logger,
+		})
+		assert.NoError(t, err)
+		_, err = engine.Sync(ctx, userID, false)
 
 		assert.ErrorIs(t, err, types.ErrSyncIntervalNotReached)
 	})
@@ -93,10 +104,39 @@ func TestSyncEngine_Sync(t *testing.T) {
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, recentMeta, true).Return(nil, recentMeta, models.RateLimitInfo{}, nil).Once()
 		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
 
-		engine := NewSyncEngine(mockFetcher, mockRepo, nil, logger)
-		_, err := engine.Sync(ctx, userID, true)
+		engine, err := NewSyncEngine(SyncParams{
+			Fetcher: mockFetcher,
+			DB:      mockRepo,
+			Logger:  logger,
+		})
+		assert.NoError(t, err)
+		_, err = engine.Sync(ctx, userID, true)
 
 		require.NoError(t, err)
+	})
+}
+
+func TestNewSyncEngine_Guards(t *testing.T) {
+	mockFetcher := mocks.NewMockFetcher(t)
+	mockRepo := mocks.NewMockSyncRepository(t)
+	logger := slog.Default()
+
+	t.Run("Missing Fetcher", func(t *testing.T) {
+		_, err := NewSyncEngine(SyncParams{DB: mockRepo, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "fetcher is required")
+	})
+
+	t.Run("Missing DB", func(t *testing.T) {
+		_, err := NewSyncEngine(SyncParams{Fetcher: mockFetcher, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "database is required")
+	})
+
+	t.Run("Missing Logger", func(t *testing.T) {
+		_, err := NewSyncEngine(SyncParams{Fetcher: mockFetcher, DB: mockRepo})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "logger is required")
 	})
 }
 

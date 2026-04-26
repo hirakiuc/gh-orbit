@@ -39,12 +39,22 @@ type EnrichmentEngine struct {
 	OnMutation func()
 }
 
-func NewEnrichmentEngine(ctx context.Context, client github.Client, database types.EnrichmentRepository, logger *slog.Logger) *EnrichmentEngine {
+func NewEnrichmentEngine(ctx context.Context, p EnrichParams) (*EnrichmentEngine, error) {
+	if p.Client == nil {
+		return nil, fmt.Errorf("github client is required for EnrichmentEngine")
+	}
+	if p.DB == nil {
+		return nil, fmt.Errorf("database is required for EnrichmentEngine")
+	}
+	if p.Logger == nil {
+		return nil, fmt.Errorf("logger is required for EnrichmentEngine")
+	}
+
 	cfg, _ := config.Load()
 	e := &EnrichmentEngine{
-		client:     client,
-		db:         database,
-		logger:     logger,
+		client:     p.Client,
+		db:         p.DB,
+		logger:     p.Logger,
 		cache:      make(map[string]models.EnrichmentResult),
 		done:       make(chan struct{}),
 		config:     cfg,
@@ -55,7 +65,7 @@ func NewEnrichmentEngine(ctx context.Context, client github.Client, database typ
 	// #nosec G118: Supervisor context used for background worker longevity
 	go e.pruningWorker(ctx)
 
-	return e
+	return e, nil
 }
 
 func (e *EnrichmentEngine) Shutdown(ctx context.Context) {

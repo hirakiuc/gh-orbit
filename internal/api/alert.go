@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -33,15 +34,28 @@ type AlertService struct {
 	syncRepoCounts map[string]int
 }
 
-func NewAlertService(ctx context.Context, cfg *config.Config, logger *slog.Logger, database types.AlertRepository, executor types.CommandExecutor) *AlertService {
+func NewAlertService(ctx context.Context, p AlertParams) (*AlertService, error) {
+	if p.Config == nil {
+		return nil, fmt.Errorf("config is required for AlertService")
+	}
+	if p.Logger == nil {
+		return nil, fmt.Errorf("logger is required for AlertService")
+	}
+	if p.DB == nil {
+		return nil, fmt.Errorf("database is required for AlertService")
+	}
+	if p.Executor == nil {
+		return nil, fmt.Errorf("executor is required for AlertService")
+	}
+
 	return NewAlertServiceWithNotifiers(
-		cfg,
-		database,
-		NewPlatformNotifier(ctx, executor, logger),
-		NewBeeepNotifier(logger),
-		executor,
-		logger,
-	)
+		p.Config,
+		p.DB,
+		NewPlatformNotifier(ctx, p.Executor, p.Logger),
+		NewBeeepNotifier(p.Logger),
+		p.Executor,
+		p.Logger,
+	), nil
 }
 
 func NewAlertServiceWithNotifiers(cfg *config.Config, database types.AlertRepository, native types.Notifier, fallback types.Notifier, executor types.CommandExecutor, logger *slog.Logger) *AlertService {
