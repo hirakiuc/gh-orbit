@@ -387,56 +387,52 @@ func runTUI() error {
 }
 
 func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdapter, userID string) error {
-	m := tui.NewModel(
-		userID,
-		config.DefaultConfig(), // Placeholder or from engine
-		env.logger,
-		adapter, // Repository
-		nil,     // Client (unused in MCP mode)
-		adapter, // Syncer
-		adapter, // Enricher
-		nil,     // Traffic (Engine handles it)
-		nil,     // Alert (Engine handles it)
-		tui.WithConnectionMode("Connected"),
-		tui.WithVersion(buildinfo.Version),
-	)
-
-	lifecycle := api.NewAppLifecycle(ctx)
-	defer lifecycle.Shutdown()
-
-	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
-
-	// Update model logic if data changes
-	adapter.OnMutation(func() {
-		p.Send(tui.ActionLoadNotifications{IsInitial: false, IsForced: false})
+	m, err := tui.NewModel(tui.ModelParams{
+		UserID:   userID,
+		Config:   config.DefaultConfig(), // Placeholder or from engine
+		Logger:   env.logger,
+		DB:       adapter, // Repository
+		Client:   nil,     // Client (unused in MCP mode)
+		Syncer:   adapter, // Syncer
+		Enricher: adapter, // Enricher
+		Traffic:  nil,     // Traffic (Engine handles it)
+		Alerter:  adapter, // Alerter (Mock/Engine bridge)
+		Options: []tui.Option{
+			tui.WithConnectionMode("Connected"),
+			tui.WithVersion(buildinfo.Version),
+		},
 	})
-
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("TUI error: %w", err)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	return runProgram(ctx, m)
 }
 
 func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
 	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
 	eng.Client.SetRateLimitUpdates(eng.Traffic.RateLimitUpdates())
 
-	m := tui.NewModel(
-		userID,
-		eng.Config,
-		env.logger,
-		eng.DB,
-		eng.Client,
-		eng.Sync,
-		eng.Enrich,
-		eng.Traffic,
-		eng.Alert,
-		tui.WithExecutor(api.NewOSCommandExecutor()),
-		tui.WithTheme(true),
-		tui.WithConnectionMode("Standalone"),
-		tui.WithVersion(buildinfo.Version),
-	)
+	m, err := tui.NewModel(tui.ModelParams{
+		UserID:   userID,
+		Config:   eng.Config,
+		Logger:   env.logger,
+		DB:       eng.DB,
+		Client:   eng.Client,
+		Syncer:   eng.Sync,
+		Enricher: eng.Enrich,
+		Traffic:  eng.Traffic,
+		Alerter:  eng.Alert,
+		Options: []tui.Option{
+			tui.WithExecutor(api.NewOSCommandExecutor()),
+			tui.WithTheme(true),
+			tui.WithConnectionMode("Standalone"),
+			tui.WithVersion(buildinfo.Version),
+		},
+	})
+	if err != nil {
+		return err
+	}
 
 	return runProgram(ctx, m)
 }

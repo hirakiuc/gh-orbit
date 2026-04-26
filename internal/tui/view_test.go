@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -119,14 +122,30 @@ func TestRenderHeader_States(t *testing.T) {
 	})
 
 	t.Run("Nil Traffic (MCP Mode)", func(t *testing.T) {
-		m := newTestModel(t)
-		m.traffic = nil
+		cfg := config.DefaultConfig()
+		logger := slog.Default()
+		mockSyncer := mocks.NewMockSyncer(t)
+		mockAlerter := mocks.NewMockAlerter(t)
+		mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+		mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+
+		m, err := NewModel(ModelParams{
+			UserID:   "user",
+			Config:   cfg,
+			Logger:   logger,
+			DB:       mocks.NewMockRepository(t),
+			Syncer:   mockSyncer,
+			Enricher: mocks.NewMockEnricher(t),
+			Alerter:  mockAlerter,
+			Traffic:  nil, // Intentional nil
+		})
+		assert.NoError(t, err)
+
 		m.ui.syncing = false
 
 		view := m.renderHeader()
 		assert.Contains(t, stripANSI(view), "Connected to Engine")
 	})
-
 	t.Run("Low Quota", func(t *testing.T) {
 		m := newTestModel(t)
 		mockTraffic := mocks.NewMockTrafficController(t)

@@ -130,3 +130,35 @@ func TestAlertService_RefreshBridgeHealth(t *testing.T) {
 		assert.Equal(t, types.StatusHealthy, status)
 	})
 }
+
+func TestNewAlertService_Guards(t *testing.T) {
+	ctx := context.Background()
+	cfg := &config.Config{}
+	mockRepo := mocks.NewMockAlertRepository(t)
+	mockExecutor := mocks.NewMockCommandExecutor(t)
+	logger := slog.Default()
+
+	t.Run("Missing Config", func(t *testing.T) {
+		_, err := NewAlertService(ctx, AlertParams{DB: mockRepo, Executor: mockExecutor, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "config is required")
+	})
+
+	t.Run("Missing DB", func(t *testing.T) {
+		_, err := NewAlertService(ctx, AlertParams{Config: cfg, Executor: mockExecutor, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "database is required")
+	})
+
+	t.Run("Missing Executor", func(t *testing.T) {
+		_, err := NewAlertService(ctx, AlertParams{Config: cfg, DB: mockRepo, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "executor is required")
+	})
+
+	t.Run("Missing Logger", func(t *testing.T) {
+		_, err := NewAlertService(ctx, AlertParams{Config: cfg, DB: mockRepo, Executor: mockExecutor})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "logger is required")
+	})
+}

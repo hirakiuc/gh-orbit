@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -145,21 +146,46 @@ func WithConnectionMode(mode string) Option {
 	}
 }
 
+// ModelParams contains dependencies for the TUI Model.
+type ModelParams struct {
+	UserID   string
+	Config   *config.Config
+	Logger   *slog.Logger
+	DB       notificationStore
+	Client   github.Client
+	Syncer   types.Syncer
+	Enricher types.Enricher
+	Traffic  types.TrafficController
+	Alerter  api.Alerter
+	Options  []Option
+}
+
 // NewModel initializes a new application model with dependency injection.
-func NewModel(
-	userID string,
-	cfg *config.Config,
-	logger *slog.Logger,
-	database notificationStore,
-	client github.Client,
-	syncer types.Syncer,
-	enricher types.Enricher,
-	traffic types.TrafficController,
-	alerter api.Alerter,
-	opts ...Option,
-) *Model {
+func NewModel(p ModelParams) (*Model, error) {
+	if p.UserID == "" {
+		return nil, fmt.Errorf("user ID is required for TUI")
+	}
+	if p.Config == nil {
+		return nil, fmt.Errorf("config is required for TUI")
+	}
+	if p.Logger == nil {
+		return nil, fmt.Errorf("logger is required for TUI")
+	}
+	if p.DB == nil {
+		return nil, fmt.Errorf("database is required for TUI")
+	}
+	if p.Syncer == nil {
+		return nil, fmt.Errorf("syncer is required for TUI")
+	}
+	if p.Enricher == nil {
+		return nil, fmt.Errorf("enricher is required for TUI")
+	}
+	if p.Alerter == nil {
+		return nil, fmt.Errorf("alerter is required for TUI")
+	}
+
 	styles := DefaultStyles(true)
-	keys := NewKeyMap(cfg)
+	keys := NewKeyMap(p.Config)
 	delegate := newItemDelegate(styles, keys)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
@@ -185,36 +211,36 @@ func NewModel(
 		detailView: DetailModel{
 			viewport: vp,
 		},
-		db:           database,
-		client:       client,
-		sync:         syncer,
-		enrich:       enricher,
-		traffic:      traffic,
-		alerter:      alerter,
-		config:       cfg,
-		logger:       logger,
-		userID:       userID,
+		db:           p.DB,
+		client:       p.Client,
+		sync:         p.Syncer,
+		enrich:       p.Enricher,
+		traffic:      p.Traffic,
+		alerter:      p.Alerter,
+		config:       p.Config,
+		logger:       p.Logger,
+		userID:       p.UserID,
 		styles:       styles,
 		keys:         keys,
 		help:         &h,
 		state:        StateList,
-		PollInterval: cfg.Notifications.SyncInterval,
+		PollInterval: p.Config.Notifications.SyncInterval,
 		// Default intervals
-		heartbeatInterval:   time.Duration(cfg.Notifications.SyncInterval) * time.Second,
+		heartbeatInterval:   time.Duration(p.Config.Notifications.SyncInterval) * time.Second,
 		clockInterval:       1 * time.Minute,
 		inflightEnrichments: make(map[string]time.Time),
 		executor:            api.NewOSCommandExecutor(), // Default executor
 	}
 
 	// Apply options
-	for _, opt := range opts {
+	for _, opt := range p.Options {
 		opt(m)
 	}
 
 	m.interpreter = NewInterpreter(m)
 	m.ui = NewUIController(m.styles)
 
-	return m
+	return m, nil
 }
 
 // Init sets up initial application state and background workers.

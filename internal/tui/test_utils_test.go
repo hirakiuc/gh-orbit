@@ -40,18 +40,20 @@ func newTestModel(t TestingT) *Model {
 	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
-	m := NewModel(
-		userID,
-		cfg,
-		logger,
-		mockRepo,
-		mockClient,
-		mockSyncer,
-		mockEnricher,
-		mockTraffic,
-		mockAlerter,
-		WithExecutor(mockExecutor),
-	)
+	m, _ := NewModel(ModelParams{
+		UserID:   userID,
+		Config:   cfg,
+		Logger:   logger,
+		DB:       mockRepo,
+		Client:   mockClient,
+		Syncer:   mockSyncer,
+		Enricher: mockEnricher,
+		Traffic:  mockTraffic,
+		Alerter:  mockAlerter,
+		Options: []Option{
+			WithExecutor(mockExecutor),
+		},
+	})
 
 	m.heartbeatInterval = time.Millisecond
 	m.clockInterval = time.Millisecond

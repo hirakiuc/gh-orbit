@@ -27,7 +27,12 @@ func BenchmarkSyncEngine_Sync(b *testing.B) {
 		notifs[i] = github.Notification{ID: "notif-id", UpdatedAt: time.Now()}
 	}
 
-	engine := NewSyncEngine(mockFetcher, mockRepo, mockAlerter, logger)
+	engine, _ := NewSyncEngine(SyncParams{
+		Fetcher: mockFetcher,
+		DB:      mockRepo,
+		Alerts:  mockAlerter,
+		Logger:  logger,
+	})
 
 	b.ResetTimer()
 	for b.Loop() {

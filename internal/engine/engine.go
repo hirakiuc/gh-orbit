@@ -47,6 +47,16 @@ func NewCoreEngine(
 	executor types.CommandExecutor,
 	opts ...Option,
 ) (*CoreEngine, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required for CoreEngine")
+	}
+	if logger == nil {
+		return nil, fmt.Errorf("logger is required for CoreEngine")
+	}
+	if executor == nil {
+		return nil, fmt.Errorf("executor is required for CoreEngine")
+	}
+
 	var o options
 	for _, opt := range opts {
 		opt(&o)
@@ -69,10 +79,27 @@ func NewCoreEngine(
 	bus := NewEventBus()
 	traffic := api.NewAPITrafficController(ctx, logger)
 
-	enricher := api.NewEnrichmentEngine(ctx, client, database, logger)
+	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
+		Client: client,
+		DB:     database,
+		Logger: logger,
+	})
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	enricher.OnMutation = func() { bus.Publish(EventEnrichmentUpdated) }
 
-	alerter := api.NewAlertService(ctx, cfg, logger, database, executor)
+	alerter, err := api.NewAlertService(ctx, api.AlertParams{
+		Config:   cfg,
+		Logger:   logger,
+		DB:       database,
+		Executor: executor,
+	})
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 
 	fetcher := github.NewNotificationFetcher(client, logger)
 
@@ -81,7 +108,16 @@ func NewCoreEngine(
 	if o.silentAlerts {
 		syncAlerter = nil
 	}
-	syncer := api.NewSyncEngine(fetcher, database, syncAlerter, logger)
+	syncer, err := api.NewSyncEngine(api.SyncParams{
+		Fetcher: fetcher,
+		DB:      database,
+		Alerts:  syncAlerter,
+		Logger:  logger,
+	})
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	syncer.OnMutation = func() { bus.Publish(EventNotificationsChanged) }
 
 	return &CoreEngine{

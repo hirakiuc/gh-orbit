@@ -26,14 +26,24 @@ type SyncEngine struct {
 	OnMutation func()
 }
 
-func NewSyncEngine(fetcher github.Fetcher, database types.SyncRepository, alerts Alerter, logger *slog.Logger) *SyncEngine {
-	return &SyncEngine{
-		fetcher:    fetcher,
-		db:         database,
-		alerts:     alerts,
-		logger:     logger,
-		OnMutation: func() {}, // Default no-op
+func NewSyncEngine(p SyncParams) (*SyncEngine, error) {
+	if p.Fetcher == nil {
+		return nil, fmt.Errorf("fetcher is required for SyncEngine")
 	}
+	if p.DB == nil {
+		return nil, fmt.Errorf("database is required for SyncEngine")
+	}
+	if p.Logger == nil {
+		return nil, fmt.Errorf("logger is required for SyncEngine")
+	}
+
+	return &SyncEngine{
+		fetcher:    p.Fetcher,
+		db:         p.DB,
+		alerts:     p.Alerts,
+		logger:     p.Logger,
+		OnMutation: func() {}, // Default no-op
+	}, nil
 }
 
 // Fetcher returns the underlying Fetcher instance.
