@@ -1,90 +1,102 @@
 package engine
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestEventBus_Stress(t *testing.T) {
-	bus := NewEventBus()
-	const numSubscribers = 100
-	const numPublishers = 50
-	const numEvents = 200
+	synctest.Test(t, func(t *testing.T) {
+		bus := NewEventBus()
+		const numSubscribers = 100
+		const numPublishers = 50
+		const numEvents = 200
 
-	var totalReceived int64
-	var wg sync.WaitGroup
+		ctx, cancel := context.WithCancel(context.Background())
+		var totalReceived int64
+		var wg sync.WaitGroup
 
-	// 1. Setup many concurrent subscribers
-	for i := 0; i < numSubscribers; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			ch := bus.Subscribe(EventNotificationsChanged)
-			timeout := time.After(2 * time.Second)
+		// 1. Setup many concurrent subscribers
+		for i := 0; i < numSubscribers; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				ch := bus.Subscribe(EventNotificationsChanged)
 
-			for {
-				select {
-				case <-ch:
-					atomic.AddInt64(&totalReceived, 1)
-				case <-timeout:
-					return
+				for {
+					select {
+					case <-ch:
+						atomic.AddInt64(&totalReceived, 1)
+					case <-ctx.Done():
+						return
+					}
 				}
-			}
-		}(i)
-	}
+			}(i)
+		}
 
-	// Wait for subscribers to settle
-	time.Sleep(50 * time.Millisecond)
+		// Wait for subscribers to settle
+		synctest.Wait()
 
-	// 2. Setup many concurrent publishers
-	for i := 0; i < numPublishers; i++ {
-		go func(id int) {
-			for j := 0; j < numEvents; j++ {
-				bus.Publish(EventNotificationsChanged)
-				if j%10 == 0 {
-					// Mix in some random subs during active publishing
-					bus.Subscribe(EventEnrichmentUpdated)
+		// 2. Setup many concurrent publishers
+		var pubWG sync.WaitGroup
+		pubWG.Add(numPublishers)
+		for i := 0; i < numPublishers; i++ {
+			go func(id int) {
+				defer pubWG.Done()
+				for j := 0; j < numEvents; j++ {
+					bus.Publish(EventNotificationsChanged)
+					if j%10 == 0 {
+						// Mix in some random subs during active publishing
+						bus.Subscribe(EventEnrichmentUpdated)
+					}
 				}
-			}
-		}(i)
-	}
+			}(i)
+		}
 
-	wg.Wait()
+		pubWG.Wait()
+		// Wait for events to propagate
+		synctest.Wait()
 
-	// 3. Final verification
-	received := atomic.LoadInt64(&totalReceived)
-	t.Logf("Stress Test complete. Total events received: %d", received)
-	assert.Greater(t, received, int64(0), "Subscribers should have received at least some events")
+		cancel()
+		wg.Wait()
+
+		// 3. Final verification
+		received := atomic.LoadInt64(&totalReceived)
+		t.Logf("Stress Test complete. Total events received: %d", received)
+		assert.Greater(t, received, int64(0), "Subscribers should have received at least some events")
+	})
 }
 
 func TestEventBus_DeadlockDetection(t *testing.T) {
-	// Set a short deadline for this test to catch deadlocks
-	deadline := time.Now().Add(1 * time.Second)
-	bus := NewEventBus()
+	synctest.Test(t, func(t *testing.T) {
+		bus := NewEventBus()
+		const iterations = 1000
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-	// Simulate high contention between lock types
-	go func() {
-		defer wg.Done()
-		for time.Now().Before(deadline) {
-			bus.Subscribe(EventNotificationsChanged)
-		}
-	}()
+		// Simulate high contention between lock types
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				bus.Subscribe(EventNotificationsChanged)
+			}
+		}()
 
-	go func() {
-		defer wg.Done()
-		for time.Now().Before(deadline) {
-			bus.Publish(EventNotificationsChanged)
-		}
-	}()
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				bus.Publish(EventNotificationsChanged)
+			}
+		}()
 
-	wg.Wait()
+		wg.Wait()
+	})
 }
 
 func TestEventBus_BufferSaturation(t *testing.T) {
