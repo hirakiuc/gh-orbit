@@ -9,6 +9,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -145,6 +146,26 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		res, err := engine.FetchDetail(ctx, "url", "Issue", true)
 		assert.NoError(t, err)
 		assert.Equal(t, "fresh", res.Body)
+	})
+
+	t.Run("Chaos Paths - API Errors", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			apiErr   error
+			expected error
+		}{
+			{"Unauthorized", types.ErrUnauthorized, types.ErrUnauthorized},
+			{"Internal Error", types.ErrInternalServerError, types.ErrInternalServerError},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "url", nil, mock.Anything).Return(tt.apiErr).Once()
+				engine, _ := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo, Logger: slog.Default()})
+				_, err := engine.FetchDetail(ctx, "url", "Issue", false)
+				assert.ErrorIs(t, err, tt.expected)
+			})
+		}
 	})
 }
 

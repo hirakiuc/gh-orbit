@@ -114,6 +114,37 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+
+	t.Run("Chaos Paths - API Errors", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			apiErr   error
+			expected error
+		}{
+			{"Unauthorized", types.ErrUnauthorized, types.ErrUnauthorized},
+			{"Internal Error", types.ErrInternalServerError, types.ErrInternalServerError},
+			{"Rate Limited", &models.RateLimitError{RetryAfter: time.Minute}, &models.RateLimitError{}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				mockFetcher := mocks.NewMockFetcher(t)
+				mockRepo := mocks.NewMockSyncRepository(t)
+				mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(&models.SyncMeta{}, nil).Once()
+				mockFetcher.EXPECT().FetchNotifications(mock.Anything, mock.Anything, false).Return(nil, nil, models.RateLimitInfo{}, tt.apiErr).Once()
+				mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
+
+				engine, _ := NewSyncEngine(SyncParams{Fetcher: mockFetcher, DB: mockRepo, Logger: logger})
+				_, err := engine.Sync(ctx, userID, false)
+
+				if tt.name == "Rate Limited" {
+					assert.ErrorAs(t, err, &tt.expected)
+				} else {
+					assert.ErrorIs(t, err, tt.expected)
+				}
+			})
+		}
+	})
 }
 
 func TestNewSyncEngine_Guards(t *testing.T) {

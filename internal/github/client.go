@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	gh "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 // ghClient wraps the GitHub REST and GQL API clients.
@@ -109,11 +111,14 @@ func (c *ghClient) CurrentUser(ctx context.Context) (*User, error) {
 
 		c.ReportRateLimit(ParseRateLimitInfo(resp.Header))
 
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
-			return nil, &models.RateLimitError{
-				Resource:   "core",
-				RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+		if err := MapHTTPError(resp.StatusCode); err != nil {
+			if errors.Is(err, types.ErrRateLimited) {
+				return nil, &models.RateLimitError{
+					Resource:   "core",
+					RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+				}
 			}
+			return nil, err
 		}
 
 		var user User
@@ -145,11 +150,14 @@ func (c *ghClient) MarkThreadAsRead(ctx context.Context, threadID string) error 
 
 		c.ReportRateLimit(ParseRateLimitInfo(resp.Header))
 
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
-			return &models.RateLimitError{
-				Resource:   "core",
-				RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+		if err := MapHTTPError(resp.StatusCode); err != nil {
+			if errors.Is(err, types.ErrRateLimited) {
+				return &models.RateLimitError{
+					Resource:   "core",
+					RetryAfter: ParseRateLimitInfo(resp.Header).RetryAfter,
+				}
 			}
+			return err
 		}
 		return nil
 	}

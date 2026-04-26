@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -132,17 +133,19 @@ func (f *NotificationFetcher) prepareRequest(ctx context.Context, url string, me
 }
 
 func (f *NotificationFetcher) handleResponseError(resp *http.Response, rl models.RateLimitInfo) error {
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == 429 {
+	err := MapHTTPError(resp.StatusCode)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, types.ErrRateLimited) {
 		return &models.RateLimitError{
 			Resource:   rl.Resource,
 			RetryAfter: rl.RetryAfter,
 		}
 	}
 
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error: %s", resp.Status)
-	}
-	return nil
+	return err
 }
 
 func (f *NotificationFetcher) parsePage(resp *http.Response) ([]Notification, error) {
