@@ -274,6 +274,9 @@ func (s *MCPServer) handleSingleMessage(ctx context.Context, session *udsSession
 
 	var rawMessage json.RawMessage
 	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
+		if s.verbose {
+			s.engine.Logger.Debug("MCP malformed request", "error", err, "line", config.RedactSecrets(line))
+		}
 		return
 	}
 
