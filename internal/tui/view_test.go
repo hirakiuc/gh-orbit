@@ -118,6 +118,15 @@ func TestRenderHeader_States(t *testing.T) {
 		assert.Contains(t, stripANSI(view), "Syncing...")
 	})
 
+	t.Run("Nil Traffic (MCP Mode)", func(t *testing.T) {
+		m := newTestModel(t)
+		m.traffic = nil
+		m.ui.syncing = false
+
+		view := m.renderHeader()
+		assert.Contains(t, stripANSI(view), "Connected to Engine")
+	})
+
 	t.Run("Low Quota", func(t *testing.T) {
 		m := newTestModel(t)
 		mockTraffic := mocks.NewMockTrafficController(t)

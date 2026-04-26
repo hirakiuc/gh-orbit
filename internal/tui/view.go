@@ -66,6 +66,8 @@ func (m *Model) renderHeader() string {
 	status := ""
 	if m.ui.syncing {
 		status = m.ui.spinner.View() + " Syncing..."
+	} else if m.traffic == nil {
+		status = m.styles.Help.Render("Connected to Engine")
 	} else {
 		remaining := m.traffic.Remaining()
 		threshold := 1000
