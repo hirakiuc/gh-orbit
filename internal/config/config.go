@@ -7,15 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
-
-// AppGroupID is the shared container ID for sandboxed communication on macOS.
-// This matches the entitlement in native/OrbitCockpit.
-const AppGroupID = "com.hirakiuc.gh-orbit.cockpit"
 
 // Config represents the application configuration.
 type Config struct {
@@ -280,40 +275,8 @@ func AuditPermissions(ctx context.Context, logger *slog.Logger, root string) err
 	})
 }
 
-// isSandboxed returns true if the process is running within a macOS App Sandbox.
-func isSandboxed() bool {
-	return os.Getenv("APP_SANDBOX_CONTAINER_ID") != ""
-}
-
-// resolveAppGroupDir returns the path to the shared App Group container on macOS.
-func resolveAppGroupDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	// Shared App Group container path
-	return filepath.Join(home, "Library/Group Containers", AppGroupID), nil
-}
-
-// resolveDarwinAppSupport returns the sandboxed Application Support path.
-func resolveDarwinAppSupport() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, "Library/Application Support/gh-orbit"), nil
-}
-
 // ResolveConfigPath returns the path to config.yml.
 func ResolveConfigPath() (string, error) {
-	if runtime.GOOS == "darwin" && isSandboxed() {
-		dir, err := resolveDarwinAppSupport()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(dir, "config.yml"), nil
-	}
-
 	dir, err := resolveXDG("XDG_CONFIG_HOME", ".config")
 	if err != nil {
 		return "", err
@@ -323,10 +286,6 @@ func ResolveConfigPath() (string, error) {
 
 // ResolveDataDir returns the path to the data directory.
 func ResolveDataDir() (string, error) {
-	if runtime.GOOS == "darwin" && isSandboxed() {
-		return resolveAppGroupDir()
-	}
-
 	dir, err := resolveXDG("XDG_DATA_HOME", ".local/share")
 	if err != nil {
 		return "", err
@@ -336,10 +295,6 @@ func ResolveDataDir() (string, error) {
 
 // ResolveStateDir returns the path to the state directory.
 func ResolveStateDir() (string, error) {
-	if runtime.GOOS == "darwin" && isSandboxed() {
-		return resolveAppGroupDir()
-	}
-
 	dir, err := resolveXDG("XDG_STATE_HOME", ".local/state")
 	if err != nil {
 		return "", err

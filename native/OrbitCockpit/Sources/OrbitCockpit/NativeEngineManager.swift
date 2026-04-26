@@ -12,9 +12,6 @@ class NativeEngineManager: ObservableObject {
     private let maxAttempts: Int
     private let baseDelayNS: UInt64
 
-    // App Group for shared communication within Sandbox
-    private let appGroupID = "com.hirakiuc.gh-orbit.cockpit"
-
     init(
         socketPath: String? = nil,
         maxAttempts: Int = 10,
@@ -28,18 +25,13 @@ class NativeEngineManager: ObservableObject {
             self.socketPath = socketPath
             onLog?("Using explicit socket path: \(self.socketPath)", .debug)
         } else {
-            // Resolve socket path: prioritize shared App Group container for Sandbox compliance
-            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
-                self.socketPath = groupURL.appendingPathComponent("engine.sock").path
-                onLog?("Resolved App Group socket path: \(self.socketPath)", .debug)
-            } else {
-                // Fallback for non-sandboxed dev mode
-                let runtimeDir =
-                    ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-                    ?? (FileManager.default.homeDirectoryForCurrentUser.path + "/.local/run/gh-orbit")
-                self.socketPath = runtimeDir + "/engine.sock"
-                onLog?("Resolved Fallback socket path: \(self.socketPath)", .debug)
-            }
+            // Resolve socket path to standard XDG location
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            let runtimeDir =
+                ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
+                ?? (home + "/.local/run/gh-orbit")
+            self.socketPath = runtimeDir + "/engine.sock"
+            onLog?("Resolved engine socket path: \(self.socketPath)", .debug)
         }
 
         // Set the supervisor's logging closure
