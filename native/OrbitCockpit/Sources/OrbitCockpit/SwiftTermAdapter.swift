@@ -22,14 +22,15 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     private func setupFont() {
         // Preferred "Mono" Nerd Fonts for fixed-width icon rendering.
         let preferredFonts = [
+            "MonaspiceNe Nerd Font Mono",
+            "MonaspiceAr Nerd Font Mono",
+            "MonaspiceKr Nerd Font Mono",
+            "MonaspiceRn Nerd Font Mono",
+            "MonaspiceXe Nerd Font Mono",
+            "SauceCodePro Nerd Font Mono",
             "JetBrainsMono Nerd Font Mono",
-            "JetBrainsMonoNF-Mono",
             "FiraCode Nerd Font Mono",
             "MesloLGS NF Mono",
-            "JetBrainsMono Nerd Font",
-            "JetBrainsMonoNF",
-            "FiraCode Nerd Font",
-            "MesloLGS NF"
         ]
 
         var selectedFont: NSFont?
