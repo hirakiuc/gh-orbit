@@ -22,7 +22,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
             "JetBrainsMono Nerd Font",
             "JetBrainsMonoNF",
             "FiraCode Nerd Font",
-            "MesloLGS NF",
+            "MesloLGS NF"
         ]
 
         var selectedFont: NSFont?
