@@ -162,3 +162,41 @@ func TestNewAlertService_Guards(t *testing.T) {
 		assert.Contains(t, err.Error(), "logger is required")
 	})
 }
+
+func TestAlertService_CalculateImportance(t *testing.T) {
+	a := &AlertService{}
+	tests := []struct {
+		reason   string
+		expected int
+	}{
+		{"mention", 3},
+		{"assign", 2},
+		{"author", 1},
+		{"comment", 1},
+		{"subscribed", 1},
+		{"unknown", 1},
+	}
+
+	for _, tt := range tests {
+		n := github.Notification{Reason: tt.reason}
+		assert.Equal(t, tt.expected, a.calculateImportance(n), "reason: %s", tt.reason)
+	}
+}
+
+func TestAlertService_ShouldNotifyReason(t *testing.T) {
+	t.Run("Empty reason list allows all", func(t *testing.T) {
+		a := &AlertService{config: &config.Config{}}
+		assert.True(t, a.shouldNotifyReason("mention"))
+		assert.True(t, a.shouldNotifyReason("comment"))
+	})
+
+	t.Run("Filtered reason list", func(t *testing.T) {
+		a := &AlertService{config: &config.Config{
+			Notifications: config.NotificationsConfig{
+				Reasons: []string{"mention", "assign"},
+			},
+		}}
+		assert.True(t, a.shouldNotifyReason("mention"))
+		assert.False(t, a.shouldNotifyReason("comment"))
+	})
+}
