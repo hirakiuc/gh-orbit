@@ -147,6 +147,42 @@ func TestSyncEngine_Sync(t *testing.T) {
 	})
 }
 
+func TestSyncEngine_InitSyncMeta(t *testing.T) {
+	ctx := context.Background()
+	userID := "user-1"
+	key := "notifications"
+	logger := slog.Default()
+
+	t.Run("First Run - No Meta in DB", func(t *testing.T) {
+		mockRepo := mocks.NewMockSyncRepository(t)
+		mockRepo.EXPECT().GetSyncMeta(ctx, userID, key).Return(nil, nil).Once()
+
+		engine := &SyncEngine{db: mockRepo, logger: logger}
+		meta, err := engine.initSyncMeta(ctx, userID, key, 123)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, meta)
+		assert.Equal(t, userID, meta.UserID)
+		assert.Equal(t, DefaultPollInterval, meta.PollInterval)
+	})
+
+	t.Run("Self-Healing - Corrupted ETag", func(t *testing.T) {
+		mockRepo := mocks.NewMockSyncRepository(t)
+		corruptedMeta := &models.SyncMeta{
+			UserID: userID,
+			Key:    key,
+			ETag:   `W/""`,
+		}
+		mockRepo.EXPECT().GetSyncMeta(ctx, userID, key).Return(corruptedMeta, nil).Once()
+
+		engine := &SyncEngine{db: mockRepo, logger: logger}
+		meta, err := engine.initSyncMeta(ctx, userID, key, 123)
+
+		assert.NoError(t, err)
+		assert.Empty(t, meta.ETag, "Corrupted ETag should be cleared")
+	})
+}
+
 func TestNewSyncEngine_Guards(t *testing.T) {
 	mockFetcher := mocks.NewMockFetcher(t)
 	mockRepo := mocks.NewMockSyncRepository(t)
