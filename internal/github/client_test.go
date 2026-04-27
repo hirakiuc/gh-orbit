@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -15,8 +14,7 @@ import (
 
 func TestGHClient_Methods(t *testing.T) {
 	t.Run("CurrentUser with Mock Auth Skip", func(t *testing.T) {
-		os.Setenv("GH_ORBIT_SKIP_AUTH", "1")
-		defer os.Unsetenv("GH_ORBIT_SKIP_AUTH")
+		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
 
 		expectedUser := &User{Login: "test-user"}
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,8 +31,7 @@ func TestGHClient_Methods(t *testing.T) {
 	})
 
 	t.Run("MarkThreadAsRead", func(t *testing.T) {
-		os.Setenv("GH_ORBIT_SKIP_AUTH", "1")
-		defer os.Unsetenv("GH_ORBIT_SKIP_AUTH")
+		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPatch, r.Method)
