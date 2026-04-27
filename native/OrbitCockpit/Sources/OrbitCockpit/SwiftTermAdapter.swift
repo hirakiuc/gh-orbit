@@ -14,6 +14,31 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         self.terminalView = LocalProcessTerminalView(frame: .zero)
         super.init()
         self.terminalView.processDelegate = self
+        setupFont()
+    }
+
+    private func setupFont() {
+        let preferredFonts = [
+            "JetBrainsMono Nerd Font",
+            "JetBrainsMonoNF",
+            "FiraCode Nerd Font",
+            "MesloLGS NF",
+        ]
+
+        var selectedFont: NSFont?
+        for name in preferredFonts {
+            if let font = NSFont(name: name, size: 12) {
+                selectedFont = font
+                break
+            }
+        }
+
+        if let font = selectedFont {
+            terminalView.font = font
+        } else {
+            terminalView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            print("[SwiftTermAdapter] No Nerd Font found, falling back to system monospaced font.")
+        }
     }
 
     func feed(data: Data) {
