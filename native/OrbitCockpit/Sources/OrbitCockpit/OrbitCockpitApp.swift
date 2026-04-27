@@ -178,7 +178,7 @@ class TerminalManager: ObservableObject {
 
     func launch(_ name: String) {
         Task {
-            let adapter = SwiftTermAdapter()
+            let adapter = SwiftTermAdapter(onLog: onLog)
             adapter.isDarkMode(isDark)
 
             onLog?("Resolving gh-orbit binary...", .debug)
