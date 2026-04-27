@@ -20,7 +20,7 @@ struct TerminalManagerTests {
     func testEngineStorage() async throws {
         let monitor = ActivityMonitor()
         let manager = TerminalManager(monitor: monitor)
-        let mockEngine = SwiftTermAdapter()
+        let mockEngine = SwiftTermAdapter(onLog: nil)
 
         manager.engines["TUI"] = mockEngine
         let stored = try #require(manager.engines["TUI"])

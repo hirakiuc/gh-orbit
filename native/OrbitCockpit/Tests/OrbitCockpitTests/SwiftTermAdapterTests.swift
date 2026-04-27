@@ -11,9 +11,10 @@ struct SwiftTermAdapterTests {
     @Test("Font initialization")
     @MainActor
     func testFontInitialization() async throws {
-        let adapter = SwiftTermAdapter()
+        let adapter = SwiftTermAdapter(onLog: nil)
 
         // Access the internal terminalView via the public view property
+
         guard let terminalView = adapter.view as? LocalProcessTerminalView else {
             Issue.record("adapter.view is not a LocalProcessTerminalView")
             return

@@ -5,12 +5,14 @@ import SwiftTerm
 @MainActor
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
+    private let onLog: ((String, LogLevel) -> Void)?
 
     var view: NSView {
         return terminalView
     }
 
-    override init() {
+    init(onLog: ((String, LogLevel) -> Void)? = nil) {
+        self.onLog = onLog
         self.terminalView = LocalProcessTerminalView(frame: .zero)
         super.init()
         self.terminalView.processDelegate = self
@@ -18,7 +20,12 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     }
 
     private func setupFont() {
+        // Preferred "Mono" Nerd Fonts for fixed-width icon rendering.
         let preferredFonts = [
+            "JetBrainsMono Nerd Font Mono",
+            "JetBrainsMonoNF-Mono",
+            "FiraCode Nerd Font Mono",
+            "MesloLGS NF Mono",
             "JetBrainsMono Nerd Font",
             "JetBrainsMonoNF",
             "FiraCode Nerd Font",
@@ -29,6 +36,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         for name in preferredFonts {
             if let font = NSFont(name: name, size: 12) {
                 selectedFont = font
+                onLog?("Found Nerd Font: \(name)", .debug)
                 break
             }
         }
@@ -37,6 +45,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
             terminalView.font = font
         } else {
             terminalView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            onLog?("No Nerd Font found, falling back to system monospaced font.", .warning)
             print("[SwiftTermAdapter] No Nerd Font found, falling back to system monospaced font.")
         }
     }
