@@ -334,6 +334,7 @@ func runTUI() error {
 		runtimeDir = filepath.Join(home, ".local/run/gh-orbit")
 	}
 	socketPath := filepath.Join(runtimeDir, "engine.sock")
+	requireEngine := os.Getenv("GH_ORBIT_REQUIRE_ENGINE") == "1"
 
 	if _, err := os.Stat(socketPath); err == nil {
 		env.logger.Debug("detecting headless engine", "socket", socketPath)
@@ -361,10 +362,18 @@ func runTUI() error {
 				user := "mcp-user" // Placeholder until tool added
 				return launchTUIMCP(ctx, env, adapter, user)
 			}
+			if requireEngine {
+				return fmt.Errorf("cockpit-managed launch requires MCP engine initialization: %w", err)
+			}
 			env.logger.Warn("mcp handshake failed, falling back to standalone", "error", err)
 		} else {
+			if requireEngine {
+				return fmt.Errorf("cockpit-managed launch requires MCP engine connection: %w", err)
+			}
 			env.logger.Warn("failed to connect to engine UDS, falling back to standalone", "error", err)
 		}
+	} else if requireEngine {
+		return fmt.Errorf("cockpit-managed launch requires a running MCP engine at %s", socketPath)
 	}
 
 	// 2. Standalone Mode (Library access)

@@ -1,4 +1,5 @@
 import Combine
+import AppKit
 import SwiftUI
 
 @main
@@ -20,6 +21,9 @@ struct OrbitCockpitApp: App {
             ContentView()
                 .environmentObject(activityMonitor)
                 .environmentObject(terminalManager)
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    terminalManager.shutdown()
+                }
         }
     }
 }
@@ -149,6 +153,7 @@ class TerminalManager: ObservableObject {
     private var isDark: Bool = true
     private var cancellables = Set<AnyCancellable>()
     private var onLog: ((String, LogLevel) -> Void)?
+    private var launchTasks: [String: Task<Void, Never>] = [:]
 
     init(monitor: ActivityMonitor) {
         let logFunc: (String, LogLevel) -> Void = { msg, level in
@@ -177,7 +182,12 @@ class TerminalManager: ObservableObject {
     }
 
     func launch(_ name: String) {
-        Task {
+        if engines[name] != nil || launchTasks[name] != nil {
+            return
+        }
+
+        let task = Task {
+            defer { launchTasks[name] = nil }
             let adapter = SwiftTermAdapter(onLog: onLog)
             adapter.isDarkMode(isDark)
 
@@ -198,11 +208,19 @@ class TerminalManager: ObservableObject {
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
                 env["XDG_RUNTIME_DIR"] = home + "/.local/run"
             }
+            env["GH_ORBIT_REQUIRE_ENGINE"] = "1"
 
             // 2. Ensure Engine is running
             if let engineMgr = engineManager {
                 onLog?("Delegating to NativeEngineManager to start background engine...", .debug)
-                await engineMgr.startEngine(executable: executableURL, environment: env)
+                switch await engineMgr.startEngine(executable: executableURL, environment: env) {
+                case .reused, .ownedReady:
+                    break
+                case .failed(let message):
+                    onLog?("Engine verification failed. Aborting pane launch.", .error)
+                    self.launchError = message
+                    return
+                }
             }
 
             // 3. Launch TUI
@@ -216,5 +234,14 @@ class TerminalManager: ObservableObject {
                 executable: executableURL, args: args, environment: env.map { "\($0.key)=\($0.value)" })
             engines[name] = adapter
         }
+        launchTasks[name] = task
+    }
+
+    func shutdown() {
+        for task in launchTasks.values {
+            task.cancel()
+        }
+        launchTasks.removeAll()
+        engineManager?.stopEngine()
     }
 }
