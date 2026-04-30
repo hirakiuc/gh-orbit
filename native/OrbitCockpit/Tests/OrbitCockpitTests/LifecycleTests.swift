@@ -27,7 +27,7 @@ final class MockSupervisor: EngineProcessSupervising {
 
 actor MockProbe: EngineProbing {
     struct Step {
-        let result: Bool
+        let outcome: ProbeOutcome
         let delayNS: UInt64
     }
 
@@ -35,18 +35,19 @@ actor MockProbe: EngineProbing {
     private(set) var callCount = 0
 
     init(results: [Bool]) {
-        self.steps = results.map { Step(result: $0, delayNS: 0) }
+        self.steps = results.map {
+            Step(outcome: $0 ? .ok("mock success") : .failed("mock failure"), delayNS: 0)
+        }
     }
 
     init(steps: [Step]) {
         self.steps = steps
     }
 
-    func waitUntilReady(
+    func probe(
         socketPath: String,
-        maxAttempts: Int,
-        baseDelayNS: UInt64
-    ) async -> Bool {
+        phase: String
+    ) async -> ProbeOutcome {
         let index = callCount
         callCount += 1
         if index < steps.count {
@@ -54,9 +55,9 @@ actor MockProbe: EngineProbing {
             if step.delayNS > 0 {
                 try? await Task.sleep(nanoseconds: step.delayNS)
             }
-            return step.result
+            return step.outcome
         }
-        return false
+        return .failed("mock default failure")
     }
 }
 
@@ -160,8 +161,8 @@ struct LifecycleTests {
     @Test("NativeEngineManager bounds stalled probe handling")
     func testStalledProbeTimesOut() async throws {
         let probe = MockProbe(steps: [
-            .init(result: false, delayNS: 1_000_000_000),
-            .init(result: false, delayNS: 1_000_000_000),
+            .init(outcome: .failed("slow failure"), delayNS: 1_000_000_000),
+            .init(outcome: .failed("slow failure"), delayNS: 1_000_000_000),
         ])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
@@ -187,8 +188,8 @@ struct LifecycleTests {
     @Test("NativeEngineManager shares inflight startup across concurrent callers")
     func testConcurrentStartSharesSingleStartupTask() async throws {
         let probe = MockProbe(steps: [
-            .init(result: false, delayNS: 0),
-            .init(result: true, delayNS: 50_000_000),
+            .init(outcome: .failed("not ready yet"), delayNS: 0),
+            .init(outcome: .ok("ready"), delayNS: 50_000_000),
         ])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(

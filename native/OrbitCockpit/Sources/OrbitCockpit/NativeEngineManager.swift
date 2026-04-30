@@ -18,12 +18,24 @@ enum EngineStartupResult: Equatable {
 
 private let defaultProbeTimeoutNS: UInt64 = 250_000_000
 
+struct ProbeOutcome: Sendable {
+    let success: Bool
+    let detail: String
+
+    static func ok(_ detail: String) -> ProbeOutcome {
+        ProbeOutcome(success: true, detail: detail)
+    }
+
+    static func failed(_ detail: String) -> ProbeOutcome {
+        ProbeOutcome(success: false, detail: detail)
+    }
+}
+
 protocol EngineProbing: Sendable {
-    func waitUntilReady(
+    func probe(
         socketPath: String,
-        maxAttempts: Int,
-        baseDelayNS: UInt64
-    ) async -> Bool
+        phase: String
+    ) async -> ProbeOutcome
 }
 
 struct MCPInitializeProbe: EngineProbing {
@@ -66,38 +78,25 @@ struct MCPInitializeProbe: EngineProbing {
     private let protocolVersion = "2025-11-25"
     private let ioTimeoutMS: Int = 200
 
-    func waitUntilReady(
+    func probe(
         socketPath: String,
-        maxAttempts: Int,
-        baseDelayNS: UInt64
-    ) async -> Bool {
+        phase: String
+    ) async -> ProbeOutcome {
         let pathBytes = socketPath.utf8CString
         let maxLength = MemoryLayout<sockaddr_un>.size - MemoryLayout<sa_family_t>.size
         if pathBytes.count >= maxLength {
-            return false
+            return .failed("[\(phase)] socket path too long for UDS probe")
         }
 
-        for attempt in 1...maxAttempts {
-            if await attemptValidation(socketPath: socketPath) {
-                return true
-            }
-
-            let delay = UInt64(pow(2.0, Double(attempt)) * Double(baseDelayNS))
-            try? await Task.sleep(nanoseconds: delay)
-        }
-        return false
-    }
-
-    private func attemptValidation(socketPath: String) async -> Bool {
         return await Task.detached(priority: .utility) {
             Self.validate(socketPath: socketPath, protocolVersion: protocolVersion, ioTimeoutMS: ioTimeoutMS)
         }.value
     }
 
-    nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int) -> Bool {
+    nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int) -> ProbeOutcome {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         if fd < 0 {
-            return false
+            return .failed("socket() failed: errno=\(errno)")
         }
         defer { close(fd) }
 
@@ -129,7 +128,7 @@ struct MCPInitializeProbe: EngineProbing {
             }
         }
         if connectResult != 0 {
-            return false
+            return .failed("connect() failed: errno=\(errno)")
         }
 
         let payload = RequestEnvelope(
@@ -143,7 +142,7 @@ struct MCPInitializeProbe: EngineProbing {
 
         let encoder = JSONEncoder()
         guard var data = try? encoder.encode(payload) else {
-            return false
+            return .failed("failed to encode initialize payload")
         }
         data.append(0x0A)
 
@@ -151,23 +150,35 @@ struct MCPInitializeProbe: EngineProbing {
             Darwin.write(fd, $0.baseAddress, $0.count)
         }
         if writeResult <= 0 {
-            return false
+            return .failed("write() failed: errno=\(errno)")
         }
 
         var buffer = [UInt8](repeating: 0, count: 4096)
         let readCount = Darwin.read(fd, &buffer, buffer.count)
         if readCount <= 0 {
-            return false
+            return .failed("read() failed or timed out: errno=\(errno)")
         }
 
         let responseBytes = buffer.prefix(Int(readCount)).prefix { $0 != 0x0A }
         guard let responseData = String(bytes: responseBytes, encoding: .utf8)?.data(using: .utf8),
             let response = try? JSONDecoder().decode(ResponseEnvelope.self, from: responseData)
         else {
-            return false
+            let snippet = String(bytes: responseBytes.prefix(120), encoding: .utf8) ?? "<non-utf8>"
+            return .failed("failed to decode initialize response: \(snippet)")
         }
 
-        return response.error == nil && response.id == 1 && response.result?.protocolVersion != nil
+        if let error = response.error {
+            return .failed("initialize returned error: code=\(error.code) message=\(error.message)")
+        }
+
+        guard response.id == 1 else {
+            return .failed("initialize returned unexpected id: \(response.id.map(String.init) ?? "nil")")
+        }
+        guard let negotiatedVersion = response.result?.protocolVersion, !negotiatedVersion.isEmpty else {
+            return .failed("initialize response missing protocolVersion")
+        }
+
+        return .ok("initialize succeeded with protocolVersion=\(negotiatedVersion)")
     }
 }
 
@@ -230,6 +241,7 @@ class NativeEngineManager: ObservableObject {
         }
 
         let task = Task<EngineStartupResult, Never> {
+            self.engineSupervisor.onLog?("Starting engine readiness flow for socket: \(self.socketPath)", .debug)
             if await self.verifyExistingEngine() {
                 return .reused
             }
@@ -244,15 +256,15 @@ class NativeEngineManager: ObservableObject {
                     environment: environment
                 )
 
-                let ready = await self.waitUntilReadyBounded(maxAttempts: self.maxAttempts)
-                if ready {
+                let outcome = await self.waitUntilReadyBounded(maxAttempts: self.maxAttempts, phase: "owned-engine verification")
+                if outcome.success {
                     self.ownershipState = .ownedReady
                     self.isEngineReady = true
-                    self.engineSupervisor.onLog?("Engine is ready (MCP initialize verified).", .info)
+                    self.engineSupervisor.onLog?("Engine is ready (MCP initialize verified). Detail: \(outcome.detail)", .info)
                     return .ownedReady
                 }
 
-                self.engineSupervisor.onLog?("Engine failed to become ready (MCP initialize did not succeed).", .error)
+                self.engineSupervisor.onLog?("Engine failed to become ready. Detail: \(outcome.detail)", .error)
                 self.stopOwnedEngineIfNeeded()
                 self.ownershipState = .ownedFailed
                 self.isEngineReady = false
@@ -275,40 +287,57 @@ class NativeEngineManager: ObservableObject {
     }
 
     private func verifyExistingEngine() async -> Bool {
-        let isReusable = await waitUntilReadyBounded(maxAttempts: 1)
-        if isReusable {
+        let outcome = await waitUntilReadyBounded(maxAttempts: 1, phase: "existing-engine probe")
+        if outcome.success {
             ownershipState = .reused
             isEngineReady = true
-            engineSupervisor.onLog?("Reusing existing gh-orbit engine after MCP initialize verification.", .info)
+            engineSupervisor.onLog?("Reusing existing gh-orbit engine after MCP initialize verification. Detail: \(outcome.detail)", .info)
+            return true
         }
-        return isReusable
+        engineSupervisor.onLog?("Existing-engine probe did not verify a reusable engine. Detail: \(outcome.detail)", .debug)
+        return false
     }
 
-    private func waitUntilReadyBounded(maxAttempts: Int) async -> Bool {
+    private func waitUntilReadyBounded(maxAttempts: Int, phase: String) async -> ProbeOutcome {
         let probe = self.probe
         let socketPath = self.socketPath
         let baseDelayNS = self.baseDelayNS
         let probeTimeoutNS = self.probeTimeoutNS
 
-        let result = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await probe.waitUntilReady(
-                    socketPath: socketPath,
-                    maxAttempts: maxAttempts,
-                    baseDelayNS: baseDelayNS
-                )
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: probeTimeoutNS)
-                return false
+        var lastFailure = ProbeOutcome.failed("[\(phase)] probe did not run")
+        for attempt in 1...maxAttempts {
+            let outcome = await withTaskGroup(of: ProbeOutcome.self) { group in
+                group.addTask {
+                    await probe.probe(
+                        socketPath: socketPath,
+                        phase: "\(phase) attempt \(attempt)"
+                    )
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: probeTimeoutNS)
+                    return .failed("[\(phase) attempt \(attempt)] timed out after \(probeTimeoutNS / 1_000_000)ms")
+                }
+
+                let first = await group.next() ?? .failed("[\(phase) attempt \(attempt)] no probe result")
+                group.cancelAll()
+                return first
             }
 
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
+            if outcome.success {
+                return outcome
+            }
+
+            lastFailure = outcome
+            engineSupervisor.onLog?("Probe failure: \(outcome.detail)", .debug)
+
+            if attempt < maxAttempts {
+                let delay = UInt64(pow(2.0, Double(attempt)) * Double(baseDelayNS))
+                engineSupervisor.onLog?("Retrying probe after \(delay / 1_000_000)ms backoff.", .debug)
+                try? await Task.sleep(nanoseconds: delay)
+            }
         }
 
-        return result
+        return lastFailure
     }
 
     func stopEngine() {
