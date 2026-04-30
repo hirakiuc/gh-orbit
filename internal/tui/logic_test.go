@@ -87,6 +87,33 @@ func TestInterpreter_Execute(t *testing.T) {
 	}
 }
 
+func TestInterpreter_Execute_UpdateRateLimitConnectedMode(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic = nil
+	interp := NewInterpreter(m)
+
+	cmd := interp.Execute(ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 321}})
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	assert.Nil(t, msg)
+	assert.Equal(t, 321, m.RateLimit.Remaining)
+}
+
+func TestInterpreter_Execute_UpdateRateLimitStandaloneMode(t *testing.T) {
+	m := newTestModel(t)
+	traffic := m.traffic.(*mocks.MockTrafficController)
+	traffic.EXPECT().UpdateRateLimit(mock.Anything, models.RateLimitInfo{Remaining: 123}).Return().Once()
+	interp := NewInterpreter(m)
+
+	cmd := interp.Execute(ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 123}})
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	assert.Nil(t, msg)
+	assert.Equal(t, 123, m.RateLimit.Remaining)
+}
+
 func TestModel_Transition_EdgeCases(t *testing.T) {
 	m := newTestModel(t)
 	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()

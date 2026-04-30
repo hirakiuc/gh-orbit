@@ -75,7 +75,10 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 	if a, ok := action.(ActionUpdateRateLimit); ok {
 		return func() tea.Msg {
 			i.model.RateLimit = a.Info
-			i.model.traffic.UpdateRateLimit(context.Background(), a.Info)
+			// Connected mode intentionally delegates traffic control to the external engine.
+			if i.model.traffic != nil {
+				i.model.traffic.UpdateRateLimit(context.Background(), a.Info)
+			}
 			return nil
 		}
 	}
