@@ -3,6 +3,64 @@ import Testing
 
 @testable import OrbitCockpit
 
+@MainActor
+final class MockSupervisor: EngineProcessSupervising {
+    var isRunning = false
+    var onLog: ((String, LogLevel) -> Void)?
+    var startCalls = 0
+    var stopCalls = 0
+    var startError: Error?
+
+    func start(executable: URL, arguments: [String], environment: [String: String]?) throws {
+        startCalls += 1
+        if let startError {
+            throw startError
+        }
+        isRunning = true
+    }
+
+    func stop() {
+        stopCalls += 1
+        isRunning = false
+    }
+}
+
+actor MockProbe: EngineProbing {
+    struct Step {
+        let outcome: ProbeOutcome
+        let delayNS: UInt64
+    }
+
+    var steps: [Step]
+    private(set) var callCount = 0
+
+    init(results: [Bool]) {
+        self.steps = results.map {
+            Step(outcome: $0 ? .ok("mock success") : .failed("mock failure"), delayNS: 0)
+        }
+    }
+
+    init(steps: [Step]) {
+        self.steps = steps
+    }
+
+    func probe(
+        socketPath: String,
+        phase: String
+    ) async -> ProbeOutcome {
+        let index = callCount
+        callCount += 1
+        if index < steps.count {
+            let step = steps[index]
+            if step.delayNS > 0 {
+                try? await Task.sleep(nanoseconds: step.delayNS)
+            }
+            return step.outcome
+        }
+        return .failed("mock default failure")
+    }
+}
+
 struct MockFileSystem: FileSystem {
     var exists: Set<String> = []
     var currentPath: String = "/test/project"
@@ -43,22 +101,135 @@ struct LifecycleTests {
 
     @Test("NativeEngineManager UDS retry logic failure")
     func testUDSRetryLogicFailure() async throws {
-        // Use a path that will never exist to test timeout/retry failure
-        let fakeSocket = "/tmp/non_existent_orbit_\(UUID().uuidString).sock"
-        // Optimize: use 1ms base delay and 5 attempts for fast testing (~60ms total)
-        let manager = NativeEngineManager(socketPath: fakeSocket, maxAttempts: 5, baseDelayNS: 1_000_000)
+        let probe = MockProbe(results: [false, false])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/non_existent_orbit.sock",
+            maxAttempts: 5,
+            baseDelayNS: 1_000_000,
+            probeTimeoutNS: 50_000_000,
+            engineSupervisor: supervisor,
+            probe: probe
+        )
 
+        let result = await manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+
+        #expect(result == .failed("Orbit Cockpit could not verify the managed gh-orbit engine."))
         #expect(!manager.isEngineReady)
+        #expect(manager.ownershipState == .ownedFailed)
+        #expect(supervisor.startCalls == 1)
+        #expect(supervisor.stopCalls == 1)
+    }
 
-        let trueURL = URL(fileURLWithPath: "/usr/bin/true")
+    @Test("NativeEngineManager reuses healthy external engine")
+    func testReusesHealthyEngine() async throws {
+        let probe = MockProbe(results: [true])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/reused.sock",
+            engineSupervisor: supervisor,
+            probe: probe
+        )
 
-        let startTime = Date()
-        await manager.startEngine(executable: trueURL)
-        let duration = Date().timeIntervalSince(startTime)
+        let result = await manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
 
+        #expect(result == .reused)
+        #expect(manager.isEngineReady)
+        #expect(manager.ownershipState == .reused)
+        #expect(supervisor.startCalls == 0)
+    }
+
+    @Test("NativeEngineManager marks owned engine ready after verification")
+    func testOwnedEngineReady() async throws {
+        let probe = MockProbe(results: [false, true])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/owned.sock",
+            engineSupervisor: supervisor,
+            probe: probe
+        )
+
+        let result = await manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+
+        #expect(result == .ownedReady)
+        #expect(manager.isEngineReady)
+        #expect(manager.ownershipState == .ownedReady)
+        #expect(supervisor.startCalls == 1)
+        #expect(supervisor.stopCalls == 0)
+    }
+
+    @Test("NativeEngineManager bounds stalled probe handling")
+    func testStalledProbeTimesOut() async throws {
+        let probe = MockProbe(steps: [
+            .init(outcome: .failed("slow failure"), delayNS: 1_000_000_000),
+            .init(outcome: .failed("slow failure"), delayNS: 1_000_000_000),
+        ])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/stalled.sock",
+            maxAttempts: 5,
+            baseDelayNS: 1_000_000,
+            probeTimeoutNS: 50_000_000,
+            engineSupervisor: supervisor,
+            probe: probe
+        )
+
+        let start = Date()
+        let result = await manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+        let duration = Date().timeIntervalSince(start)
+
+        #expect(result == .failed("Orbit Cockpit could not verify the managed gh-orbit engine."))
+        #expect(duration < 0.25)
+        #expect(supervisor.startCalls == 1)
+        #expect(supervisor.stopCalls == 1)
+        #expect(manager.ownershipState == .ownedFailed)
+    }
+
+    @Test("NativeEngineManager shares inflight startup across concurrent callers")
+    func testConcurrentStartSharesSingleStartupTask() async throws {
+        let probe = MockProbe(steps: [
+            .init(outcome: .failed("not ready yet"), delayNS: 0),
+            .init(outcome: .ok("ready"), delayNS: 50_000_000),
+        ])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/concurrent.sock",
+            maxAttempts: 5,
+            baseDelayNS: 1_000_000,
+            probeTimeoutNS: 500_000_000,
+            engineSupervisor: supervisor,
+            probe: probe
+        )
+
+        async let first = manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+        async let second = manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+        let firstResult = await first
+        let secondResult = await second
+
+        #expect(firstResult == .ownedReady)
+        #expect(secondResult == .ownedReady)
+        #expect(supervisor.startCalls == 1)
+        #expect(await probe.callCount == 2)
+        #expect(manager.ownershipState == .ownedReady)
+        #expect(manager.isEngineReady)
+    }
+
+    @Test("stopEngine leaves reused engine untouched")
+    func testStopEngineDoesNotKillReusedEngine() async throws {
+        let probe = MockProbe(results: [true])
+        let supervisor = MockSupervisor()
+        let manager = NativeEngineManager(
+            socketPath: "/tmp/reused.sock",
+            engineSupervisor: supervisor,
+            probe: probe
+        )
+
+        _ = await manager.startEngine(executable: URL(fileURLWithPath: "/usr/bin/true"))
+        manager.stopEngine()
+
+        #expect(supervisor.stopCalls == 0)
+        #expect(manager.ownershipState == .idle)
         #expect(!manager.isEngineReady)
-        // 5 attempts with 1ms base should take at least ~60ms (2+4+8+16+32)
-        #expect(duration > 0.05)
     }
 
     @Test("PathResolver binary discovery logic")

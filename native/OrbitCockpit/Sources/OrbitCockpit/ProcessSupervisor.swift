@@ -1,8 +1,16 @@
 import Foundation
 
+@MainActor
+protocol EngineProcessSupervising: AnyObject {
+    var isRunning: Bool { get }
+    var onLog: ((String, LogLevel) -> Void)? { get set }
+    func start(executable: URL, arguments: [String], environment: [String: String]?) throws
+    func stop()
+}
+
 /// ProcessSupervisor handles the lifecycle and observability of a subprocess.
 @MainActor
-class ProcessSupervisor: ObservableObject {
+class ProcessSupervisor: ObservableObject, EngineProcessSupervising {
     @Published var isRunning: Bool = false
     @Published var exitCode: Int32?
     @Published var lastError: String?

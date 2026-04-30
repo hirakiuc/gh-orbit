@@ -47,4 +47,16 @@ struct TerminalManagerTests {
         #expect(didFire)
         cancellable.cancel()
     }
+
+    @Test("Shutdown clears ready state")
+    @MainActor
+    func testShutdownClearsEngineReadiness() async throws {
+        let monitor = ActivityMonitor()
+        let manager = TerminalManager(monitor: monitor)
+
+        manager.engineManager?.isEngineReady = true
+        manager.shutdown()
+
+        #expect(manager.engineManager?.isEngineReady == false)
+    }
 }
