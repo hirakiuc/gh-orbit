@@ -179,7 +179,8 @@ struct LifecycleTests {
         let duration = Date().timeIntervalSince(start)
 
         #expect(result == .failed("Orbit Cockpit could not verify the managed gh-orbit engine."))
-        #expect(duration < 0.25)
+        // Keep this comfortably below the 2s probe delay while allowing for CI scheduler jitter.
+        #expect(duration < 1.0)
         #expect(supervisor.startCalls == 1)
         #expect(supervisor.stopCalls == 1)
         #expect(manager.ownershipState == .ownedFailed)
