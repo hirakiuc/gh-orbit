@@ -8,6 +8,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestNewModel_Guards(t *testing.T) {
@@ -62,4 +63,24 @@ func TestNewModel_Guards(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "alerter is required")
 	})
+}
+
+func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic = nil
+	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(mock.Anything).Return().Once()
+
+	m.Shutdown()
+}
+
+func TestModel_Shutdown_StandaloneModeShutsDownAllSubsystems(t *testing.T) {
+	m := newTestModel(t)
+	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.traffic.(*mocks.MockTrafficController).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(mock.Anything).Return().Once()
+
+	m.Shutdown()
 }
