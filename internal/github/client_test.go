@@ -30,6 +30,15 @@ func TestGHClient_Methods(t *testing.T) {
 		assert.Equal(t, expectedUser.Login, user.Login)
 	})
 
+	t.Run("CurrentUser returns request construction error for malformed base URL", func(t *testing.T) {
+		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
+
+		client := NewTestClient(http.DefaultClient, "://bad-base/")
+		user, err := client.CurrentUser(context.Background())
+		require.Error(t, err)
+		assert.Nil(t, user)
+	})
+
 	t.Run("MarkThreadAsRead", func(t *testing.T) {
 		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
 
@@ -43,6 +52,14 @@ func TestGHClient_Methods(t *testing.T) {
 		client := NewTestClient(ts.Client(), ts.URL+"/")
 		err := client.MarkThreadAsRead(context.Background(), "123")
 		require.NoError(t, err)
+	})
+
+	t.Run("MarkThreadAsRead returns request construction error for malformed base URL", func(t *testing.T) {
+		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
+
+		client := NewTestClient(http.DefaultClient, "://bad-base/")
+		err := client.MarkThreadAsRead(context.Background(), "123")
+		require.Error(t, err)
 	})
 
 	t.Run("RateLimit Reporting", func(t *testing.T) {
