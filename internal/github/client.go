@@ -102,7 +102,10 @@ func NewTestClient(http *http.Client, baseURL string) Client {
 // CurrentUser retrieves the authenticated user's information.
 func (c *ghClient) CurrentUser(ctx context.Context) (*User, error) {
 	if os.Getenv("GH_ORBIT_SKIP_AUTH") == "1" {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"user", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"user", nil)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := c.http.Do(req) // #nosec G704: Trusted E2E mock URL
 		if err != nil {
 			return nil, err
@@ -141,7 +144,10 @@ func (c *ghClient) CurrentUser(ctx context.Context) (*User, error) {
 func (c *ghClient) MarkThreadAsRead(ctx context.Context, threadID string) error {
 	if os.Getenv("GH_ORBIT_SKIP_AUTH") == "1" {
 		path := fmt.Sprintf("%snotifications/threads/%s", c.baseURL, threadID)
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPatch, path, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, nil)
+		if err != nil {
+			return err
+		}
 		resp, err := c.http.Do(req) // #nosec G704: Trusted E2E mock URL
 		if err != nil {
 			return err
