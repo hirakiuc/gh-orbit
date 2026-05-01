@@ -32,7 +32,9 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
 		}
 
-		if read {
+		// Connected mode delegates the remote read mutation to the engine-backed
+		// repository path, so the direct GitHub client is optional here.
+		if read && m.client != nil {
 			err = m.client.MarkThreadAsRead(ctx, id)
 			if err != nil {
 				m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)

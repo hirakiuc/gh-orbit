@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
@@ -112,6 +114,47 @@ func TestInterpreter_Execute_UpdateRateLimitStandaloneMode(t *testing.T) {
 	msg := executeCmd(cmd)
 	assert.Nil(t, msg)
 	assert.Equal(t, 123, m.RateLimit.Remaining)
+}
+
+func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
+	m := newTestModel(t)
+	m.client = nil
+	m.traffic = nil
+	m.allNotifications = []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}},
+	}
+	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
+
+	cmd := m.MarkReadByID("1", true)
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	assert.IsType(t, actionCompleteMsg{}, msg)
+	assert.True(t, m.allNotifications[0].IsReadLocally)
+}
+
+func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
+	m := newTestModel(t)
+	m.allNotifications = []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}},
+	}
+	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
+	m.client.(*mocks.MockGitHubClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
+	m.traffic.(*mocks.MockTrafficController).EXPECT().
+		Submit(api.PriorityUser, mock.Anything).
+		RunAndReturn(func(priority int, fn types.TaskFunc) (<-chan any, error) {
+			ch := make(chan any, 1)
+			ch <- fn(context.Background())
+			return ch, nil
+		}).
+		Once()
+
+	cmd := m.MarkReadByID("1", true)
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	assert.IsType(t, actionCompleteMsg{}, msg)
+	assert.True(t, m.allNotifications[0].IsReadLocally)
 }
 
 func TestModel_Transition_EdgeCases(t *testing.T) {
