@@ -281,10 +281,18 @@ func (m *Model) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	m.sync.Shutdown(ctx)
-	m.enrich.Shutdown(ctx)
-	m.traffic.Shutdown(ctx)
-	m.alerter.Shutdown(ctx)
+	if m.sync != nil {
+		m.sync.Shutdown(ctx)
+	}
+	if m.enrich != nil {
+		m.enrich.Shutdown(ctx)
+	}
+	if m.traffic != nil {
+		m.traffic.Shutdown(ctx)
+	}
+	if m.alerter != nil {
+		m.alerter.Shutdown(ctx)
+	}
 }
 
 func (m *Model) submitTask(priority int, fn types.TaskFunc) tea.Cmd {
