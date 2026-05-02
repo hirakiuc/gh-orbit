@@ -153,29 +153,50 @@ func (c *APITrafficController) supervisor() {
 		case <-c.done:
 			return
 		default:
-			if atomic.LoadInt32(&c.activeWorkersCount) < atomic.LoadInt32(&c.workerLimit) {
-				select {
-				case <-c.done:
-					return
-				case t := <-c.high:
-					c.spawnTask(t)
-				case t := <-c.med:
-					c.spawnTask(t)
-				case t := <-c.low:
-					c.spawnTask(t)
-				case <-ticker.C:
-					// No tasks, continue loop
-				}
-			} else {
-				// At worker limit, wait for a worker to finish
+			if atomic.LoadInt32(&c.activeWorkersCount) >= atomic.LoadInt32(&c.workerLimit) {
+				// At worker limit, wait for a worker to finish.
 				select {
 				case <-c.done:
 					return
 				case <-ticker.C:
 				}
+				continue
+			}
+
+			if t := c.dequeueTask(); t != nil {
+				c.spawnTask(t)
+				continue
+			}
+
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
 			}
 		}
 	}
+}
+
+func (c *APITrafficController) dequeueTask() *apiTask {
+	select {
+	case t := <-c.high:
+		return t
+	default:
+	}
+
+	select {
+	case t := <-c.med:
+		return t
+	default:
+	}
+
+	select {
+	case t := <-c.low:
+		return t
+	default:
+	}
+
+	return nil
 }
 
 func (c *APITrafficController) spawnTask(t *apiTask) {

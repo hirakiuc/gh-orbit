@@ -6,14 +6,13 @@ on:
     paths:
       - ".github/workflows/codeql-swift.yml"
       - "native/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/codeql-swift.yml"
-      - "native/**"
   schedule:
     - cron: "0 0 * * 6"
   workflow_dispatch:
+
+concurrency:
+  group: codeql-swift-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   actions: read
@@ -31,21 +30,41 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Check CodeQL default setup
+        id: default-setup
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          response="$(curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/code-scanning/default-setup")"
+          state="$(printf '%s' "$response" | jq -r '.state // "not-configured"')"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - name: Skip while default setup is enabled
+        if: steps.default-setup.outputs.state == 'configured'
+        run: |
+          echo "::notice title=Swift CodeQL skipped::Disable CodeQL default setup in repository Security settings before enabling this advanced Swift workflow."
+
       # The repository already uses GitHub's automatic CodeQL setup for Go and Actions.
       # This workflow adds explicit Swift analysis with a manual build on macOS.
       - name: Initialize CodeQL
+        if: steps.default-setup.outputs.state != 'configured'
         uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           languages: swift
           build-mode: manual
 
       - name: Build Swift package
+        if: steps.default-setup.outputs.state != 'configured'
         run: |
           mkdir -p "$PROJECT_TMP" "$HOME"
           cd native/OrbitCockpit
           swift build --disable-sandbox --build-path "$PROJECT_TMP/swift-build"
 
       - name: Perform CodeQL Analysis
+        if: steps.default-setup.outputs.state != 'configured'
         uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           category: "/language:swift"
