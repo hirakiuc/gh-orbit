@@ -123,7 +123,21 @@ func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) e
 
 // No-ops for client mode (Engine is authority)
 func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
-	return nil
+	_, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "enrich_notification",
+			Arguments: map[string]any{
+				"id":                 id,
+				"node_id":            nodeID,
+				"body":               body,
+				"author":             author,
+				"html_url":           htmlURL,
+				"resource_state":     resourceState,
+				"resource_sub_state": resourceSubState,
+			},
+		},
+	})
+	return err
 }
 
 func (a *MCPAdapter) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, resourceSubState string) error {
@@ -192,11 +206,61 @@ func (a *MCPAdapter) BridgeStatus() types.BridgeStatus { return types.StatusHeal
 // --- types.Enricher Implementation ---
 
 func (a *MCPAdapter) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
-	return models.EnrichmentResult{}, nil
+	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "fetch_detail",
+			Arguments: map[string]any{
+				"url":          u,
+				"subject_type": subjectType,
+				"force":        force,
+			},
+		},
+	})
+	if err != nil {
+		return models.EnrichmentResult{}, err
+	}
+
+	if resp.IsError {
+		content, _ := resp.Content[0].(mcp.TextContent)
+		return models.EnrichmentResult{}, fmt.Errorf("fetch detail error: %s", content.Text)
+	}
+
+	var result models.EnrichmentResult
+	if len(resp.Content) > 0 {
+		if text, ok := resp.Content[0].(mcp.TextContent); ok {
+			if err := json.Unmarshal([]byte(text.Text), &result); err != nil {
+				return models.EnrichmentResult{}, err
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func (a *MCPAdapter) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult {
-	return nil
+	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "fetch_hybrid_batch",
+			Arguments: map[string]any{
+				"notifications": notifications,
+				"force":         force,
+			},
+		},
+	})
+	if err != nil || resp == nil || resp.IsError {
+		return nil
+	}
+
+	var results map[string]models.EnrichmentResult
+	if len(resp.Content) > 0 {
+		if text, ok := resp.Content[0].(mcp.TextContent); ok {
+			if err := json.Unmarshal([]byte(text.Text), &results); err != nil {
+				return nil
+			}
+		}
+	}
+
+	return results
 }
 
 // --- api.Alerter Implementation ---
