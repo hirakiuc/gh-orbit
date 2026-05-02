@@ -29,11 +29,15 @@ func TestMCPServer_Registration_Coverage(t *testing.T) {
 
 	t.Run("Initialization coverage", func(t *testing.T) {
 		assert.NotNil(t, s.server)
-		
+
 		// This exercises registration closures
 		s.registerTools()
 		s.registerResources()
-		
-		assert.Greater(t, len(s.server.ListTools()), 0)
+
+		tools := s.server.ListTools()
+		assert.Greater(t, len(tools), 0)
+		assert.Contains(t, tools, "fetch_detail")
+		assert.Contains(t, tools, "fetch_hybrid_batch")
+		assert.Contains(t, tools, "enrich_notification")
 	})
 }

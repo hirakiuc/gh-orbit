@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -391,6 +392,120 @@ func (s *MCPServer) registerTools() {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", err)), nil
 		}
 		return mcp.NewToolResultText("Priority updated"), nil
+	})
+
+	// 4. Fetch Detail Tool
+	fetchDetailTool := mcp.NewTool("fetch_detail",
+		mcp.WithDescription("Fetch enriched detail for a single notification subject"),
+		mcp.WithString("url", mcp.Required(), mcp.Description("The GitHub API subject URL")),
+		mcp.WithString("subject_type", mcp.Required(), mcp.Description("The GitHub subject type")),
+		mcp.WithBoolean("force", mcp.Description("Whether to bypass freshness checks")),
+	)
+
+	s.server.AddTool(fetchDetailTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		url, _ := args["url"].(string)
+		subjectType, _ := args["subject_type"].(string)
+		if url == "" || subjectType == "" {
+			return mcp.NewToolResultError("url and subject_type are required"), nil
+		}
+
+		force := false
+		if f, ok := args["force"].(bool); ok {
+			force = f
+		}
+
+		res, err := s.engine.Enrich.FetchDetail(ctx, url, subjectType, force)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to fetch detail: %v", err)), nil
+		}
+
+		data, _ := json.Marshal(res)
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// 5. Batch Enrichment Tool
+	batchEnrichTool := mcp.NewTool("fetch_hybrid_batch",
+		mcp.WithDescription("Fetch enrichment state for a batch of notifications"),
+		mcp.WithArray("notifications",
+			mcp.Required(),
+			mcp.Description("Notification records to enrich; response is keyed by subject_node_id"),
+			mcp.Items(map[string]any{"type": "object"}),
+		),
+		mcp.WithBoolean("force", mcp.Description("Whether to bypass freshness checks")),
+	)
+
+	s.server.AddTool(batchEnrichTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		rawNotifications, ok := args["notifications"]
+		if !ok {
+			return mcp.NewToolResultError("notifications is required"), nil
+		}
+
+		payload, err := json.Marshal(rawNotifications)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to parse notifications: %v", err)), nil
+		}
+
+		var notifications []triage.NotificationWithState
+		if err := json.Unmarshal(payload, &notifications); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to decode notifications: %v", err)), nil
+		}
+
+		force := false
+		if f, ok := args["force"].(bool); ok {
+			force = f
+		}
+
+		// Keep the response keyed by SubjectNodeID to match the TUI batch update contract.
+		results := s.engine.Enrich.FetchHybridBatch(ctx, notifications, force)
+		data, _ := json.Marshal(results)
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// 6. Enrichment Persistence Tool
+	enrichNotificationTool := mcp.NewTool("enrich_notification",
+		mcp.WithDescription("Persist enriched notification fields through the engine-backed repository"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The GitHub notification ID")),
+		mcp.WithString("node_id", mcp.Description("The GitHub subject node ID")),
+		mcp.WithString("body", mcp.Description("The enriched body text")),
+		mcp.WithString("author", mcp.Description("The enriched author login")),
+		mcp.WithString("html_url", mcp.Description("The canonical GitHub HTML URL")),
+		mcp.WithString("resource_state", mcp.Description("The enriched resource state")),
+		mcp.WithString("resource_sub_state", mcp.Description("The enriched resource sub state")),
+	)
+
+	s.server.AddTool(enrichNotificationTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		id, _ := args["id"].(string)
+		if id == "" {
+			return mcp.NewToolResultError("id is required"), nil
+		}
+
+		nodeID, _ := args["node_id"].(string)
+		body, _ := args["body"].(string)
+		author, _ := args["author"].(string)
+		htmlURL, _ := args["html_url"].(string)
+		resourceState, _ := args["resource_state"].(string)
+		resourceSubState, _ := args["resource_sub_state"].(string)
+
+		if err := s.engine.DB.EnrichNotification(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to persist enrichment: %v", err)), nil
+		}
+
+		return mcp.NewToolResultText("Notification enrichment persisted"), nil
 	})
 }
 
