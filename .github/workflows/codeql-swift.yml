@@ -31,33 +31,8 @@ permissions:
   security-events: write
 
 jobs:
-  check-default-setup:
-    name: Check CodeQL setup
-    runs-on: ubuntu-latest
-    outputs:
-      state: ${{ steps.default-setup.outputs.state }}
-    steps:
-      - name: Check CodeQL default setup
-        id: default-setup
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          response="$(curl -fsSL \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/code-scanning/default-setup")"
-          state="$(printf '%s' "$response" | jq -r '.state // "not-configured"')"
-          echo "state=$state" >> "$GITHUB_OUTPUT"
-
-      - name: Notice while default setup is enabled
-        if: steps.default-setup.outputs.state == 'configured'
-        run: |
-          echo "::notice title=Advanced CodeQL skipped::Disable CodeQL default setup in repository Security settings before this workflow can upload Go, Swift, and Actions results."
-
   analyze-actions:
     name: Analyze (actions)
-    needs: check-default-setup
-    if: needs.check-default-setup.outputs.state != 'configured'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -76,8 +51,6 @@ jobs:
 
   analyze-go:
     name: Analyze (go)
-    needs: check-default-setup
-    if: needs.check-default-setup.outputs.state != 'configured'
     runs-on: ubuntu-latest
     env:
       GOCACHE: ${{ github.workspace }}/tmp/go-cache
@@ -109,8 +82,7 @@ jobs:
 
   analyze-swift:
     name: Analyze (swift)
-    needs: check-default-setup
-    if: needs.check-default-setup.outputs.state != 'configured' && github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     env:
       PROJECT_TMP: ${{ github.workspace }}/tmp
