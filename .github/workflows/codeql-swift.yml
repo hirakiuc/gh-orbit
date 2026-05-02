@@ -1,17 +1,28 @@
-name: CodeQL Swift
+name: CodeQL
 
 on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/codeql-swift.yml"
+      - ".github/workflows/**"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "native/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
       - "native/**"
   schedule:
     - cron: "0 0 * * 6"
   workflow_dispatch:
 
 concurrency:
-  group: codeql-swift-${{ github.ref }}
+  group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -20,16 +31,12 @@ permissions:
   security-events: write
 
 jobs:
-  analyze-swift:
-    name: Analyze (swift)
-    runs-on: macos-latest
-    env:
-      PROJECT_TMP: ${{ github.workspace }}/tmp
-      HOME: ${{ github.workspace }}/tmp/swift-home
-      TMPDIR: ${{ github.workspace }}/tmp
+  check-default-setup:
+    name: Check CodeQL setup
+    runs-on: ubuntu-latest
+    outputs:
+      state: ${{ steps.default-setup.outputs.state }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Check CodeQL default setup
         id: default-setup
         env:
@@ -42,29 +49,90 @@ jobs:
           state="$(printf '%s' "$response" | jq -r '.state // "not-configured"')"
           echo "state=$state" >> "$GITHUB_OUTPUT"
 
-      - name: Skip while default setup is enabled
+      - name: Notice while default setup is enabled
         if: steps.default-setup.outputs.state == 'configured'
         run: |
-          echo "::notice title=Swift CodeQL skipped::Disable CodeQL default setup in repository Security settings before enabling this advanced Swift workflow."
+          echo "::notice title=Advanced CodeQL skipped::Disable CodeQL default setup in repository Security settings before this workflow can upload Go, Swift, and Actions results."
 
-      # The repository already uses GitHub's automatic CodeQL setup for Go and Actions.
-      # This workflow adds explicit Swift analysis with a manual build on macOS.
+  analyze-actions:
+    name: Analyze (actions)
+    needs: check-default-setup
+    if: needs.check-default-setup.outputs.state != 'configured'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
       - name: Initialize CodeQL
-        if: steps.default-setup.outputs.state != 'configured'
+        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          languages: actions
+          build-mode: none
+          dependency-caching: true
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          category: "/language:actions"
+
+  analyze-go:
+    name: Analyze (go)
+    needs: check-default-setup
+    if: needs.check-default-setup.outputs.state != 'configured'
+    runs-on: ubuntu-latest
+    env:
+      GOCACHE: ${{ github.workspace }}/tmp/go-cache
+      TMPDIR: ${{ github.workspace }}/tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          languages: go
+          build-mode: manual
+          dependency-caching: true
+
+      - name: Build Go packages
+        run: |
+          mkdir -p "$GOCACHE" "$TMPDIR"
+          go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          category: "/language:go"
+
+  analyze-swift:
+    name: Analyze (swift)
+    needs: check-default-setup
+    if: needs.check-default-setup.outputs.state != 'configured' && github.event_name != 'pull_request'
+    runs-on: macos-latest
+    env:
+      PROJECT_TMP: ${{ github.workspace }}/tmp
+      HOME: ${{ github.workspace }}/tmp/swift-home
+      TMPDIR: ${{ github.workspace }}/tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Initialize CodeQL
         uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           languages: swift
           build-mode: manual
+          dependency-caching: true
 
       - name: Build Swift package
-        if: steps.default-setup.outputs.state != 'configured'
         run: |
           mkdir -p "$PROJECT_TMP" "$HOME"
           cd native/OrbitCockpit
           swift build --disable-sandbox --build-path "$PROJECT_TMP/swift-build"
 
       - name: Perform CodeQL Analysis
-        if: steps.default-setup.outputs.state != 'configured'
         uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           category: "/language:swift"
