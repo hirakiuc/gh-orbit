@@ -41,9 +41,17 @@ protocol EngineProbing: Sendable {
 struct MCPInitializeProbe: EngineProbing {
     private struct RequestEnvelope: Encodable {
         let jsonrpc = "2.0"
-        let id: Int
+        let requestID: Int
         let method: String
         let params: InitializeParams
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: DynamicCodingKey.self)
+            try container.encode(jsonrpc, forKey: DynamicCodingKey("jsonrpc"))
+            try container.encode(requestID, forKey: DynamicCodingKey("id"))
+            try container.encode(method, forKey: DynamicCodingKey("method"))
+            try container.encode(params, forKey: DynamicCodingKey("params"))
+        }
     }
 
     private struct InitializeParams: Encodable {
@@ -61,9 +69,17 @@ struct MCPInitializeProbe: EngineProbing {
 
     private struct ResponseEnvelope: Decodable {
         let jsonrpc: String?
-        let id: Int?
+        let requestID: Int?
         let result: ResultPayload?
         let error: ErrorPayload?
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+            jsonrpc = try container.decodeIfPresent(String.self, forKey: DynamicCodingKey("jsonrpc"))
+            requestID = try container.decodeIfPresent(Int.self, forKey: DynamicCodingKey("id"))
+            result = try container.decodeIfPresent(ResultPayload.self, forKey: DynamicCodingKey("result"))
+            error = try container.decodeIfPresent(ErrorPayload.self, forKey: DynamicCodingKey("error"))
+        }
     }
 
     private struct ResultPayload: Decodable {
@@ -94,20 +110,19 @@ struct MCPInitializeProbe: EngineProbing {
     }
 
     nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int)
-        -> ProbeOutcome
-    {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        if fd < 0 {
+        -> ProbeOutcome {
+        let socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        if socketFD < 0 {
             return .failed("socket() failed: errno=\(errno)")
         }
-        defer { close(fd) }
+        defer { close(socketFD) }
 
         var timeout = timeval(tv_sec: 0, tv_usec: Int32(ioTimeoutMS * 1000))
         _ = withUnsafePointer(to: &timeout) {
-            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, $0, socklen_t(MemoryLayout<timeval>.size))
+            setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, $0, socklen_t(MemoryLayout<timeval>.size))
         }
         _ = withUnsafePointer(to: &timeout) {
-            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, $0, socklen_t(MemoryLayout<timeval>.size))
+            setsockopt(socketFD, SOL_SOCKET, SO_SNDTIMEO, $0, socklen_t(MemoryLayout<timeval>.size))
         }
 
         var addr = sockaddr_un()
@@ -126,7 +141,7 @@ struct MCPInitializeProbe: EngineProbing {
         let addrLength = socklen_t(MemoryLayout<sa_family_t>.size + pathBytes.count)
         let connectResult = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, addrLength)
+                connect(socketFD, $0, addrLength)
             }
         }
         if connectResult != 0 {
@@ -134,7 +149,7 @@ struct MCPInitializeProbe: EngineProbing {
         }
 
         let payload = RequestEnvelope(
-            id: 1,
+            requestID: 1,
             method: "initialize",
             params: InitializeParams(
                 protocolVersion: protocolVersion,
@@ -149,14 +164,14 @@ struct MCPInitializeProbe: EngineProbing {
         data.append(0x0A)
 
         let writeResult = data.withUnsafeBytes {
-            Darwin.write(fd, $0.baseAddress, $0.count)
+            Darwin.write(socketFD, $0.baseAddress, $0.count)
         }
         if writeResult <= 0 {
             return .failed("write() failed: errno=\(errno)")
         }
 
         var buffer = [UInt8](repeating: 0, count: 4096)
-        let readCount = Darwin.read(fd, &buffer, buffer.count)
+        let readCount = Darwin.read(socketFD, &buffer, buffer.count)
         if readCount <= 0 {
             return .failed("read() failed or timed out: errno=\(errno)")
         }
@@ -173,14 +188,33 @@ struct MCPInitializeProbe: EngineProbing {
             return .failed("initialize returned error: code=\(error.code) message=\(error.message)")
         }
 
-        guard response.id == 1 else {
-            return .failed("initialize returned unexpected id: \(response.id.map(String.init) ?? "nil")")
+        guard response.requestID == 1 else {
+            return .failed("initialize returned unexpected id: \(response.requestID.map(String.init) ?? "nil")")
         }
         guard let negotiatedVersion = response.result?.protocolVersion, !negotiatedVersion.isEmpty else {
             return .failed("initialize response missing protocolVersion")
         }
 
         return .ok("initialize succeeded with protocolVersion=\(negotiatedVersion)")
+    }
+}
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.init(stringValue)
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
     }
 }
 
