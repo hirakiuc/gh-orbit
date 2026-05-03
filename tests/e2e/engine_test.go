@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,19 @@ type testEngine struct {
 	errChan    chan error
 }
 
+func newSocketPath(t *testing.T) string {
+	t.Helper()
+
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+
+	socketDir, err := os.MkdirTemp(filepath.Join(repoRoot, "tmp"), "e2e-sock-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+
+	return filepath.Join(socketDir, "engine.sock")
+}
+
 func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 	t.Helper()
 
@@ -37,10 +52,12 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 		t.Fatalf("gh-orbit binary not found at %s. Run 'make go/build' first.", binPath)
 	}
 
-	socketPath := filepath.Join(t.TempDir(), "engine.sock")
+	socketPath := newSocketPath(t)
 
 	// #nosec G204: Trusted E2E test binary
 	cmd := exec.CommandContext(ctx, binPath, "engine", "--socket", socketPath, "--insecure-dev")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmpHome,
 		"GH_TOKEN=mock-token",
@@ -67,7 +84,19 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 	}
 
 	if !connected {
+		var details []string
+		select {
+		case err := <-errChan:
+			details = append(details, fmt.Sprintf("process exited: %v", err))
+		default:
+		}
+		if logs := strings.TrimSpace(stderr.String()); logs != "" {
+			details = append(details, "stderr:\n"+logs)
+		}
 		cancel()
+		if len(details) > 0 {
+			t.Fatalf("Engine failed to create UDS socket within timeout\n%s", strings.Join(details, "\n"))
+		}
 		t.Fatal("Engine failed to create UDS socket within timeout")
 	}
 
