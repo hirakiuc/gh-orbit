@@ -1,5 +1,5 @@
-import Combine
 import AppKit
+import Combine
 import SwiftUI
 
 @main

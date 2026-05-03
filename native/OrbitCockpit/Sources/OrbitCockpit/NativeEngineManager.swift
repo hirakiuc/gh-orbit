@@ -93,7 +93,9 @@ struct MCPInitializeProbe: EngineProbing {
         }.value
     }
 
-    nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int) -> ProbeOutcome {
+    nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int)
+        -> ProbeOutcome
+    {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         if fd < 0 {
             return .failed("socket() failed: errno=\(errno)")
@@ -256,11 +258,13 @@ class NativeEngineManager: ObservableObject {
                     environment: environment
                 )
 
-                let outcome = await self.waitUntilReadyBounded(maxAttempts: self.maxAttempts, phase: "owned-engine verification")
+                let outcome = await self.waitUntilReadyBounded(
+                    maxAttempts: self.maxAttempts, phase: "owned-engine verification")
                 if outcome.success {
                     self.ownershipState = .ownedReady
                     self.isEngineReady = true
-                    self.engineSupervisor.onLog?("Engine is ready (MCP initialize verified). Detail: \(outcome.detail)", .info)
+                    self.engineSupervisor.onLog?(
+                        "Engine is ready (MCP initialize verified). Detail: \(outcome.detail)", .info)
                     return .ownedReady
                 }
 
@@ -291,10 +295,12 @@ class NativeEngineManager: ObservableObject {
         if outcome.success {
             ownershipState = .reused
             isEngineReady = true
-            engineSupervisor.onLog?("Reusing existing gh-orbit engine after MCP initialize verification. Detail: \(outcome.detail)", .info)
+            engineSupervisor.onLog?(
+                "Reusing existing gh-orbit engine after MCP initialize verification. Detail: \(outcome.detail)", .info)
             return true
         }
-        engineSupervisor.onLog?("Existing-engine probe did not verify a reusable engine. Detail: \(outcome.detail)", .debug)
+        engineSupervisor.onLog?(
+            "Existing-engine probe did not verify a reusable engine. Detail: \(outcome.detail)", .debug)
         return false
     }
 

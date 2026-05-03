@@ -377,7 +377,7 @@ type gqlNode struct {
 }
 
 type gqlBatchResponse struct {
-	Nodes []gqlNode `json:"nodes"`
+	Nodes     []gqlNode `json:"nodes"`
 	RateLimit struct {
 		Cost      int `json:"cost"`
 		Remaining int `json:"remaining"`
