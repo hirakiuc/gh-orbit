@@ -1,28 +1,17 @@
-name: CodeQL
+name: CodeQL (swift)
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/**"
-      - "**/*.go"
-      - "go.mod"
-      - "go.sum"
-      - "native/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/**"
-      - "**/*.go"
-      - "go.mod"
-      - "go.sum"
       - "native/**"
   schedule:
     - cron: "0 0 * * 6"
   workflow_dispatch:
 
 concurrency:
-  group: codeql-${{ github.ref }}
+  group: codeql-swift-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -31,58 +20,8 @@ permissions:
   security-events: write
 
 jobs:
-  analyze-actions:
-    name: Analyze (actions)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
-        with:
-          languages: actions
-          build-mode: none
-          dependency-caching: true
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
-        with:
-          category: "/language:actions"
-
-  analyze-go:
-    name: Analyze (go)
-    runs-on: ubuntu-latest
-    env:
-      GOCACHE: ${{ github.workspace }}/tmp/go-cache
-      TMPDIR: ${{ github.workspace }}/tmp
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with:
-          go-version-file: "go.mod"
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
-        with:
-          languages: go
-          build-mode: manual
-          dependency-caching: true
-
-      - name: Build Go packages
-        run: |
-          mkdir -p "$GOCACHE" "$TMPDIR"
-          go build ./...
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
-        with:
-          category: "/language:go"
-
   analyze-swift:
     name: Analyze (swift)
-    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     env:
       PROJECT_TMP: ${{ github.workspace }}/tmp
@@ -91,18 +30,27 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Cache SwiftPM and build artifacts
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            tmp/swift-home/.swiftpm
+            tmp/swift-build
+          key: ${{ runner.os }}-codeql-swift-${{ hashFiles('native/OrbitCockpit/Package.swift', 'native/OrbitCockpit/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-codeql-swift-
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           languages: swift
           build-mode: manual
-          dependency-caching: true
 
       - name: Build Swift package
         run: |
           mkdir -p "$PROJECT_TMP" "$HOME"
           cd native/OrbitCockpit
-          swift build --disable-sandbox --build-path "$PROJECT_TMP/swift-build"
+          swift build --product OrbitCockpit --arch arm64 --disable-sandbox --build-path "$PROJECT_TMP/swift-build"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
