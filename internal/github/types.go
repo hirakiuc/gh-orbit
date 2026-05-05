@@ -48,7 +48,7 @@ type Client interface {
 	GQL() GraphQLClient
 	HTTP() *http.Client
 	BaseURL() string
-	SetRateLimitUpdates(ch chan models.RateLimitInfo)
+	SetRateLimitReporter(fn func(models.RateLimitInfo))
 	ReportRateLimit(info models.RateLimitInfo)
 }
 

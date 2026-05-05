@@ -105,7 +105,7 @@ type TrafficController interface {
 	Submit(priority int, fn TaskFunc) (<-chan any, error)
 	UpdateRateLimit(ctx context.Context, info models.RateLimitInfo)
 	Remaining() int
-	RateLimitUpdates() chan models.RateLimitInfo
+	ReportRateLimit(info models.RateLimitInfo)
 	Shutdown(ctx context.Context)
 }
 

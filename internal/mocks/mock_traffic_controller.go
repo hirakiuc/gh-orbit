@@ -24,53 +24,6 @@ func (_m *MockTrafficController) EXPECT() *MockTrafficController_Expecter {
 	return &MockTrafficController_Expecter{mock: &_m.Mock}
 }
 
-// RateLimitUpdates provides a mock function with no fields
-func (_m *MockTrafficController) RateLimitUpdates() chan models.RateLimitInfo {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for RateLimitUpdates")
-	}
-
-	var r0 chan models.RateLimitInfo
-	if rf, ok := ret.Get(0).(func() chan models.RateLimitInfo); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(chan models.RateLimitInfo)
-		}
-	}
-
-	return r0
-}
-
-// MockTrafficController_RateLimitUpdates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RateLimitUpdates'
-type MockTrafficController_RateLimitUpdates_Call struct {
-	*mock.Call
-}
-
-// RateLimitUpdates is a helper method to define mock.On call
-func (_e *MockTrafficController_Expecter) RateLimitUpdates() *MockTrafficController_RateLimitUpdates_Call {
-	return &MockTrafficController_RateLimitUpdates_Call{Call: _e.mock.On("RateLimitUpdates")}
-}
-
-func (_c *MockTrafficController_RateLimitUpdates_Call) Run(run func()) *MockTrafficController_RateLimitUpdates_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockTrafficController_RateLimitUpdates_Call) Return(_a0 chan models.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockTrafficController_RateLimitUpdates_Call) RunAndReturn(run func() chan models.RateLimitInfo) *MockTrafficController_RateLimitUpdates_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Remaining provides a mock function with no fields
 func (_m *MockTrafficController) Remaining() int {
 	ret := _m.Called()
@@ -116,6 +69,39 @@ func (_c *MockTrafficController_Remaining_Call) RunAndReturn(run func() int) *Mo
 	return _c
 }
 
+// ReportRateLimit provides a mock function with given fields: info
+func (_m *MockTrafficController) ReportRateLimit(info models.RateLimitInfo) {
+	_m.Called(info)
+}
+
+// MockTrafficController_ReportRateLimit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReportRateLimit'
+type MockTrafficController_ReportRateLimit_Call struct {
+	*mock.Call
+}
+
+// ReportRateLimit is a helper method to define mock.On call
+//   - info models.RateLimitInfo
+func (_e *MockTrafficController_Expecter) ReportRateLimit(info interface{}) *MockTrafficController_ReportRateLimit_Call {
+	return &MockTrafficController_ReportRateLimit_Call{Call: _e.mock.On("ReportRateLimit", info)}
+}
+
+func (_c *MockTrafficController_ReportRateLimit_Call) Run(run func(info models.RateLimitInfo)) *MockTrafficController_ReportRateLimit_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(models.RateLimitInfo))
+	})
+	return _c
+}
+
+func (_c *MockTrafficController_ReportRateLimit_Call) Return() *MockTrafficController_ReportRateLimit_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockTrafficController_ReportRateLimit_Call) RunAndReturn(run func(models.RateLimitInfo)) *MockTrafficController_ReportRateLimit_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Shutdown provides a mock function with given fields: ctx
 func (_m *MockTrafficController) Shutdown(ctx context.Context) {
 	_m.Called(ctx)
@@ -150,23 +136,23 @@ func (_c *MockTrafficController_Shutdown_Call) RunAndReturn(run func(context.Con
 }
 
 // Submit provides a mock function with given fields: priority, fn
-func (_m *MockTrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
+func (_m *MockTrafficController) Submit(priority int, fn types.TaskFunc) (<-chan interface{}, error) {
 	ret := _m.Called(priority, fn)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Submit")
 	}
 
-	var r0 <-chan any
+	var r0 <-chan interface{}
 	var r1 error
-	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) (<-chan any, error)); ok {
+	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) (<-chan interface{}, error)); ok {
 		return rf(priority, fn)
 	}
-	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) <-chan any); ok {
+	if rf, ok := ret.Get(0).(func(int, types.TaskFunc) <-chan interface{}); ok {
 		r0 = rf(priority, fn)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan any)
+			r0 = ret.Get(0).(<-chan interface{})
 		}
 	}
 
@@ -198,12 +184,12 @@ func (_c *MockTrafficController_Submit_Call) Run(run func(priority int, fn types
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) Return(_a0 <-chan any, _a1 error) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) Return(_a0 <-chan interface{}, _a1 error) *MockTrafficController_Submit_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.TaskFunc) (<-chan any, error)) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(int, types.TaskFunc) (<-chan interface{}, error)) *MockTrafficController_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }

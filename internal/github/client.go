@@ -16,27 +16,24 @@ import (
 
 // ghClient wraps the GitHub REST and GQL API clients.
 type ghClient struct {
-	rest             *gh.RESTClient
-	gql              *gh.GraphQLClient
-	http             *http.Client
-	host             string
-	baseURL          string
-	rateLimitUpdates chan models.RateLimitInfo
+	rest              *gh.RESTClient
+	gql               *gh.GraphQLClient
+	http              *http.Client
+	host              string
+	baseURL           string
+	rateLimitReporter func(models.RateLimitInfo)
 }
 
-func (c *ghClient) SetRateLimitUpdates(ch chan models.RateLimitInfo) {
-	c.rateLimitUpdates = ch
+func (c *ghClient) SetRateLimitReporter(fn func(models.RateLimitInfo)) {
+	c.rateLimitReporter = fn
 }
 
 func (c *ghClient) ReportRateLimit(info models.RateLimitInfo) {
-	if c.rateLimitUpdates == nil {
+	if c.rateLimitReporter == nil {
 		return
 	}
-	select {
-	case c.rateLimitUpdates <- info:
-	default:
-		// Drop update if channel is full or nobody is listening
-	}
+
+	c.rateLimitReporter(info)
 }
 
 // NewClient initializes a new GitHub API client using go-gh.

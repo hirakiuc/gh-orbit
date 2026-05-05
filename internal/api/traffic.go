@@ -86,8 +86,14 @@ func (c *APITrafficController) Remaining() int {
 	return c.rlInfo.Load().Remaining
 }
 
-func (c *APITrafficController) RateLimitUpdates() chan models.RateLimitInfo {
-	return c.rateLimitUpdates
+func (c *APITrafficController) ReportRateLimit(info models.RateLimitInfo) {
+	select {
+	case <-c.done:
+		// Drop late updates after shutdown starts.
+	case c.rateLimitUpdates <- info:
+	default:
+		// Drop update if channel is full.
+	}
 }
 
 func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
@@ -255,8 +261,6 @@ func (c *APITrafficController) rateLimitListener() {
 
 func (c *APITrafficController) Shutdown(ctx context.Context) {
 	close(c.done)
-	// Ensure listener goroutine stops
-	close(c.rateLimitUpdates)
 
 	// Drain remaining tasks to unblock any callers
 	c.drainQueue(c.high)

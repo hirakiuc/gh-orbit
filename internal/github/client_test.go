@@ -64,7 +64,11 @@ func TestGHClient_Methods(t *testing.T) {
 
 	t.Run("RateLimit Reporting", func(t *testing.T) {
 		updates := make(chan models.RateLimitInfo, 1)
-		client := &ghClient{rateLimitUpdates: updates}
+		client := &ghClient{
+			rateLimitReporter: func(info models.RateLimitInfo) {
+				updates <- info
+			},
+		}
 
 		info := models.RateLimitInfo{Remaining: 100}
 		client.ReportRateLimit(info)
@@ -75,6 +79,13 @@ func TestGHClient_Methods(t *testing.T) {
 		default:
 			t.Fatal("expected rate limit update")
 		}
+	})
+
+	t.Run("RateLimit Reporting Without Reporter Is Noop", func(t *testing.T) {
+		client := &ghClient{}
+		assert.NotPanics(t, func() {
+			client.ReportRateLimit(models.RateLimitInfo{Remaining: 100})
+		})
 	})
 }
 
