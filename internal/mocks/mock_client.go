@@ -350,35 +350,35 @@ func (_c *MockClient_ReportRateLimit_Call) RunAndReturn(run func(models.RateLimi
 	return _c
 }
 
-// SetRateLimitUpdates provides a mock function with given fields: ch
-func (_m *MockClient) SetRateLimitUpdates(ch chan models.RateLimitInfo) {
-	_m.Called(ch)
+// SetRateLimitReporter provides a mock function with given fields: fn
+func (_m *MockClient) SetRateLimitReporter(fn func(models.RateLimitInfo)) {
+	_m.Called(fn)
 }
 
-// MockClient_SetRateLimitUpdates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRateLimitUpdates'
-type MockClient_SetRateLimitUpdates_Call struct {
+// MockClient_SetRateLimitReporter_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRateLimitReporter'
+type MockClient_SetRateLimitReporter_Call struct {
 	*mock.Call
 }
 
-// SetRateLimitUpdates is a helper method to define mock.On call
-//   - ch chan models.RateLimitInfo
-func (_e *MockClient_Expecter) SetRateLimitUpdates(ch interface{}) *MockClient_SetRateLimitUpdates_Call {
-	return &MockClient_SetRateLimitUpdates_Call{Call: _e.mock.On("SetRateLimitUpdates", ch)}
+// SetRateLimitReporter is a helper method to define mock.On call
+//   - fn func(models.RateLimitInfo)
+func (_e *MockClient_Expecter) SetRateLimitReporter(fn interface{}) *MockClient_SetRateLimitReporter_Call {
+	return &MockClient_SetRateLimitReporter_Call{Call: _e.mock.On("SetRateLimitReporter", fn)}
 }
 
-func (_c *MockClient_SetRateLimitUpdates_Call) Run(run func(ch chan models.RateLimitInfo)) *MockClient_SetRateLimitUpdates_Call {
+func (_c *MockClient_SetRateLimitReporter_Call) Run(run func(fn func(models.RateLimitInfo))) *MockClient_SetRateLimitReporter_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(chan models.RateLimitInfo))
+		run(args[0].(func(models.RateLimitInfo)))
 	})
 	return _c
 }
 
-func (_c *MockClient_SetRateLimitUpdates_Call) Return() *MockClient_SetRateLimitUpdates_Call {
+func (_c *MockClient_SetRateLimitReporter_Call) Return() *MockClient_SetRateLimitReporter_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *MockClient_SetRateLimitUpdates_Call) RunAndReturn(run func(chan models.RateLimitInfo)) *MockClient_SetRateLimitUpdates_Call {
+func (_c *MockClient_SetRateLimitReporter_Call) RunAndReturn(run func(func(models.RateLimitInfo))) *MockClient_SetRateLimitReporter_Call {
 	_c.Run(run)
 	return _c
 }

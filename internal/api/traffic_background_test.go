@@ -21,11 +21,11 @@ func TestAPITrafficController_Background(t *testing.T) {
 		defer tc.Shutdown(ctx)
 
 		// 1. RateLimitListener scaling
-		tc.RateLimitUpdates() <- models.RateLimitInfo{Remaining: 100}
+		tc.ReportRateLimit(models.RateLimitInfo{Remaining: 100})
 		synctest.Wait()
 		assert.Equal(t, int32(1), atomic.LoadInt32(&tc.workerLimit))
 
-		tc.RateLimitUpdates() <- models.RateLimitInfo{Remaining: 1000}
+		tc.ReportRateLimit(models.RateLimitInfo{Remaining: 1000})
 		synctest.Wait()
 		assert.Equal(t, int32(3), atomic.LoadInt32(&tc.workerLimit))
 
@@ -70,5 +70,19 @@ func TestAPITrafficController_Shutdown_Channels(t *testing.T) {
 		_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "shutdown")
+	})
+}
+
+func TestAPITrafficController_ReportRateLimit_AfterShutdownDoesNotPanic(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+
+		tc.Shutdown(ctx)
+		synctest.Wait()
+
+		assert.NotPanics(t, func() {
+			tc.ReportRateLimit(models.RateLimitInfo{Remaining: 42})
+		})
 	})
 }

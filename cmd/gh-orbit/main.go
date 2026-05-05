@@ -420,7 +420,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 
 func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
 	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
-	eng.Client.SetRateLimitUpdates(eng.Traffic.RateLimitUpdates())
+	eng.Client.SetRateLimitReporter(eng.Traffic.ReportRateLimit)
 
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
