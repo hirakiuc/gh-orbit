@@ -3,10 +3,8 @@ package github
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -16,20 +14,24 @@ import (
 
 func TestNotificationFetcher_FetchNotifications(t *testing.T) {
 	t.Run("Successful Fetch with Pagination", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 			if r.URL.Path == "/notifications" {
-				w.Header().Set("Link", fmt.Sprintf(`<%s/page2>; rel="next"`, "http://"+r.Host))
-				w.Header().Set("ETag", "etag-1")
-				w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 MST")
-				w.Header().Set("X-Poll-Interval", "30")
-				_ = json.NewEncoder(w).Encode([]Notification{{ID: "1"}, {ID: "2"}})
-			} else {
-				_ = json.NewEncoder(w).Encode([]Notification{{ID: "3"}})
-			}
-		}))
-		defer ts.Close()
+				headers := make(http.Header)
+				headers.Set("Link", `<https://api.test/page2>; rel="next"`)
+				headers.Set("ETag", "etag-1")
+				headers.Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 MST")
+				headers.Set("X-Poll-Interval", "30")
 
-		client := NewTestClient(ts.Client(), ts.URL+"/")
+				body, err := json.Marshal([]Notification{{ID: "1"}, {ID: "2"}})
+				require.NoError(t, err)
+				return newJSONResponse(http.StatusOK, string(body), headers), nil
+			}
+
+			assert.Equal(t, "/page2", r.URL.Path)
+			body, err := json.Marshal([]Notification{{ID: "3"}})
+			require.NoError(t, err)
+			return newJSONResponse(http.StatusOK, string(body), nil), nil
+		}), "https://api.test/")
 		fetcher := NewNotificationFetcher(client, slog.Default())
 
 		notifs, newMeta, rl, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
@@ -41,13 +43,11 @@ func TestNotificationFetcher_FetchNotifications(t *testing.T) {
 	})
 
 	t.Run("304 Not Modified", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 			assert.Equal(t, "etag-old", r.Header.Get("If-None-Match"))
-			w.WriteHeader(http.StatusNotModified)
-		}))
-		defer ts.Close()
+			return newJSONResponse(http.StatusNotModified, "", nil), nil
+		}), "https://api.test/")
 
-		client := NewTestClient(ts.Client(), ts.URL+"/")
 		fetcher := NewNotificationFetcher(client, slog.Default())
 		meta := &models.SyncMeta{ETag: "etag-old"}
 
@@ -58,13 +58,14 @@ func TestNotificationFetcher_FetchNotifications(t *testing.T) {
 	})
 
 	t.Run("Corrupted ETag Sanitization", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("ETag", `W/""`)
-			_ = json.NewEncoder(w).Encode([]Notification{})
-		}))
-		defer ts.Close()
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
+			headers := make(http.Header)
+			headers.Set("ETag", `W/""`)
 
-		client := NewTestClient(ts.Client(), ts.URL+"/")
+			body, err := json.Marshal([]Notification{})
+			require.NoError(t, err)
+			return newJSONResponse(http.StatusOK, string(body), headers), nil
+		}), "https://api.test/")
 		fetcher := NewNotificationFetcher(client, slog.Default())
 
 		_, newMeta, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
@@ -73,12 +74,9 @@ func TestNotificationFetcher_FetchNotifications(t *testing.T) {
 	})
 
 	t.Run("API Error Handling", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
-		}))
-		defer ts.Close()
-
-		client := NewTestClient(ts.Client(), ts.URL+"/")
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
+			return newJSONResponse(http.StatusUnauthorized, "", nil), nil
+		}), "https://api.test/")
 		fetcher := NewNotificationFetcher(client, slog.Default())
 
 		_, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -17,14 +16,15 @@ func TestGHClient_Methods(t *testing.T) {
 		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
 
 		expectedUser := &User{Login: "test-user"}
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 			assert.Equal(t, "/user", r.URL.Path)
-			w.Header().Set("X-RateLimit-Remaining", "4999")
-			_ = json.NewEncoder(w).Encode(expectedUser)
-		}))
-		defer ts.Close()
+			headers := make(http.Header)
+			headers.Set("X-RateLimit-Remaining", "4999")
 
-		client := NewTestClient(ts.Client(), ts.URL+"/")
+			body, err := json.Marshal(expectedUser)
+			require.NoError(t, err)
+			return newJSONResponse(http.StatusOK, string(body), headers), nil
+		}), "https://api.test/")
 		user, err := client.CurrentUser(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, expectedUser.Login, user.Login)
@@ -42,14 +42,12 @@ func TestGHClient_Methods(t *testing.T) {
 	t.Run("MarkThreadAsRead", func(t *testing.T) {
 		t.Setenv("GH_ORBIT_SKIP_AUTH", "1")
 
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 			assert.Equal(t, http.MethodPatch, r.Method)
 			assert.Equal(t, "/notifications/threads/123", r.URL.Path)
-			w.WriteHeader(http.StatusNoContent)
-		}))
-		defer ts.Close()
+			return newJSONResponse(http.StatusNoContent, "", nil), nil
+		}), "https://api.test/")
 
-		client := NewTestClient(ts.Client(), ts.URL+"/")
 		err := client.MarkThreadAsRead(context.Background(), "123")
 		require.NoError(t, err)
 	})

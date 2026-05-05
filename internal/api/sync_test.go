@@ -3,10 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +19,30 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newHTTPClient(t *testing.T, fn roundTripFunc) *http.Client {
+	t.Helper()
+
+	return &http.Client{Transport: fn}
+}
+
+func newJSONResponse(status int, body string, headers http.Header) *http.Response {
+	if headers == nil {
+		headers = make(http.Header)
+	}
+
+	return &http.Response{
+		StatusCode: status,
+		Header:     headers,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
 
 func TestSyncEngine_Sync(t *testing.T) {
 	ctx := context.Background()
@@ -208,17 +232,17 @@ func TestNewSyncEngine_Guards(t *testing.T) {
 }
 
 func TestConditionalRequest(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := github.NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 		if r.Header.Get("If-None-Match") == "etag-123" {
-			w.WriteHeader(http.StatusNotModified)
-			return
+			return newJSONResponse(http.StatusNotModified, "", nil), nil
 		}
-		w.Header().Set("ETag", "etag-123")
-		_ = json.NewEncoder(w).Encode([]github.Notification{})
-	}))
-	defer ts.Close()
+		headers := make(http.Header)
+		headers.Set("ETag", "etag-123")
 
-	client := github.NewTestClient(ts.Client(), ts.URL+"/")
+		body, err := json.Marshal([]github.Notification{})
+		require.NoError(t, err)
+		return newJSONResponse(http.StatusOK, string(body), headers), nil
+	}), "https://api.test/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
 	meta := &models.SyncMeta{ETag: "etag-123"}
 
@@ -228,13 +252,14 @@ func TestConditionalRequest(t *testing.T) {
 
 func TestETagSanitization(t *testing.T) {
 	t.Run("Fetcher Ignores Invalid ETags", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("ETag", `W/""`) // Corrupted header
-			_ = json.NewEncoder(w).Encode([]github.Notification{})
-		}))
-		defer ts.Close()
+		client := github.NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
+			headers := make(http.Header)
+			headers.Set("ETag", `W/""`) // Corrupted header
 
-		client := github.NewTestClient(ts.Client(), ts.URL+"/")
+			body, err := json.Marshal([]github.Notification{})
+			require.NoError(t, err)
+			return newJSONResponse(http.StatusOK, string(body), headers), nil
+		}), "https://api.test/")
 		fetcher := github.NewNotificationFetcher(client, slog.Default())
 
 		_, newMeta, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
@@ -244,17 +269,20 @@ func TestETagSanitization(t *testing.T) {
 }
 
 func TestPagination(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := github.NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 		if r.URL.Path == "/notifications" {
-			w.Header().Set("Link", fmt.Sprintf(`<%s/page2>; rel="next"`, "http://"+r.Host))
-			_ = json.NewEncoder(w).Encode([]github.Notification{{ID: "1"}, {ID: "2"}})
-		} else {
-			_ = json.NewEncoder(w).Encode([]github.Notification{{ID: "3"}})
+			headers := make(http.Header)
+			headers.Set("Link", `<https://api.test/page2>; rel="next"`)
+			body, err := json.Marshal([]github.Notification{{ID: "1"}, {ID: "2"}})
+			require.NoError(t, err)
+			return newJSONResponse(http.StatusOK, string(body), headers), nil
 		}
-	}))
-	defer ts.Close()
 
-	client := github.NewTestClient(ts.Client(), ts.URL+"/")
+		assert.Equal(t, "/page2", r.URL.Path)
+		body, err := json.Marshal([]github.Notification{{ID: "3"}})
+		require.NoError(t, err)
+		return newJSONResponse(http.StatusOK, string(body), nil), nil
+	}), "https://api.test/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
 
 	notifs, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
@@ -263,12 +291,9 @@ func TestPagination(t *testing.T) {
 }
 
 func TestFetcher_ErrorHandling(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer ts.Close()
-
-	client := github.NewTestClient(ts.Client(), ts.URL+"/")
+	client := github.NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
+		return newJSONResponse(http.StatusUnauthorized, "", nil), nil
+	}), "https://api.test/")
 	fetcher := github.NewNotificationFetcher(client, slog.Default())
 
 	_, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
