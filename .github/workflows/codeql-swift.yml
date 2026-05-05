@@ -1,11 +1,7 @@
-name: CodeQL (swift)
+# Swift CodeQL is intentionally limited to scheduled and manual runs.
+name: CodeQL (swift weekly/manual)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/**"
-      - "native/**"
   schedule:
     - cron: "0 0 * * 6"
   workflow_dispatch:
