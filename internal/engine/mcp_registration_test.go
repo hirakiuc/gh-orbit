@@ -11,7 +11,7 @@ import (
 func TestMCPServer_Registration_Coverage(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockEnrich := mocks.NewMockEnricher(t)
-	mockGH := mocks.NewMockGitHubClient(t)
+	mockGH := mocks.NewMockClient(t)
 	mockSync := mocks.NewMockSyncer(t)
 
 	// Ensure mock implements Repository interface required by MCPServer

@@ -64,7 +64,7 @@ func newTestMCPServerForEnrichment(t *testing.T) (*MCPServer, *mocks.MockReposit
 
 	mockRepo := mocks.NewMockRepository(t)
 	mockEnrich := mocks.NewMockEnricher(t)
-	mockGH := mocks.NewMockGitHubClient(t)
+	mockGH := mocks.NewMockClient(t)
 	mockSync := mocks.NewMockSyncer(t)
 
 	engine := &CoreEngine{

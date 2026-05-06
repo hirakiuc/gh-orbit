@@ -51,7 +51,6 @@ func TestInterpreter_Execute(t *testing.T) {
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
 
 	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
-	mockExecutor.EXPECT().InteractiveGH(mock.Anything, "pr", "checkout", "1", "-R", "o/r").Return(func() tea.Msg { return nil }).Maybe()
 	mockExecutor.EXPECT().Run(mock.Anything, "gh", "pr", "view", "1", "-R", "o/r", "--web").Return(nil).Maybe()
 
 	notif := triage.NotificationWithState{
@@ -139,7 +138,7 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
-	m.client.(*mocks.MockGitHubClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
+	m.client.(*mocks.MockClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().
 		Submit(api.PriorityUser, mock.Anything).
 		RunAndReturn(func(priority int, fn types.TaskFunc) (<-chan any, error) {

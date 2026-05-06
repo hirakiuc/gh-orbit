@@ -61,23 +61,17 @@ We employ a **Hybrid Testing Model** to balance speed with fidelity:
 
 ## 5. Testing & Mocking Standards
 
-### 5.1 Bubble Tea v2 Type Aliasing (The "Ghost Type" Problem)
+### 5.1 Mockery v3 Configuration
 
-In Bubble Tea v2, `tea.Msg` is an alias for `uv.Event` (from the `ultraviolet` package). Because `mockery` and Go reflection often resolve aliases to their underlying types, this can create mismatches in generated mocks where a method expecting `tea.Msg` is generated as expecting `uv.Event`.
+We generate Go test doubles with **mockery v3** and keep them in `internal/mocks` using one file per interface (`mock_{{ .InterfaceName | snakecase }}.go`).
 
-To resolve this without polluting the codebase with framework-internal types, we use **Mockery Customization**:
+Repo conventions:
 
-1. **Stable Aliases**: Define a stable alias in `internal/types` (e.g., `type TaskFunc func(context.Context) tea.Msg`).
-2. **Type Mapping**: Use the `replace-type` feature in `.mockery.yaml` to force the generator to use the public `tea.Msg` name:
+1. Run `make go/generate` after interface changes.
+2. Keep mocks in `internal/mocks` so production packages do not grow test-only files.
+3. Prefer interface surfaces in `internal/types`, `internal/api`, and `internal/github` that avoid framework-internal types.
 
-   ```yaml
-   replace-type:
-     - "charm.land/bubbletea/v2/internal/uv.Event=tea:charm.land/bubbletea/v2.Msg"
-   ```
-
-3. **Alias Resolution**: Set `resolve-type-alias: true` in `.mockery.yaml` to ensure the generator respects named aliases like `TaskFunc`.
-
-This pattern ensures that our interfaces remain clean and that tests can use standard Bubble Tea types while maintaining full mock compatibility.
+`mockery` v2-specific settings such as `resolve-type-alias` are gone in v3. If a future interface needs a framework alias workaround, use the v3 `replace-type` schema instead of reintroducing v2-era config.
 
 ---
 

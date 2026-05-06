@@ -1,22 +1,16 @@
-# Mockery configuration for gh-orbit (v2.53+)
-# See: https://vektra.github.io/mockery/v2.53/features/#packages-configuration
+# Mockery configuration for gh-orbit (v3)
+# See: https://vektra.github.io/mockery/latest/v3/
 
-with-expecter: true # Enables the more type-safe .EXPECT() syntax for testify
-issue-845-fix: true # Resolves deprecation warning
-
-# Future-proofing for v3 (Resolves remaining deprecation warnings)
-resolve-type-alias: true
-disable-version-string: true
-
-replace-type:
-  - "charm.land/bubbletea/v2/internal/uv.Event=tea:charm.land/bubbletea/v2.Msg"
+template: testify
+template-data:
+  unroll-variadic: true
 
 packages:
   github.com/hirakiuc/gh-orbit/internal/types:
     config:
       # Generate mocks in internal/mocks from the neutral types package
       dir: internal/mocks
-      outpkg: mocks
+      pkgname: mocks
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     
     interfaces:
@@ -33,7 +27,7 @@ packages:
   github.com/hirakiuc/gh-orbit/internal/api:
     config:
       dir: internal/mocks
-      outpkg: mocks
+      pkgname: mocks
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
       Alerter:
@@ -41,7 +35,7 @@ packages:
   github.com/hirakiuc/gh-orbit/internal/github:
     config:
       dir: internal/mocks
-      outpkg: mocks
+      pkgname: mocks
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
       Client:
