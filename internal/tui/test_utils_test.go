@@ -33,7 +33,7 @@ func newTestModel(t TestingT) *Model {
 	mockTraffic.EXPECT().Remaining().Return(5000).Maybe()
 	mockAlerter := mocks.NewMockAlerter(t)
 	mockRepo := mocks.NewMockRepository(t)
-	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient := mocks.NewMockClient(t)
 	mockExecutor := mocks.NewMockCommandExecutor(t)
 
 	// Basic bridge status mock (used in NewModel or Transition)

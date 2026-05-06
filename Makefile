@@ -126,8 +126,11 @@ go/clean:
 	go clean
 
 go/generate:
-	@echo "Generating mocks using packages configuration..."
-	@go run github.com/vektra/mockery/v2
+	@echo "Generating mocks using mockery v3..."
+	@MOCKERY_BIN="$${MOCKERY:-$$(command -v mockery)}"; \
+	test -n "$$MOCKERY_BIN" || { echo "mockery v3 is required; install via 'go install github.com/vektra/mockery/v3@latest' or set MOCKERY=/path/to/mockery"; exit 1; }; \
+	"$$MOCKERY_BIN" version | grep -q 'v3\.' || { echo "$$MOCKERY_BIN must be mockery v3"; exit 1; }; \
+	"$$MOCKERY_BIN"
 
 go/coverage: $(PROJECT_TMP)
 	go test -coverprofile=$(PROJECT_TMP)/coverage.out ./...

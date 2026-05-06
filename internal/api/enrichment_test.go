@@ -16,7 +16,7 @@ import (
 
 func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 	ctx := context.Background()
-	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient := mocks.NewMockClient(t)
 	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockREST := mocks.NewMockRESTClient(t)
@@ -171,7 +171,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 
 func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 	ctx := context.Background()
-	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient := mocks.NewMockClient(t)
 	mockClient.EXPECT().ReportRateLimit(mock.Anything).Return().Maybe()
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	mockGQL := mocks.NewMockGraphQLClient(t)
@@ -243,7 +243,7 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 func TestEnrichmentEngine_Pruning(t *testing.T) {
 	ctx := context.Background()
 	engine, _ := NewEnrichmentEngine(ctx, EnrichParams{
-		Client: mocks.NewMockGitHubClient(t),
+		Client: mocks.NewMockClient(t),
 		DB:     mocks.NewMockEnrichmentRepository(t),
 		Logger: slog.Default(),
 	})
@@ -263,7 +263,7 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 
 func TestNewEnrichmentEngine_Guards(t *testing.T) {
 	ctx := context.Background()
-	mockClient := mocks.NewMockGitHubClient(t)
+	mockClient := mocks.NewMockClient(t)
 	mockRepo := mocks.NewMockEnrichmentRepository(t)
 	logger := slog.Default()
 
