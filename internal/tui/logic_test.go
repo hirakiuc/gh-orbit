@@ -115,6 +115,22 @@ func TestInterpreter_Execute_UpdateRateLimitStandaloneMode(t *testing.T) {
 	assert.Equal(t, 123, m.RateLimit.Remaining)
 }
 
+func TestModel_submitTask_SubmitErrorReturnsErrMsg(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic.(*mocks.MockTrafficController).EXPECT().
+		Submit(api.PrioritySync, mock.Anything).
+		Return(nil, api.ErrTrafficQueueFull).
+		Once()
+
+	cmd := m.submitTask(api.PrioritySync, func(ctx context.Context) any { return "unreachable" })
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	errMsg, ok := msg.(types.ErrMsg)
+	require.True(t, ok)
+	assert.ErrorIs(t, errMsg.Err, api.ErrTrafficQueueFull)
+}
+
 func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	m := newTestModel(t)
 	m.client = nil
