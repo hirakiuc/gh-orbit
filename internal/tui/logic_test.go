@@ -131,6 +131,38 @@ func TestModel_submitTask_SubmitErrorReturnsErrMsg(t *testing.T) {
 	assert.ErrorIs(t, errMsg.Err, api.ErrTrafficQueueFull)
 }
 
+func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic = nil
+	m.ui.SetSyncing(true)
+
+	originalTimeout := types.ConnectedSyncTimeout
+	types.ConnectedSyncTimeout = 10 * time.Millisecond
+	t.Cleanup(func() {
+		types.ConnectedSyncTimeout = originalTimeout
+	})
+
+	m.sync.(*mocks.MockSyncer).EXPECT().
+		Sync(mock.Anything, "test-user", true).
+		RunAndReturn(func(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error) {
+			<-ctx.Done()
+			return models.RateLimitInfo{}, ctx.Err()
+		}).
+		Once()
+
+	cmd := m.syncNotificationsWithForce(true)
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	errMsg, ok := msg.(types.ErrMsg)
+	require.True(t, ok)
+	assert.ErrorIs(t, errMsg.Err, context.DeadlineExceeded)
+
+	m.handleTransitionError(errMsg)
+	assert.False(t, m.ui.syncing)
+	assert.ErrorIs(t, m.err, context.DeadlineExceeded)
+}
+
 func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	m := newTestModel(t)
 	m.client = nil

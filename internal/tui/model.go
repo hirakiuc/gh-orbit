@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -323,9 +324,22 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
 }
 
 func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
+	if m.traffic == nil {
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), types.ConnectedSyncTimeout)
+			defer cancel()
+
+			rl, err := m.sync.Sync(ctx, m.userID, force)
+			if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
+				return types.ErrMsg{Err: err}
+			}
+			return syncCompleteMsg{rateLimit: rl, IsForced: force}
+		}
+	}
+
 	return m.submitTask(api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.sync.Sync(ctx, m.userID, force)
-		if err != nil && err != types.ErrSyncIntervalNotReached {
+		if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
 			return types.ErrMsg{Err: err}
 		}
 		return syncCompleteMsg{rateLimit: rl, IsForced: force}

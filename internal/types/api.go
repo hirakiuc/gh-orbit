@@ -18,6 +18,10 @@ var (
 	ErrNetworkTimeout         = errors.New("github: network timeout")
 )
 
+// ConnectedSyncTimeout bounds connected/native sync requests so stalled MCP calls
+// surface a recoverable error instead of leaving the UI in a permanent syncing state.
+var ConnectedSyncTimeout = 15 * time.Second
+
 // BridgeStatus represents the functional state of the native system bridge.
 type BridgeStatus string
 
