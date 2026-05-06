@@ -16,6 +16,18 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+type syncToolStatus string
+
+const (
+	syncToolStatusOK                 syncToolStatus = "ok"
+	syncToolStatusIntervalNotReached syncToolStatus = "interval_not_reached"
+)
+
+type syncToolResult struct {
+	Status    syncToolStatus       `json:"status"`
+	RateLimit models.RateLimitInfo `json:"rate_limit,omitempty"`
+}
+
 // MCPAdapter implements core interfaces by proxying to an MCP server.
 type MCPAdapter struct {
 	client client.MCPClient
@@ -191,6 +203,17 @@ func (a *MCPAdapter) Sync(ctx context.Context, userID string, force bool) (model
 		return models.RateLimitInfo{}, err
 	}
 
+	if payload, ok := decodeSyncToolResult(resp); ok {
+		switch payload.Status {
+		case syncToolStatusOK:
+			return payload.RateLimit, nil
+		case syncToolStatusIntervalNotReached:
+			return payload.RateLimit, types.ErrSyncIntervalNotReached
+		default:
+			return models.RateLimitInfo{}, fmt.Errorf("sync error: invalid sync tool status %q", payload.Status)
+		}
+	}
+
 	if resp.IsError {
 		content, _ := resp.Content[0].(mcp.TextContent)
 		return models.RateLimitInfo{}, fmt.Errorf("sync error: %s", content.Text)
@@ -204,6 +227,27 @@ func (a *MCPAdapter) Sync(ctx context.Context, userID string, force bool) (model
 	}
 
 	return rl, nil
+}
+
+func decodeSyncToolResult(resp *mcp.CallToolResult) (syncToolResult, bool) {
+	if resp == nil || resp.StructuredContent == nil {
+		return syncToolResult{}, false
+	}
+
+	raw, err := json.Marshal(resp.StructuredContent)
+	if err != nil {
+		return syncToolResult{}, false
+	}
+
+	var payload syncToolResult
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return syncToolResult{}, false
+	}
+	if payload.Status == "" {
+		return syncToolResult{}, false
+	}
+
+	return payload, true
 }
 
 func (a *MCPAdapter) Shutdown(ctx context.Context)     {}

@@ -143,6 +143,10 @@ func TestMCPAdapter_SyncPassesThroughSuccessfulResponse(t *testing.T) {
 	adapter := NewMCPAdapter(&blockingMCPClient{
 		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
+				StructuredContent: syncToolResult{
+					Status:    syncToolStatusOK,
+					RateLimit: models.RateLimitInfo{Remaining: 123},
+				},
 				Content: []mcp.Content{
 					mcp.NewTextContent(`{"remaining":123}`),
 				},
@@ -153,4 +157,76 @@ func TestMCPAdapter_SyncPassesThroughSuccessfulResponse(t *testing.T) {
 	rl, err := adapter.Sync(context.Background(), "user-1", true)
 	require.NoError(t, err)
 	assert.Equal(t, models.RateLimitInfo{Remaining: 123}, rl)
+}
+
+func TestMCPAdapter_SyncReconstructsIntervalNotReachedFromStructuredResult(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				StructuredContent: syncToolResult{
+					Status:    syncToolStatusIntervalNotReached,
+					RateLimit: models.RateLimitInfo{Remaining: 456},
+				},
+				Content: []mcp.Content{
+					mcp.NewTextContent(`sync interval not reached`),
+				},
+			}, nil
+		},
+	})
+
+	rl, err := adapter.Sync(context.Background(), "user-1", false)
+	assert.Equal(t, models.RateLimitInfo{Remaining: 456}, rl)
+	assert.ErrorIs(t, err, types.ErrSyncIntervalNotReached)
+}
+
+func TestMCPAdapter_SyncFallsBackToLegacySuccessParsingWithoutStructuredContent(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					mcp.NewTextContent(`{"remaining":789}`),
+				},
+			}, nil
+		},
+	})
+
+	rl, err := adapter.Sync(context.Background(), "user-1", true)
+	require.NoError(t, err)
+	assert.Equal(t, models.RateLimitInfo{Remaining: 789}, rl)
+}
+
+func TestMCPAdapter_SyncFallsBackToLegacyErrorWithoutStructuredContent(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					mcp.NewTextContent(`sync failed: boom`),
+				},
+			}, nil
+		},
+	})
+
+	_, err := adapter.Sync(context.Background(), "user-1", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sync error: sync failed: boom")
+}
+
+func TestMCPAdapter_SyncRejectsInvalidStructuredContract(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				StructuredContent: map[string]any{
+					"status": "unknown",
+				},
+				Content: []mcp.Content{
+					mcp.NewTextContent(`{"remaining":123}`),
+				},
+			}, nil
+		},
+	})
+
+	_, err := adapter.Sync(context.Background(), "user-1", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid sync tool status "unknown"`)
 }

@@ -163,6 +163,30 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *t
 	assert.ErrorIs(t, m.err, context.DeadlineExceeded)
 }
 
+func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedAsBenign(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic = nil
+	m.ui.SetSyncing(true)
+
+	m.sync.(*mocks.MockSyncer).EXPECT().
+		Sync(mock.Anything, "test-user", false).
+		Return(models.RateLimitInfo{Remaining: 999}, types.ErrSyncIntervalNotReached).
+		Once()
+
+	cmd := m.syncNotificationsWithForce(false)
+	require.NotNil(t, cmd)
+
+	msg := executeCmd(cmd)
+	syncMsg, ok := msg.(syncCompleteMsg)
+	require.True(t, ok)
+	assert.Equal(t, models.RateLimitInfo{Remaining: 999}, syncMsg.rateLimit)
+	assert.False(t, syncMsg.IsForced)
+
+	actions := m.handleSyncComplete(syncMsg)
+	assert.False(t, m.ui.syncing)
+	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false, IsForced: false})
+}
+
 func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	m := newTestModel(t)
 	m.client = nil
