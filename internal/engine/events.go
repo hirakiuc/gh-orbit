@@ -24,14 +24,37 @@ func NewEventBus() *EventBus {
 	}
 }
 
-// Subscribe returns a channel that receives a signal when the event occurs.
-func (b *EventBus) Subscribe(event EngineEvent) <-chan struct{} {
+// Subscribe returns a channel that receives a signal when the event occurs
+// along with an idempotent function that removes the subscriber.
+func (b *EventBus) Subscribe(event EngineEvent) (<-chan struct{}, func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	ch := make(chan struct{}, 1)
 	b.subscribers[event] = append(b.subscribers[event], ch)
-	return ch
+
+	var once sync.Once
+	unsubscribe := func() {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+
+			subs := b.subscribers[event]
+			for i, sub := range subs {
+				if sub != ch {
+					continue
+				}
+
+				b.subscribers[event] = append(subs[:i], subs[i+1:]...)
+				if len(b.subscribers[event]) == 0 {
+					delete(b.subscribers, event)
+				}
+				return
+			}
+		})
+	}
+
+	return ch, unsubscribe
 }
 
 // Publish signals all subscribers of an event.

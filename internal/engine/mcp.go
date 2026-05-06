@@ -146,8 +146,10 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 }
 
 func (s *MCPServer) eventLoop(ctx context.Context) {
-	notifCh := s.engine.Bus.Subscribe(EventNotificationsChanged)
-	enrichCh := s.engine.Bus.Subscribe(EventEnrichmentUpdated)
+	notifCh, unsubscribeNotif := s.engine.Bus.Subscribe(EventNotificationsChanged)
+	enrichCh, unsubscribeEnrich := s.engine.Bus.Subscribe(EventEnrichmentUpdated)
+	defer unsubscribeNotif()
+	defer unsubscribeEnrich()
 
 	for {
 		select {
@@ -302,9 +304,11 @@ func (s *MCPServer) sendJSONRPCMessage(session *udsSession, data []byte) {
 
 func (s *MCPServer) registerTools() {
 	// 1. Sync Tool
-	syncTool := mcp.NewTool("sync",
+	syncTool := mcp.NewTool(
+		"sync",
 		mcp.WithDescription("Trigger a background synchronization with GitHub"),
-		mcp.WithBoolean("force",
+		mcp.WithBoolean(
+			"force",
 			mcp.Description("Force a cold sync even if interval not reached"),
 		),
 	)
@@ -346,12 +350,15 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 2. Mark Read Tool
-	markReadTool := mcp.NewTool("mark_read",
+	markReadTool := mcp.NewTool(
+		"mark_read",
 		mcp.WithDescription("Mark a notification thread as read"),
-		mcp.WithString("id",
+		mcp.WithString(
+			"id",
 			mcp.Description("The GitHub notification ID"),
 		),
-		mcp.WithBoolean("read",
+		mcp.WithBoolean(
+			"read",
 			mcp.Description("Whether to mark as read or unread"),
 		),
 	)
@@ -384,7 +391,8 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 3. Set Priority Tool
-	setPriorityTool := mcp.NewTool("set_priority",
+	setPriorityTool := mcp.NewTool(
+		"set_priority",
 		mcp.WithDescription("Update the priority of a notification"),
 		mcp.WithString("id", mcp.Description("The GitHub notification ID")),
 		mcp.WithNumber("level", mcp.Description("Priority level (0-3)")),
@@ -407,7 +415,8 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 4. Fetch Detail Tool
-	fetchDetailTool := mcp.NewTool("fetch_detail",
+	fetchDetailTool := mcp.NewTool(
+		"fetch_detail",
 		mcp.WithDescription("Fetch enriched detail for a single notification subject"),
 		mcp.WithString("url", mcp.Required(), mcp.Description("The GitHub API subject URL")),
 		mcp.WithString("subject_type", mcp.Required(), mcp.Description("The GitHub subject type")),
@@ -441,9 +450,11 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 5. Batch Enrichment Tool
-	batchEnrichTool := mcp.NewTool("fetch_hybrid_batch",
+	batchEnrichTool := mcp.NewTool(
+		"fetch_hybrid_batch",
 		mcp.WithDescription("Fetch enrichment state for a batch of notifications"),
-		mcp.WithArray("notifications",
+		mcp.WithArray(
+			"notifications",
 			mcp.Required(),
 			mcp.Description("Notification records to enrich; response is keyed by subject_node_id"),
 			mcp.Items(map[string]any{"type": "object"}),
@@ -484,7 +495,8 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 6. Enrichment Persistence Tool
-	enrichNotificationTool := mcp.NewTool("enrich_notification",
+	enrichNotificationTool := mcp.NewTool(
+		"enrich_notification",
 		mcp.WithDescription("Persist enriched notification fields through the engine-backed repository"),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The GitHub notification ID")),
 		mcp.WithString("node_id", mcp.Description("The GitHub subject node ID")),
@@ -523,7 +535,8 @@ func (s *MCPServer) registerTools() {
 
 func (s *MCPServer) registerResources() {
 	// Notifications Resource Template
-	tpl := mcp.NewResourceTemplate("gh-orbit://notifications/{category}", "Notifications List",
+	tpl := mcp.NewResourceTemplate(
+		"gh-orbit://notifications/{category}", "Notifications List",
 		mcp.WithTemplateDescription("List of notifications by category (unread, all)"),
 	)
 

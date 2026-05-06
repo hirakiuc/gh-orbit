@@ -26,7 +26,8 @@ func TestEventBus_Stress(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				ch := bus.Subscribe(EventNotificationsChanged)
+				ch, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+				defer unsubscribe()
 
 				for {
 					select {
@@ -52,7 +53,8 @@ func TestEventBus_Stress(t *testing.T) {
 					bus.Publish(EventNotificationsChanged)
 					if j%10 == 0 {
 						// Mix in some random subs during active publishing
-						bus.Subscribe(EventEnrichmentUpdated)
+						_, unsubscribe := bus.Subscribe(EventEnrichmentUpdated)
+						unsubscribe()
 					}
 				}
 			}(i)
@@ -84,7 +86,8 @@ func TestEventBus_DeadlockDetection(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
-				bus.Subscribe(EventNotificationsChanged)
+				_, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+				unsubscribe()
 			}
 		}()
 
@@ -102,7 +105,8 @@ func TestEventBus_DeadlockDetection(t *testing.T) {
 func TestEventBus_BufferSaturation(t *testing.T) {
 	bus := NewEventBus()
 	// Channel is buffered at size 1
-	ch := bus.Subscribe(EventNotificationsChanged)
+	ch, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+	defer unsubscribe()
 
 	// Publish twice without reading
 	bus.Publish(EventNotificationsChanged)
@@ -128,11 +132,45 @@ func TestEventBus_BufferSaturation(t *testing.T) {
 func BenchmarkEventBus_Publish(b *testing.B) {
 	bus := NewEventBus()
 	for i := 0; i < 10; i++ {
-		bus.Subscribe(EventNotificationsChanged)
+		_, _ = bus.Subscribe(EventNotificationsChanged)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		bus.Publish(EventNotificationsChanged)
 	}
+}
+
+func TestEventBus_UnsubscribeRemovesSubscriber(t *testing.T) {
+	bus := NewEventBus()
+
+	ch1, unsubscribe1 := bus.Subscribe(EventNotificationsChanged)
+	_, unsubscribe2 := bus.Subscribe(EventNotificationsChanged)
+
+	assert.Len(t, bus.subscribers[EventNotificationsChanged], 2)
+
+	unsubscribe1()
+
+	assert.Len(t, bus.subscribers[EventNotificationsChanged], 1)
+
+	select {
+	case <-ch1:
+		t.Fatal("unsubscribed channel should not receive events")
+	default:
+	}
+
+	bus.Publish(EventNotificationsChanged)
+
+	select {
+	case <-ch1:
+		t.Fatal("unsubscribed channel should not receive events")
+	default:
+	}
+
+	unsubscribe1()
+	assert.Len(t, bus.subscribers[EventNotificationsChanged], 1)
+
+	unsubscribe2()
+	_, ok := bus.subscribers[EventNotificationsChanged]
+	assert.False(t, ok, "event subscriber entry should be removed when empty")
 }
