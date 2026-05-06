@@ -21,6 +21,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -326,11 +327,22 @@ func (s *MCPServer) registerTools() {
 
 		rl, err := s.engine.Sync.Sync(ctx, user.Login, force)
 		if err != nil {
+			if errors.Is(err, types.ErrSyncIntervalNotReached) {
+				payload := syncToolResult{
+					Status:    syncToolStatusIntervalNotReached,
+					RateLimit: rl,
+				}
+				return mcp.NewToolResultStructured(payload, "sync interval not reached"), nil
+			}
 			return mcp.NewToolResultError(fmt.Sprintf("sync failed: %v", err)), nil
 		}
 
+		payload := syncToolResult{
+			Status:    syncToolStatusOK,
+			RateLimit: rl,
+		}
 		data, _ := json.Marshal(rl)
-		return mcp.NewToolResultText(string(data)), nil
+		return mcp.NewToolResultStructured(payload, string(data)), nil
 	})
 
 	// 2. Mark Read Tool
