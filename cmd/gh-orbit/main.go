@@ -511,7 +511,8 @@ func initEnvironment(ctx context.Context, sink io.Writer) (*environment, context
 	}
 
 	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "session",
+	ctx, span := tracer.Start(
+		ctx, "session",
 		trace.WithAttributes(
 			attribute.String("version", buildinfo.Version),
 			attribute.String("os", runtime.GOOS),

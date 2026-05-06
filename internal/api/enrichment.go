@@ -102,7 +102,8 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 
 	val, err, _ := e.sf.Do(sfKey, func() (any, error) {
 		tracer := config.GetTracer()
-		ctx, span := tracer.Start(ctx, "enrichment.fetch_detail",
+		ctx, span := tracer.Start(
+			ctx, "enrichment.fetch_detail",
 			trace.WithAttributes(
 				attribute.String("url", u),
 				attribute.String("type", subjectType),

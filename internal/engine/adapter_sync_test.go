@@ -45,7 +45,9 @@ func (c *blockingMCPClient) ReadResource(ctx context.Context, request mcp.ReadRe
 	return nil, nil
 }
 
-func (c *blockingMCPClient) Subscribe(ctx context.Context, request mcp.SubscribeRequest) error { return nil }
+func (c *blockingMCPClient) Subscribe(ctx context.Context, request mcp.SubscribeRequest) error {
+	return nil
+}
 
 func (c *blockingMCPClient) Unsubscribe(ctx context.Context, request mcp.UnsubscribeRequest) error {
 	return nil
@@ -78,7 +80,9 @@ func (c *blockingMCPClient) CallTool(ctx context.Context, request mcp.CallToolRe
 	return nil, nil
 }
 
-func (c *blockingMCPClient) SetLevel(ctx context.Context, request mcp.SetLevelRequest) error { return nil }
+func (c *blockingMCPClient) SetLevel(ctx context.Context, request mcp.SetLevelRequest) error {
+	return nil
+}
 
 func (c *blockingMCPClient) Complete(ctx context.Context, request mcp.CompleteRequest) (*mcp.CompleteResult, error) {
 	return nil, nil

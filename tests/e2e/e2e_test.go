@@ -38,7 +38,8 @@ func TestCLI_Bootstrap(t *testing.T) {
 
 	// 3. Run 'gh-orbit doctor'
 	cmd := exec.Command(binPath, "doctor") // #nosec G204: Trusted E2E test binary
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(
+		os.Environ(),
 		"HOME="+tmpHome,
 		"GH_HOST=localhost",
 		"GH_TOKEN=mock-token",
@@ -90,7 +91,8 @@ func TestCLI_Sync(t *testing.T) {
 	binPath := filepath.Join("..", "..", "bin", "gh-orbit")
 
 	cmd := exec.Command(binPath, "--gh-orbit-test-mode") // #nosec G204: Trusted E2E test binary
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(
+		os.Environ(),
 		"HOME="+tmpHome,
 		"GH_HOST=localhost",
 		"GH_TOKEN=mock-token",

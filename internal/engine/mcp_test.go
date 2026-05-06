@@ -19,6 +19,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -219,4 +220,52 @@ func TestMCPAdapter_Debounce(t *testing.T) {
 		// Expect only 1 mutation signal after 5 rapid triggers
 		assert.Equal(t, int32(1), finalCount, "Should debounce multiple rapid updates into a single mutation signal")
 	})
+}
+
+func TestMCPServer_EventLoopUnsubscribesOnShutdown(t *testing.T) {
+	bus := NewEventBus()
+	mcpServer := server.NewMCPServer(
+		"gh-orbit",
+		"0.1.0",
+		server.WithResourceCapabilities(true, false),
+		server.WithToolCapabilities(true),
+	)
+	s := &MCPServer{
+		engine: &CoreEngine{Bus: bus},
+		server: mcpServer,
+	}
+
+	for i := 0; i < 3; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.eventLoop(ctx)
+		}()
+
+		require.Eventually(t, func() bool {
+			bus.mu.RLock()
+			defer bus.mu.RUnlock()
+			return len(bus.subscribers[EventNotificationsChanged]) == 1 &&
+				len(bus.subscribers[EventEnrichmentUpdated]) == 1
+		}, time.Second, 10*time.Millisecond)
+
+		cancel()
+		require.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, time.Second, 10*time.Millisecond)
+
+		bus.mu.RLock()
+		_, notifOK := bus.subscribers[EventNotificationsChanged]
+		_, enrichOK := bus.subscribers[EventEnrichmentUpdated]
+		bus.mu.RUnlock()
+
+		assert.False(t, notifOK, "notification subscribers should return to baseline after shutdown")
+		assert.False(t, enrichOK, "enrichment subscribers should return to baseline after shutdown")
+	}
 }
