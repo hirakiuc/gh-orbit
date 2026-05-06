@@ -177,3 +177,54 @@ func TestTrafficController_ScalingStress(t *testing.T) {
 		cancel()
 	})
 }
+
+func TestTrafficController_SubmitReturnsQueueFullInsteadOfBlocking(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		testCases := []struct {
+			name     string
+			priority int
+			capacity int
+		}{
+			{name: "user", priority: PriorityUser, capacity: 10},
+			{name: "sync", priority: PrioritySync, capacity: 50},
+			{name: "enrich", priority: PriorityEnrich, capacity: 100},
+		}
+
+		for _, tcDef := range testCases {
+			ctx, cancel := context.WithCancel(context.Background())
+			tc := NewAPITrafficController(ctx, slog.Default())
+
+			atomic.StoreInt32(&tc.workerLimit, 0)
+			synctest.Wait()
+
+			for i := 0; i < tcDef.capacity; i++ {
+				resChan, err := tc.Submit(tcDef.priority, func(ctx context.Context) any { return nil })
+				assert.NoErrorf(t, err, "%s queue should accept task %d within capacity", tcDef.name, i)
+				assert.NotNilf(t, resChan, "%s queue should return response channel within capacity", tcDef.name)
+			}
+
+			resChan, err := tc.Submit(tcDef.priority, func(ctx context.Context) any { return nil })
+			assert.Nilf(t, resChan, "%s queue should reject task when full", tcDef.name)
+			assert.ErrorIsf(t, err, ErrTrafficQueueFull, "%s queue should fail fast when full", tcDef.name)
+
+			tc.Shutdown(ctx)
+			cancel()
+		}
+	})
+}
+
+func TestTrafficController_SubmitStillEnqueuesWhenCapacityAvailable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		resChan, err := tc.Submit(PrioritySync, func(ctx context.Context) any {
+			return "ok"
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "ok", <-resChan)
+	})
+}

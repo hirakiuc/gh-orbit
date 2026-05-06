@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -19,6 +20,8 @@ const (
 	PriorityUser
 )
 
+var ErrTrafficQueueFull = errors.New("traffic controller queue full")
+
 type apiTask struct {
 	id       uint64
 	priority int
@@ -32,6 +35,7 @@ type APITrafficController struct {
 	ctx    context.Context // Application root context
 	logger *slog.Logger
 	userMu sync.Mutex // Serializes PriorityUser tasks to prevent out-of-order writes
+	stateMu sync.RWMutex // Prevents new submissions from racing with shutdown admission cutoff
 
 	taskCounter uint64
 
@@ -51,6 +55,8 @@ type APITrafficController struct {
 	workerWG           sync.WaitGroup
 
 	rateLimitUpdates chan models.RateLimitInfo
+
+	submitBeforeLockHook func()
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
@@ -105,22 +111,37 @@ func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) (<-chan a
 		ctx:      c.ctx,
 	}
 
+	if c.submitBeforeLockHook != nil {
+		c.submitBeforeLockHook()
+	}
+
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+
 	select {
 	case <-c.done:
 		return nil, fmt.Errorf("traffic controller shutdown")
 	default:
 	}
 
+	queue := c.queueForPriority(priority)
+	select {
+	case queue <- task:
+		return task.resp, nil
+	default:
+		return nil, ErrTrafficQueueFull
+	}
+}
+
+func (c *APITrafficController) queueForPriority(priority int) chan *apiTask {
 	switch priority {
 	case PriorityUser:
-		c.high <- task
+		return c.high
 	case PrioritySync:
-		c.med <- task
+		return c.med
 	default:
-		c.low <- task
+		return c.low
 	}
-
-	return task.resp, nil
 }
 
 func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.RateLimitInfo) {
@@ -260,12 +281,14 @@ func (c *APITrafficController) rateLimitListener() {
 }
 
 func (c *APITrafficController) Shutdown(ctx context.Context) {
+	c.stateMu.Lock()
 	close(c.done)
 
 	// Drain remaining tasks to unblock any callers
 	c.drainQueue(c.high)
 	c.drainQueue(c.med)
 	c.drainQueue(c.low)
+	c.stateMu.Unlock()
 
 	// Wait for all background goroutines (supervisor, listener, and active workers)
 	c.workerWG.Wait()

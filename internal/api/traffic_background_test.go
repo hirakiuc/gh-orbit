@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"testing"
@@ -84,5 +85,59 @@ func TestAPITrafficController_ReportRateLimit_AfterShutdownDoesNotPanic(t *testi
 		assert.NotPanics(t, func() {
 			tc.ReportRateLimit(models.RateLimitInfo{Remaining: 42})
 		})
+	})
+}
+
+func TestAPITrafficController_ShutdownTakesPrecedenceOverQueueFull(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+
+		atomic.StoreInt32(&tc.workerLimit, 0)
+		synctest.Wait()
+
+		for i := 0; i < cap(tc.high); i++ {
+			_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+			assert.NoError(t, err)
+		}
+
+		tc.Shutdown(ctx)
+		synctest.Wait()
+
+		_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+		assert.Error(t, err)
+		assert.False(t, errors.Is(err, ErrTrafficQueueFull))
+		assert.Contains(t, err.Error(), "shutdown")
+	})
+}
+
+func TestAPITrafficController_ShutdownWinsDuringSubmitRace(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+
+		enteredHook := make(chan struct{}, 1)
+		releaseHook := make(chan struct{})
+		tc.submitBeforeLockHook = func() {
+			close(enteredHook)
+			<-releaseHook
+		}
+
+		result := make(chan error, 1)
+		go func() {
+			_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+			result <- err
+		}()
+
+		<-enteredHook
+		tc.Shutdown(ctx)
+		close(releaseHook)
+		synctest.Wait()
+
+		err := <-result
+		assert.Error(t, err)
+		assert.False(t, errors.Is(err, ErrTrafficQueueFull))
+		assert.Contains(t, err.Error(), "shutdown")
+		assert.Equal(t, 0, len(tc.high))
 	})
 }
