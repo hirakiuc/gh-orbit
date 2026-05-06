@@ -173,6 +173,12 @@ func (a *MCPAdapter) UnmuteThread(ctx context.Context, id string) error    { ret
 // --- types.Syncer Implementation ---
 
 func (a *MCPAdapter) Sync(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error) {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, types.ConnectedSyncTimeout)
+		defer cancel()
+	}
+
 	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "sync",
