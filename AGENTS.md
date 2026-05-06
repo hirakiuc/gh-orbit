@@ -51,6 +51,12 @@ This project uses the extension's standard "Workbench" files:
 - **PR Requirement**: No Pull Request will be merged unless `make check` passes 100%.
 - **Resilience**: Locally, gates may skip specific tools with a warning if they are missing, but the CI pipeline is strict and will block on any failure.
 
+### 1.4 Commit Attribution
+
+- **Repo-wide Policy**: AI-authored commits MUST include an explicit attribution trailer in the commit message.
+- **Agent Identity**: Agent-specific instruction files may define the exact attribution string for that agent. If an agent-specific file does not override the trailer text, use the agent identity required by the active instruction set for that tool.
+- **Consistency Goal**: Shared attribution policy belongs in `AGENTS.md`; agent-specific files should only supply the identity-specific footer value or stricter overlays.
+
 ## 2. Sandbox & Environment Constraints (macOS Seatbelt)
 
 AI agents operate in a restricted sandbox. You MUST adhere to these path redirections and environment settings:
