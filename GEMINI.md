@@ -10,7 +10,9 @@ Refer to [AGENTS.md](AGENTS.md) for core project principles, tech stack, and dev
 
 ### 2.1 Commit Attribution
 
-Always include the following co-authored-by footer in commit messages:
+Follow the repo-wide commit-attribution policy in [AGENTS.md](AGENTS.md#14-commit-attribution).
+
+For Gemini-authored commits, always include the following co-authored-by footer in commit messages:
 `Co-authored-by: Gemini CLI <gemini-cli+noreply@google.com>`
 
 ### 2.2 Shell Safety
