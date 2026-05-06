@@ -75,7 +75,8 @@ func (s *SyncEngine) Sync(ctx context.Context, userID string, force bool) (model
 	}
 
 	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "sync.notifications",
+	ctx, span := tracer.Start(
+		ctx, "sync.notifications",
 		trace.WithAttributes(
 			attribute.String("user_id", userID),
 			attribute.Bool("force", force),

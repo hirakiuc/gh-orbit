@@ -32,7 +32,8 @@ func NewNotificationFetcher(client Client, logger *slog.Logger) *NotificationFet
 
 func (f *NotificationFetcher) FetchNotifications(ctx context.Context, meta *models.SyncMeta, force bool) ([]Notification, *models.SyncMeta, models.RateLimitInfo, error) {
 	tracer := config.GetTracer()
-	ctx, span := tracer.Start(ctx, "api.fetch_notifications",
+	ctx, span := tracer.Start(
+		ctx, "api.fetch_notifications",
 		trace.WithAttributes(
 			attribute.Bool("force", force),
 			attribute.String("etag", meta.ETag),

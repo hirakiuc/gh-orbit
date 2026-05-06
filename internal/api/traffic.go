@@ -32,9 +32,9 @@ type apiTask struct {
 
 // APITrafficController ensures prioritized access to the GitHub API.
 type APITrafficController struct {
-	ctx    context.Context // Application root context
-	logger *slog.Logger
-	userMu sync.Mutex // Serializes PriorityUser tasks to prevent out-of-order writes
+	ctx     context.Context // Application root context
+	logger  *slog.Logger
+	userMu  sync.Mutex   // Serializes PriorityUser tasks to prevent out-of-order writes
 	stateMu sync.RWMutex // Prevents new submissions from racing with shutdown admission cutoff
 
 	taskCounter uint64

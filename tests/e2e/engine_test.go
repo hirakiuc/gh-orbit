@@ -58,7 +58,8 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 	cmd := exec.CommandContext(ctx, binPath, "engine", "--socket", socketPath, "--insecure-dev")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(
+		os.Environ(),
 		"HOME="+tmpHome,
 		"GH_TOKEN=mock-token",
 		"GH_ORBIT_SKIP_AUTH=1",

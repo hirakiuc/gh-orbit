@@ -30,7 +30,8 @@ func NewDarwinNotifier(executor types.CommandExecutor, logger *slog.Logger) *Dar
 }
 
 func (n *DarwinNotifier) Notify(ctx context.Context, title, subtitle, body, url string, priority int) error {
-	script := fmt.Sprintf(`display notification "%s" with title "%s" subtitle "%s"`,
+	script := fmt.Sprintf(
+		`display notification "%s" with title "%s" subtitle "%s"`,
 		escapeAppleScript(body),
 		escapeAppleScript(title),
 		escapeAppleScript(subtitle),

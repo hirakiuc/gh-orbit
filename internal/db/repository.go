@@ -135,7 +135,8 @@ func (db *DB) UpsertNotifications(ctx context.Context, notifications []triage.No
 	defer func() { _ = stmtState.Close() }()
 
 	for _, n := range notifications {
-		if _, err := stmtNotifications.ExecContext(ctx,
+		if _, err := stmtNotifications.ExecContext(
+			ctx,
 			n.GitHubID, n.SubjectTitle, n.SubjectURL, n.SubjectType, n.Reason,
 			n.RepositoryFullName, n.HTMLURL, n.SubjectNodeID, n.UpdatedAt,
 		); err != nil {
