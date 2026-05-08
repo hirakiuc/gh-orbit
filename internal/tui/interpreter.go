@@ -117,7 +117,7 @@ func (i *Interpreter) executeOpenBrowser(u string) tea.Cmd {
 		}
 	}
 
-	return i.model.submitTask(api.PriorityUser, func(ctx context.Context) any {
+	return i.model.submitTask("browser:"+u, 0, api.PriorityUser, func(ctx context.Context) any {
 		i.model.logger.InfoContext(ctx, "opening browser", "url", u)
 		b := browser.New("", nil, nil)
 		if err := b.Browse(u); err != nil {
@@ -210,7 +210,7 @@ func (i *Interpreter) executeGHView(ghCmd, repo, arg string) tea.Cmd {
 		return func() tea.Msg { return types.ErrMsg{Err: fmt.Errorf("invalid number: %s", arg)} }
 	}
 
-	return i.model.submitTask(api.PriorityUser, func(ctx context.Context) any {
+	return i.model.submitTask("gh-view:"+ghCmd+":"+repo+":"+arg, 0, api.PriorityUser, func(ctx context.Context) any {
 		i.model.logger.InfoContext(ctx, "executing gh view", "command", ghCmd, "repo", repo, "arg", arg)
 		if err := i.model.executor.Run(ctx, "gh", ghCmd, "view", arg, "-R", repo, "--web"); err != nil {
 			i.model.logger.ErrorContext(ctx, "gh view command failed", "command", ghCmd, "error", err)

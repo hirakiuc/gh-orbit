@@ -47,7 +47,7 @@ func TestInterpreter_Execute(t *testing.T) {
 	interp := NewInterpreter(m)
 
 	// Mock Submit for all actions that use it
-	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything).Return(make(chan any), nil).Maybe()
+	m.traffic.(*mocks.MockTrafficController).EXPECT().Submit(mock.Anything, mock.Anything, mock.Anything).Return(make(chan any), nil).Maybe()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().UpdateRateLimit(mock.Anything, mock.Anything).Return().Maybe()
 
 	mockExecutor := m.executor.(*mocks.MockCommandExecutor)
@@ -118,11 +118,11 @@ func TestInterpreter_Execute_UpdateRateLimitStandaloneMode(t *testing.T) {
 func TestModel_submitTask_SubmitErrorReturnsErrMsg(t *testing.T) {
 	m := newTestModel(t)
 	m.traffic.(*mocks.MockTrafficController).EXPECT().
-		Submit(api.PrioritySync, mock.Anything).
+		Submit(mock.Anything, api.PrioritySync, mock.Anything).
 		Return(nil, api.ErrTrafficQueueFull).
 		Once()
 
-	cmd := m.submitTask(api.PrioritySync, func(ctx context.Context) any { return "unreachable" })
+	cmd := m.submitTask("sync:test", 0, api.PrioritySync, func(ctx context.Context) any { return "unreachable" })
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
@@ -161,6 +161,31 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *t
 	m.handleTransitionError(errMsg)
 	assert.False(t, m.ui.syncing)
 	assert.ErrorIs(t, m.err, context.DeadlineExceeded)
+}
+
+func TestModel_submitTaskScopedRequestCancelsPreviousTask(t *testing.T) {
+	m := newTestModel(t)
+	m.traffic = nil
+
+	started := make(chan struct{})
+	firstDone := make(chan tea.Msg, 1)
+	first := m.submitTask("shared-scope", 0, api.PrioritySync, func(ctx context.Context) any {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+
+	go func() {
+		firstDone <- executeCmd(first)
+	}()
+
+	<-started
+	second := m.submitTask("shared-scope", 0, api.PrioritySync, func(ctx context.Context) any {
+		return "second"
+	})
+	require.NotNil(t, second)
+	assert.Equal(t, "second", executeCmd(second))
+	assert.ErrorIs(t, (<-firstDone).(error), context.Canceled)
 }
 
 func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedAsBenign(t *testing.T) {
@@ -212,10 +237,10 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	m.client.(*mocks.MockClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
 	m.traffic.(*mocks.MockTrafficController).EXPECT().
-		Submit(api.PriorityUser, mock.Anything).
-		RunAndReturn(func(priority int, fn types.TaskFunc) (<-chan any, error) {
+		Submit(mock.Anything, api.PriorityUser, mock.Anything).
+		RunAndReturn(func(ctx context.Context, priority int, fn types.TaskFunc) (<-chan any, error) {
 			ch := make(chan any, 1)
-			ch <- fn(context.Background())
+			ch <- fn(ctx)
 			return ch, nil
 		}).
 		Once()

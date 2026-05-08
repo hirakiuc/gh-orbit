@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,6 +13,14 @@ import (
 )
 
 var _ = slog.LevelInfo
+
+func enrichmentBatchScope(chunk []triage.NotificationWithState) string {
+	ids := make([]string, 0, len(chunk))
+	for _, n := range chunk {
+		ids = append(ids, n.GitHubID)
+	}
+	return "enrich:batch:" + strings.Join(ids, ",")
+}
 
 // MarkReadByID marks a notification as read using only its ID.
 func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
@@ -26,7 +35,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	m.applyFilters()
 
 	// 2. Persistent Local & Remote Update via Traffic Controller
-	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
+	return m.submitTask("read:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
 		err := m.db.MarkReadLocally(ctx, id, read)
 		if err != nil {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
@@ -46,7 +55,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 
 // setPriorityByID updates the priority of a notification using only its ID.
 func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
-	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
+	return m.submitTask("priority:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
 		err := m.db.SetPriority(ctx, id, priority)
 		if err != nil {
 			return types.ErrMsg{Err: err}
@@ -104,7 +113,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 	// We use PriorityEnrich for proactive discovery to avoid blocking user actions
 	for _, n := range discovery {
 		id, url, st := n.GitHubID, n.SubjectURL, n.SubjectType
-		cmds = append(cmds, m.submitTask(api.PriorityEnrich, func(ctx context.Context) any {
+		cmds = append(cmds, m.submitTask("enrich:detail:"+id, 0, api.PriorityEnrich, func(ctx context.Context) any {
 			res, err := m.enrich.FetchDetail(ctx, url, string(st), force)
 			if err != nil {
 				return types.ErrMsg{Err: err}
@@ -133,7 +142,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 		}
 		chunk := batch[i:end]
 
-		cmds = append(cmds, m.submitTask(api.PriorityEnrich, func(ctx context.Context) any {
+		cmds = append(cmds, m.submitTask(enrichmentBatchScope(chunk), 0, api.PriorityEnrich, func(ctx context.Context) any {
 			results := m.enrich.FetchHybridBatch(ctx, chunk, force)
 			return enrichmentBatchCompleteMsg{Results: results}
 		}))
@@ -151,7 +160,7 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 }
 
 func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType, force bool) tea.Cmd {
-	return m.submitTask(api.PriorityUser, func(ctx context.Context) any {
+	return m.submitTask("detail:view", 0, api.PriorityUser, func(ctx context.Context) any {
 		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType), force)
 		if err != nil {
 			return types.ErrMsg{Err: err}

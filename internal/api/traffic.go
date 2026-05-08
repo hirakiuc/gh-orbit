@@ -28,11 +28,13 @@ type apiTask struct {
 	fn       types.TaskFunc
 	resp     chan any
 	ctx      context.Context
+	cleanup  func()
 }
 
 // APITrafficController ensures prioritized access to the GitHub API.
 type APITrafficController struct {
-	ctx     context.Context // Application root context
+	ctx     context.Context // Controller lifetime context
+	cancel  context.CancelFunc
 	logger  *slog.Logger
 	userMu  sync.Mutex   // Serializes PriorityUser tasks to prevent out-of-order writes
 	stateMu sync.RWMutex // Prevents new submissions from racing with shutdown admission cutoff
@@ -60,8 +62,10 @@ type APITrafficController struct {
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
+	controllerCtx, cancel := context.WithCancel(ctx)
 	c := &APITrafficController{
-		ctx:              ctx,
+		ctx:              controllerCtx,
+		cancel:           cancel,
 		logger:           logger,
 		high:             make(chan *apiTask, 10),
 		med:              make(chan *apiTask, 50),
@@ -102,13 +106,15 @@ func (c *APITrafficController) ReportRateLimit(info models.RateLimitInfo) {
 	}
 }
 
-func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
+func (c *APITrafficController) Submit(ctx context.Context, priority int, fn types.TaskFunc) (<-chan any, error) {
+	taskCtx, cleanup := c.composeTaskContext(ctx)
 	task := &apiTask{
 		id:       atomic.AddUint64(&c.taskCounter, 1),
 		priority: priority,
 		fn:       fn,
 		resp:     make(chan any, 1),
-		ctx:      c.ctx,
+		ctx:      taskCtx,
+		cleanup:  cleanup,
 	}
 
 	if c.submitBeforeLockHook != nil {
@@ -120,16 +126,53 @@ func (c *APITrafficController) Submit(priority int, fn types.TaskFunc) (<-chan a
 
 	select {
 	case <-c.done:
+		task.cleanup()
 		return nil, fmt.Errorf("traffic controller shutdown")
 	default:
 	}
 
+	if taskCtx.Err() != nil {
+		task.cleanup()
+		task.resp <- nil
+		return task.resp, nil
+	}
+
 	queue := c.queueForPriority(priority)
 	select {
+	case <-taskCtx.Done():
+		task.cleanup()
+		task.resp <- nil
+		return task.resp, nil
 	case queue <- task:
 		return task.resp, nil
 	default:
+		task.cleanup()
 		return nil, ErrTrafficQueueFull
+	}
+}
+
+func (c *APITrafficController) composeTaskContext(requestCtx context.Context) (context.Context, func()) {
+	if requestCtx == nil {
+		requestCtx = context.Background()
+	}
+
+	var (
+		taskCtx context.Context
+		cancel  context.CancelFunc
+	)
+	if deadline, ok := requestCtx.Deadline(); ok {
+		taskCtx, cancel = context.WithDeadline(c.ctx, deadline)
+	} else {
+		taskCtx, cancel = context.WithCancel(c.ctx)
+	}
+
+	stop := context.AfterFunc(requestCtx, cancel)
+	if requestCtx.Err() != nil {
+		cancel()
+	}
+	return taskCtx, func() {
+		stop()
+		cancel()
 	}
 }
 
@@ -237,6 +280,12 @@ func (c *APITrafficController) spawnTask(t *apiTask) {
 
 func (c *APITrafficController) runTask(t *apiTask) {
 	defer atomic.AddInt32(&c.activeWorkersCount, -1)
+	defer t.cleanup()
+
+	if t.ctx.Err() != nil {
+		t.resp <- nil
+		return
+	}
 
 	// Check lockout
 	if until := c.lockoutUntil.Load(); until != nil && time.Now().Before(*until) {
@@ -282,6 +331,7 @@ func (c *APITrafficController) rateLimitListener() {
 
 func (c *APITrafficController) Shutdown(ctx context.Context) {
 	c.stateMu.Lock()
+	c.cancel()
 	close(c.done)
 
 	// Drain remaining tasks to unblock any callers
@@ -299,6 +349,7 @@ func (c *APITrafficController) drainQueue(q chan *apiTask) {
 	for {
 		select {
 		case t := <-q:
+			t.cleanup()
 			t.resp <- nil
 		default:
 			return

@@ -32,7 +32,7 @@ func TestTrafficController_Concurrency(t *testing.T) {
 		for i := 0; i < taskCount; i++ {
 			go func(id int) {
 				defer wg.Done()
-				resChan, err := tc.Submit(PriorityEnrich, func(ctx context.Context) any {
+				resChan, err := tc.Submit(context.Background(), PriorityEnrich, func(ctx context.Context) any {
 					time.Sleep(50 * time.Millisecond) // Simulate API latency
 					return nil
 				})
@@ -65,7 +65,7 @@ func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 
 		// 1. Flood with low priority slow tasks
 		for i := 0; i < 10; i++ {
-			_, _ = tc.Submit(PriorityEnrich, func(ctx context.Context) any {
+			_, _ = tc.Submit(context.Background(), PriorityEnrich, func(ctx context.Context) any {
 				time.Sleep(100 * time.Millisecond)
 				return nil
 			})
@@ -75,7 +75,7 @@ func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 		start := time.Now()
 		highDone := make(chan struct{})
 		go func() {
-			resChan, err := tc.Submit(PriorityUser, func(ctx context.Context) any {
+			resChan, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any {
 				return nil
 			})
 			assert.NoError(t, err)
@@ -144,7 +144,7 @@ func TestTrafficController_ScalingStress(t *testing.T) {
 				case <-stopTasks:
 					return
 				default:
-					_, err := tc.Submit(PriorityEnrich, func(ctx context.Context) any {
+					_, err := tc.Submit(context.Background(), PriorityEnrich, func(ctx context.Context) any {
 						time.Sleep(10 * time.Millisecond)
 						atomic.AddInt64(&tasksCompleted, 1)
 						return nil
@@ -198,12 +198,12 @@ func TestTrafficController_SubmitReturnsQueueFullInsteadOfBlocking(t *testing.T)
 			synctest.Wait()
 
 			for i := 0; i < tcDef.capacity; i++ {
-				resChan, err := tc.Submit(tcDef.priority, func(ctx context.Context) any { return nil })
+				resChan, err := tc.Submit(context.Background(), tcDef.priority, func(ctx context.Context) any { return nil })
 				assert.NoErrorf(t, err, "%s queue should accept task %d within capacity", tcDef.name, i)
 				assert.NotNilf(t, resChan, "%s queue should return response channel within capacity", tcDef.name)
 			}
 
-			resChan, err := tc.Submit(tcDef.priority, func(ctx context.Context) any { return nil })
+			resChan, err := tc.Submit(context.Background(), tcDef.priority, func(ctx context.Context) any { return nil })
 			assert.Nilf(t, resChan, "%s queue should reject task when full", tcDef.name)
 			assert.ErrorIsf(t, err, ErrTrafficQueueFull, "%s queue should fail fast when full", tcDef.name)
 
@@ -221,10 +221,85 @@ func TestTrafficController_SubmitStillEnqueuesWhenCapacityAvailable(t *testing.T
 		tc := NewAPITrafficController(ctx, slog.Default())
 		defer tc.Shutdown(ctx)
 
-		resChan, err := tc.Submit(PrioritySync, func(ctx context.Context) any {
+		resChan, err := tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
 			return "ok"
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, "ok", <-resChan)
+	})
+}
+
+func TestTrafficController_SubmitAlreadyCanceledContextSkipsExecution(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		atomic.StoreInt32(&tc.workerLimit, 0)
+		synctest.Wait()
+
+		taskCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		executed := make(chan struct{}, 1)
+		resChan, err := tc.Submit(taskCtx, PrioritySync, func(ctx context.Context) any {
+			close(executed)
+			return "unexpected"
+		})
+		assert.NoError(t, err)
+		synctest.Wait()
+
+		assert.Equal(t, 0, len(tc.med), "already-canceled tasks should not occupy the queue")
+		assert.Nil(t, <-resChan)
+		assert.Empty(t, executed)
+	})
+}
+
+func TestTrafficController_QueuedCanceledContextSkipsExecution(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		atomic.StoreInt32(&tc.workerLimit, 0)
+		synctest.Wait()
+
+		taskCtx, cancel := context.WithCancel(context.Background())
+		executed := make(chan struct{}, 1)
+		resChan, err := tc.Submit(taskCtx, PrioritySync, func(ctx context.Context) any {
+			close(executed)
+			return "unexpected"
+		})
+		assert.NoError(t, err)
+
+		cancel()
+		atomic.StoreInt32(&tc.workerLimit, 1)
+		synctest.Wait()
+
+		assert.Nil(t, <-resChan)
+		assert.Empty(t, executed)
+	})
+}
+
+func TestTrafficController_RunningTaskObservesRequestCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		taskCtx, cancel := context.WithCancel(context.Background())
+		started := make(chan struct{})
+		resChan, err := tc.Submit(taskCtx, PriorityUser, func(ctx context.Context) any {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+		assert.NoError(t, err)
+
+		<-started
+		cancel()
+		synctest.Wait()
+
+		assert.ErrorIs(t, (<-resChan).(error), context.Canceled)
 	})
 }

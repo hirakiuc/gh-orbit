@@ -106,7 +106,7 @@ type TaskFunc func(context.Context) any
 
 // TrafficController defines the interface for serialized API access.
 type TrafficController interface {
-	Submit(priority int, fn TaskFunc) (<-chan any, error)
+	Submit(ctx context.Context, priority int, fn TaskFunc) (<-chan any, error)
 	UpdateRateLimit(ctx context.Context, info models.RateLimitInfo)
 	Remaining() int
 	ReportRateLimit(info models.RateLimitInfo)

@@ -35,14 +35,14 @@ func TestAPITrafficController_Background(t *testing.T) {
 		tc.UpdateRateLimit(ctx, models.RateLimitInfo{Remaining: 0, Reset: reset})
 
 		highDone := make(chan bool, 1)
-		_, _ = tc.Submit(PriorityUser, func(ctx context.Context) any {
+		_, _ = tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any {
 			highDone <- true
 			return nil
 		})
 		synctest.Wait()
 		assert.True(t, <-highDone, "User task should bypass lockout")
 
-		res, _ := tc.Submit(PriorityEnrich, func(ctx context.Context) any {
+		res, _ := tc.Submit(context.Background(), PriorityEnrich, func(ctx context.Context) any {
 			return "should-not-run"
 		})
 		synctest.Wait()
@@ -50,7 +50,7 @@ func TestAPITrafficController_Background(t *testing.T) {
 
 		// 3. Dynamic Throttling low quota
 		tc.UpdateRateLimit(ctx, models.RateLimitInfo{Remaining: 499})
-		res, _ = tc.Submit(PriorityEnrich, func(ctx context.Context) any {
+		res, _ = tc.Submit(context.Background(), PriorityEnrich, func(ctx context.Context) any {
 			return "should-not-run"
 		})
 		synctest.Wait()
@@ -68,7 +68,7 @@ func TestAPITrafficController_Shutdown_Channels(t *testing.T) {
 		synctest.Wait()
 
 		// Verify Submit returns error after shutdown
-		_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+		_, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any { return nil })
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "shutdown")
 	})
@@ -97,14 +97,14 @@ func TestAPITrafficController_ShutdownTakesPrecedenceOverQueueFull(t *testing.T)
 		synctest.Wait()
 
 		for i := 0; i < cap(tc.high); i++ {
-			_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+			_, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any { return nil })
 			assert.NoError(t, err)
 		}
 
 		tc.Shutdown(ctx)
 		synctest.Wait()
 
-		_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+		_, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any { return nil })
 		assert.Error(t, err)
 		assert.False(t, errors.Is(err, ErrTrafficQueueFull))
 		assert.Contains(t, err.Error(), "shutdown")
@@ -125,7 +125,7 @@ func TestAPITrafficController_ShutdownWinsDuringSubmitRace(t *testing.T) {
 
 		result := make(chan error, 1)
 		go func() {
-			_, err := tc.Submit(PriorityUser, func(ctx context.Context) any { return nil })
+			_, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any { return nil })
 			result <- err
 		}()
 
@@ -139,5 +139,26 @@ func TestAPITrafficController_ShutdownWinsDuringSubmitRace(t *testing.T) {
 		assert.False(t, errors.Is(err, ErrTrafficQueueFull))
 		assert.Contains(t, err.Error(), "shutdown")
 		assert.Equal(t, 0, len(tc.high))
+	})
+}
+
+func TestAPITrafficController_ShutdownCancelsRunningTaskContext(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+
+		started := make(chan struct{})
+		resChan, err := tc.Submit(context.Background(), PriorityUser, func(ctx context.Context) any {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+		assert.NoError(t, err)
+
+		<-started
+		tc.Shutdown(ctx)
+		synctest.Wait()
+
+		assert.ErrorIs(t, (<-resChan).(error), context.Canceled)
 	})
 }

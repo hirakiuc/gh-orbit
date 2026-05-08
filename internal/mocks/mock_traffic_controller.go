@@ -164,8 +164,8 @@ func (_c *MockTrafficController_Shutdown_Call) RunAndReturn(run func(ctx context
 }
 
 // Submit provides a mock function for the type MockTrafficController
-func (_mock *MockTrafficController) Submit(priority int, fn types.TaskFunc) (<-chan any, error) {
-	ret := _mock.Called(priority, fn)
+func (_mock *MockTrafficController) Submit(ctx context.Context, priority int, fn types.TaskFunc) (<-chan any, error) {
+	ret := _mock.Called(ctx, priority, fn)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Submit")
@@ -173,18 +173,18 @@ func (_mock *MockTrafficController) Submit(priority int, fn types.TaskFunc) (<-c
 
 	var r0 <-chan any
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(int, types.TaskFunc) (<-chan any, error)); ok {
-		return returnFunc(priority, fn)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, types.TaskFunc) (<-chan any, error)); ok {
+		return returnFunc(ctx, priority, fn)
 	}
-	if returnFunc, ok := ret.Get(0).(func(int, types.TaskFunc) <-chan any); ok {
-		r0 = returnFunc(priority, fn)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, types.TaskFunc) <-chan any); ok {
+		r0 = returnFunc(ctx, priority, fn)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(<-chan any)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(int, types.TaskFunc) error); ok {
-		r1 = returnFunc(priority, fn)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, types.TaskFunc) error); ok {
+		r1 = returnFunc(ctx, priority, fn)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -197,25 +197,31 @@ type MockTrafficController_Submit_Call struct {
 }
 
 // Submit is a helper method to define mock.On call
+//   - ctx context.Context
 //   - priority int
 //   - fn types.TaskFunc
-func (_e *MockTrafficController_Expecter) Submit(priority interface{}, fn interface{}) *MockTrafficController_Submit_Call {
-	return &MockTrafficController_Submit_Call{Call: _e.mock.On("Submit", priority, fn)}
+func (_e *MockTrafficController_Expecter) Submit(ctx interface{}, priority interface{}, fn interface{}) *MockTrafficController_Submit_Call {
+	return &MockTrafficController_Submit_Call{Call: _e.mock.On("Submit", ctx, priority, fn)}
 }
 
-func (_c *MockTrafficController_Submit_Call) Run(run func(priority int, fn types.TaskFunc)) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) Run(run func(ctx context.Context, priority int, fn types.TaskFunc)) *MockTrafficController_Submit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 int
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(int)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 types.TaskFunc
+		var arg1 int
 		if args[1] != nil {
-			arg1 = args[1].(types.TaskFunc)
+			arg1 = args[1].(int)
+		}
+		var arg2 types.TaskFunc
+		if args[2] != nil {
+			arg2 = args[2].(types.TaskFunc)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -226,7 +232,7 @@ func (_c *MockTrafficController_Submit_Call) Return(vCh <-chan any, err error) *
 	return _c
 }
 
-func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(priority int, fn types.TaskFunc) (<-chan any, error)) *MockTrafficController_Submit_Call {
+func (_c *MockTrafficController_Submit_Call) RunAndReturn(run func(ctx context.Context, priority int, fn types.TaskFunc) (<-chan any, error)) *MockTrafficController_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }

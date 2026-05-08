@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -109,11 +110,19 @@ type Model struct {
 
 	// Enrichment Management
 	inflightEnrichments map[string]time.Time
+	taskCancelMu        sync.Mutex
+	taskCancelSeq       uint64
+	taskCancels         map[string]scopedTaskCancel
 
 	lastQuitPress time.Time
 	executor      types.CommandExecutor
 
 	syncStarted bool
+}
+
+type scopedTaskCancel struct {
+	id     uint64
+	cancel context.CancelFunc
 }
 
 // Option defines a functional option for Model configuration.
@@ -230,6 +239,7 @@ func NewModel(p ModelParams) (*Model, error) {
 		heartbeatInterval:   time.Duration(p.Config.Notifications.SyncInterval) * time.Second,
 		clockInterval:       1 * time.Minute,
 		inflightEnrichments: make(map[string]time.Time),
+		taskCancels:         make(map[string]scopedTaskCancel),
 		executor:            api.NewOSCommandExecutor(), // Default executor
 	}
 
@@ -281,6 +291,7 @@ func (m *Model) tickEnrich() tea.Cmd {
 func (m *Model) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	m.cancelScopedTasks()
 
 	if m.sync != nil {
 		m.sync.Shutdown(ctx)
@@ -296,14 +307,20 @@ func (m *Model) Shutdown() {
 	}
 }
 
-func (m *Model) submitTask(priority int, fn types.TaskFunc) tea.Cmd {
+func (m *Model) submitTask(scope string, timeout time.Duration, priority int, fn types.TaskFunc) tea.Cmd {
 	return func() tea.Msg {
+		ctx, release := m.newTaskContext(scope, timeout)
+		defer release()
+
 		if m.traffic == nil {
 			// In MCP mode or if traffic controller is missing, execute immediately
-			return fn(context.Background())
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fn(ctx)
 		}
 
-		resChan, err := m.traffic.Submit(priority, fn)
+		resChan, err := m.traffic.Submit(ctx, priority, fn)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
@@ -311,9 +328,58 @@ func (m *Model) submitTask(priority int, fn types.TaskFunc) tea.Cmd {
 	}
 }
 
+func (m *Model) newTaskContext(scope string, timeout time.Duration) (context.Context, func()) {
+	base := context.Background()
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(base, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(base)
+	}
+
+	if scope == "" {
+		return ctx, cancel
+	}
+
+	m.taskCancelMu.Lock()
+	m.taskCancelSeq++
+	id := m.taskCancelSeq
+	if prev, ok := m.taskCancels[scope]; ok {
+		prev.cancel()
+	}
+	m.taskCancels[scope] = scopedTaskCancel{id: id, cancel: cancel}
+	m.taskCancelMu.Unlock()
+
+	return ctx, func() {
+		cancel()
+		m.taskCancelMu.Lock()
+		if current, ok := m.taskCancels[scope]; ok && current.id == id {
+			delete(m.taskCancels, scope)
+		}
+		m.taskCancelMu.Unlock()
+	}
+}
+
+func (m *Model) cancelScopedTasks() {
+	m.taskCancelMu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(m.taskCancels))
+	for _, scoped := range m.taskCancels {
+		cancels = append(cancels, scoped.cancel)
+	}
+	clear(m.taskCancels)
+	m.taskCancelMu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
 // loadNotifications loads the full list of notifications from local database.
 func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
-	return m.submitTask(api.PrioritySync, func(ctx context.Context) any {
+	return m.submitTask("notifications:load", 0, api.PrioritySync, func(ctx context.Context) any {
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
@@ -324,20 +390,7 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
 }
 
 func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
-	if m.traffic == nil {
-		return func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), types.ConnectedSyncTimeout)
-			defer cancel()
-
-			rl, err := m.sync.Sync(ctx, m.userID, force)
-			if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
-				return types.ErrMsg{Err: err}
-			}
-			return syncCompleteMsg{rateLimit: rl, IsForced: force}
-		}
-	}
-
-	return m.submitTask(api.PrioritySync, func(ctx context.Context) any {
+	return m.submitTask("notifications:sync", types.ConnectedSyncTimeout, api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.sync.Sync(ctx, m.userID, force)
 		if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
 			return types.ErrMsg{Err: err}
