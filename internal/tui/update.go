@@ -547,7 +547,8 @@ func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 		return actions
 	}
 
-	return append(actions,
+	return append(
+		actions,
 		ActionSetSyncing{Enabled: true},
 		ActionSyncNotifications{Force: false, IsManual: false},
 	)
@@ -691,7 +692,8 @@ func (m *Model) handleToggleDetailKey() []Action {
 	m.state = StateDetail
 	actions := []Action{}
 	if !n.IsEnriched {
-		actions = append(actions,
+		actions = append(
+			actions,
 			ActionSetFetching{Enabled: true},
 			ActionEnrichItems{Notifications: []triage.NotificationWithState{n}},
 		)
