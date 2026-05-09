@@ -21,7 +21,7 @@ func TestAPITrafficController_Background(t *testing.T) {
 		tc := NewAPITrafficController(ctx, slog.Default())
 		defer tc.Shutdown(ctx)
 
-		// 1. RateLimitListener scaling
+		// 1. ReportRateLimit scaling
 		tc.ReportRateLimit(models.RateLimitInfo{Remaining: 100})
 		synctest.Wait()
 		assert.Equal(t, int32(1), atomic.LoadInt32(&tc.workerLimit))
@@ -55,6 +55,26 @@ func TestAPITrafficController_Background(t *testing.T) {
 		})
 		synctest.Wait()
 		assert.Nil(t, <-res, "Enrich task should be skipped during low quota")
+	})
+}
+
+func TestAPITrafficController_ReportRateLimit_UpdatesStateSynchronously(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		tc.ReportRateLimit(models.RateLimitInfo{Limit: 5000, Remaining: 100})
+		synctest.Wait()
+
+		assert.Equal(t, 100, tc.Remaining())
+		assert.Equal(t, int32(1), atomic.LoadInt32(&tc.workerLimit))
+
+		tc.ReportRateLimit(models.RateLimitInfo{Limit: 5000, Remaining: 1000})
+		synctest.Wait()
+
+		assert.Equal(t, 1000, tc.Remaining())
+		assert.Equal(t, int32(3), atomic.LoadInt32(&tc.workerLimit))
 	})
 }
 
@@ -92,7 +112,6 @@ func TestAPITrafficController_Shutdown_Channels(t *testing.T) {
 		ctx := context.Background()
 		tc := NewAPITrafficController(ctx, slog.Default())
 
-		// Verify listener stops on channel closure (simulated by Shutdown)
 		tc.Shutdown(ctx)
 		synctest.Wait()
 
@@ -114,6 +133,7 @@ func TestAPITrafficController_ReportRateLimit_AfterShutdownDoesNotPanic(t *testi
 		assert.NotPanics(t, func() {
 			tc.ReportRateLimit(models.RateLimitInfo{Remaining: 42})
 		})
+		assert.Equal(t, 5000, tc.Remaining())
 	})
 }
 
