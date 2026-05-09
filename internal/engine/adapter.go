@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -37,6 +38,7 @@ type MCPAdapter struct {
 
 	debounceTimer *time.Timer
 	debounceMu    sync.Mutex
+	shutdown      atomic.Bool
 }
 
 func NewMCPAdapter(c client.MCPClient) *MCPAdapter {
@@ -62,14 +64,25 @@ func (a *MCPAdapter) OnMutation(fn func()) {
 }
 
 func (a *MCPAdapter) handleResourceUpdate(n mcp.JSONRPCNotification) {
+	if a.shutdown.Load() {
+		return
+	}
+
 	a.debounceMu.Lock()
 	defer a.debounceMu.Unlock()
+
+	if a.shutdown.Load() {
+		return
+	}
 
 	if a.debounceTimer != nil {
 		a.debounceTimer.Stop()
 	}
 
 	a.debounceTimer = time.AfterFunc(200*time.Millisecond, func() {
+		if a.shutdown.Load() {
+			return
+		}
 		a.mu.RLock()
 		if a.onMutation != nil {
 			a.onMutation()
@@ -250,7 +263,17 @@ func decodeSyncToolResult(resp *mcp.CallToolResult) (syncToolResult, bool) {
 	return payload, true
 }
 
-func (a *MCPAdapter) Shutdown(ctx context.Context)     {}
+func (a *MCPAdapter) Shutdown(ctx context.Context) {
+	a.shutdown.Store(true)
+
+	a.debounceMu.Lock()
+	defer a.debounceMu.Unlock()
+
+	if a.debounceTimer != nil {
+		a.debounceTimer.Stop()
+		a.debounceTimer = nil
+	}
+}
 func (a *MCPAdapter) BridgeStatus() types.BridgeStatus { return types.StatusHealthy }
 
 // --- types.Enricher Implementation ---
