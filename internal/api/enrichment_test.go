@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
@@ -247,10 +248,16 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 		DB:     mocks.NewMockEnrichmentRepository(t),
 		Logger: slog.Default(),
 	})
+	t.Cleanup(func() { engine.Shutdown(ctx) })
+	engine.config = &config.Config{
+		Enrichment: config.EnrichmentConfig{
+			ContentTTLSeconds: 60,
+		},
+	}
 
 	engine.mu.Lock()
-	engine.cache["old"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-20 * time.Minute)}
-	engine.cache["new"] = models.EnrichmentResult{FetchedAt: time.Now()}
+	engine.cache["old"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-2 * time.Minute)}
+	engine.cache["new"] = models.EnrichmentResult{FetchedAt: time.Now().Add(-30 * time.Second)}
 	engine.mu.Unlock()
 
 	engine.pruneExpired(ctx)
@@ -259,6 +266,35 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 	defer engine.mu.RUnlock()
 	assert.NotContains(t, engine.cache, "old")
 	assert.Contains(t, engine.cache, "new")
+}
+
+func TestEnrichmentEngine_ContentTTL(t *testing.T) {
+	t.Run("NilConfigFallsBackToDefault", func(t *testing.T) {
+		engine := &EnrichmentEngine{}
+		assert.Equal(t, ContentTTL, engine.contentTTL())
+	})
+
+	t.Run("ConfiguredZeroTTLIsPreserved", func(t *testing.T) {
+		engine := &EnrichmentEngine{
+			config: &config.Config{
+				Enrichment: config.EnrichmentConfig{
+					ContentTTLSeconds: 0,
+				},
+			},
+		}
+		assert.Zero(t, engine.contentTTL())
+	})
+
+	t.Run("ConfiguredTTLIsUsed", func(t *testing.T) {
+		engine := &EnrichmentEngine{
+			config: &config.Config{
+				Enrichment: config.EnrichmentConfig{
+					ContentTTLSeconds: 45,
+				},
+			},
+		}
+		assert.Equal(t, 45*time.Second, engine.contentTTL())
+	})
 }
 
 func TestNewEnrichmentEngine_Guards(t *testing.T) {

@@ -73,12 +73,17 @@ func (e *EnrichmentEngine) Shutdown(ctx context.Context) {
 	e.logger.DebugContext(ctx, "enrichment engine shutdown complete")
 }
 
+func (e *EnrichmentEngine) contentTTL() time.Duration {
+	if e.config == nil {
+		return ContentTTL
+	}
+
+	return time.Duration(e.config.Enrichment.ContentTTLSeconds) * time.Second
+}
+
 // FetchDetail retrieves detailed information for a notification from GitHub.
 func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
-	contentTTL := 10 * time.Minute
-	if e.config != nil {
-		contentTTL = time.Duration(e.config.Enrichment.ContentTTLSeconds) * time.Second
-	}
+	contentTTL := e.contentTTL()
 
 	// 1. Check local cache (unless forced)
 	if !force {
@@ -522,9 +527,10 @@ func (e *EnrichmentEngine) pruneExpired(ctx context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	contentTTL := e.contentTTL()
 	count := 0
 	for u, res := range e.cache {
-		if time.Since(res.FetchedAt) > ContentTTL {
+		if time.Since(res.FetchedAt) > contentTTL {
 			delete(e.cache, u)
 			count++
 		}
