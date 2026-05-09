@@ -110,7 +110,8 @@ struct MCPInitializeProbe: EngineProbing {
     }
 
     nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int)
-        -> ProbeOutcome {
+        -> ProbeOutcome
+    {
         let socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
         if socketFD < 0 {
             return .failed("socket() failed: errno=\(errno)")
