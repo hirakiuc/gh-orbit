@@ -222,6 +222,79 @@ func TestMCPAdapter_Debounce(t *testing.T) {
 	})
 }
 
+func TestMCPAdapter_ShutdownStopsPendingDebounceTimer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := NewMCPAdapter(nil)
+		var count int32
+
+		a.OnMutation(func() {
+			atomic.AddInt32(&count, 1)
+		})
+
+		a.handleResourceUpdate(mcp.JSONRPCNotification{})
+		time.Sleep(100 * time.Millisecond)
+		a.Shutdown(context.Background())
+		time.Sleep(300 * time.Millisecond)
+
+		assert.Equal(t, int32(0), atomic.LoadInt32(&count), "shutdown should stop pending debounce delivery")
+	})
+}
+
+func TestMCPAdapter_PostShutdownNotificationsAreNoOp(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := NewMCPAdapter(nil)
+		var count int32
+
+		a.OnMutation(func() {
+			atomic.AddInt32(&count, 1)
+		})
+
+		a.Shutdown(context.Background())
+		a.handleResourceUpdate(mcp.JSONRPCNotification{})
+		time.Sleep(300 * time.Millisecond)
+
+		assert.Equal(t, int32(0), atomic.LoadInt32(&count), "notifications after shutdown should not arm callbacks")
+	})
+}
+
+func TestMCPAdapter_ShutdownDoesNotWaitForRunningCallback(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := NewMCPAdapter(nil)
+		var startedCount int32
+		started := make(chan struct{})
+		release := make(chan struct{})
+
+		a.OnMutation(func() {
+			if atomic.AddInt32(&startedCount, 1) == 1 {
+				close(started)
+			}
+			<-release
+		})
+
+		a.handleResourceUpdate(mcp.JSONRPCNotification{})
+		time.Sleep(250 * time.Millisecond)
+		<-started
+
+		shutdownDone := make(chan struct{})
+		go func() {
+			a.Shutdown(context.Background())
+			close(shutdownDone)
+		}()
+
+		select {
+		case <-shutdownDone:
+		case <-time.After(time.Second):
+			t.Fatal("shutdown should not block on an already-running callback")
+		}
+
+		a.handleResourceUpdate(mcp.JSONRPCNotification{})
+		close(release)
+		time.Sleep(300 * time.Millisecond)
+
+		assert.Equal(t, int32(1), atomic.LoadInt32(&startedCount), "no new callbacks should start after shutdown")
+	})
+}
+
 func TestMCPServer_EventLoopUnsubscribesOnShutdown(t *testing.T) {
 	bus := NewEventBus()
 	mcpServer := server.NewMCPServer(
