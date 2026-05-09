@@ -56,37 +56,30 @@ type APITrafficController struct {
 	done               chan struct{}
 	workerWG           sync.WaitGroup
 
-	rateLimitUpdates chan models.RateLimitInfo
-
 	submitBeforeLockHook func()
 }
 
 func NewAPITrafficController(ctx context.Context, logger *slog.Logger) *APITrafficController {
 	controllerCtx, cancel := context.WithCancel(ctx)
 	c := &APITrafficController{
-		ctx:              controllerCtx,
-		cancel:           cancel,
-		logger:           logger,
-		high:             make(chan *apiTask, 10),
-		med:              make(chan *apiTask, 50),
-		low:              make(chan *apiTask, 100),
-		workerLimit:      3, // Default concurrency
-		done:             make(chan struct{}),
-		rateLimitUpdates: make(chan models.RateLimitInfo, 100),
+		ctx:         controllerCtx,
+		cancel:      cancel,
+		logger:      logger,
+		high:        make(chan *apiTask, 10),
+		med:         make(chan *apiTask, 50),
+		low:         make(chan *apiTask, 100),
+		workerLimit: 3, // Default concurrency
+		done:        make(chan struct{}),
 	}
 
 	// Initialize rate limit info with safe defaults
 	c.rlInfo.Store(&models.RateLimitInfo{Remaining: 5000})
 
-	// Start background routines
-	c.workerWG.Add(2)
+	// Start background supervisor
+	c.workerWG.Add(1)
 	go func() {
 		defer c.workerWG.Done()
 		c.supervisor()
-	}()
-	go func() {
-		defer c.workerWG.Done()
-		c.rateLimitListener()
 	}()
 
 	return c
@@ -97,13 +90,15 @@ func (c *APITrafficController) Remaining() int {
 }
 
 func (c *APITrafficController) ReportRateLimit(info models.RateLimitInfo) {
-	select {
-	case <-c.done:
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+
+	if c.ctx.Err() != nil {
 		// Drop late updates after shutdown starts.
-	case c.rateLimitUpdates <- info:
-	default:
-		// Drop update if channel is full.
+		return
 	}
+
+	c.UpdateRateLimit(c.ctx, info)
 }
 
 func (c *APITrafficController) Submit(ctx context.Context, priority int, fn types.TaskFunc) (<-chan any, error) {
@@ -313,22 +308,6 @@ func (c *APITrafficController) runTask(t *apiTask) {
 	}
 
 	t.resp <- t.fn(t.ctx)
-}
-
-func (c *APITrafficController) rateLimitListener() {
-	for {
-		select {
-		case <-c.done:
-			// Drain remaining updates if any during shutdown
-			c.logger.DebugContext(context.Background(), "traffic controller: rate limit listener stopping")
-			return
-		case info, ok := <-c.rateLimitUpdates:
-			if !ok {
-				return
-			}
-			c.UpdateRateLimit(c.ctx, info)
-		}
-	}
 }
 
 func (c *APITrafficController) Shutdown(ctx context.Context) {
