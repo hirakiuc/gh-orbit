@@ -97,6 +97,18 @@ type ActionShowToast struct {
 
 func (a ActionShowToast) Type() string { return "show_toast" }
 
+type ActionSetSyncing struct {
+	Enabled bool
+}
+
+func (a ActionSetSyncing) Type() string { return "set_syncing" }
+
+type ActionSetFetching struct {
+	Enabled bool
+}
+
+func (a ActionSetFetching) Type() string { return "set_fetching" }
+
 type ActionEnrichItems struct {
 	Notifications []triage.NotificationWithState
 	Force         bool
