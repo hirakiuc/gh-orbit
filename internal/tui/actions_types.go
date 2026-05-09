@@ -30,7 +30,8 @@ type ActionQuit struct{}
 func (a ActionQuit) Type() string { return "quit" }
 
 type ActionSyncNotifications struct {
-	Force bool
+	Force    bool
+	IsManual bool
 }
 
 func (a ActionSyncNotifications) Type() string { return "sync_notifications" }
@@ -106,6 +107,7 @@ func (a ActionEnrichItems) Type() string { return "enrich_items" }
 type ActionLoadNotifications struct {
 	IsInitial bool
 	IsForced  bool
+	IsManual  bool
 }
 
 func (a ActionLoadNotifications) Type() string { return "load_notifications" }

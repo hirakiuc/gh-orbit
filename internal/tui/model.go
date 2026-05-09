@@ -113,6 +113,8 @@ type Model struct {
 	taskCancelMu        sync.Mutex
 	taskCancelSeq       uint64
 	taskCancels         map[string]scopedTaskCancel
+	manualSyncPending   bool
+	manualSyncSnapshot  string
 
 	lastQuitPress time.Time
 	executor      types.CommandExecutor
@@ -257,7 +259,7 @@ func NewModel(p ModelParams) (*Model, error) {
 // Init sets up initial application state and background workers.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
-		m.loadNotifications(true, false),
+		m.loadNotifications(true, false, false),
 		m.tickClock(),
 		m.checkFocusMode(),
 	)
@@ -378,24 +380,24 @@ func (m *Model) cancelScopedTasks() {
 }
 
 // loadNotifications loads the full list of notifications from local database.
-func (m *Model) loadNotifications(isInitial bool, isForced bool) tea.Cmd {
+func (m *Model) loadNotifications(isInitial bool, isForced bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:load", 0, api.PrioritySync, func(ctx context.Context) any {
 		notifs, err := m.db.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 		// Initial load triggers initial enrichment
-		return notificationsLoadedMsg{notifications: notifs, IsInitial: isInitial, IsForced: isForced}
+		return notificationsLoadedMsg{notifications: notifs, IsInitial: isInitial, IsForced: isForced, IsManual: isManual}
 	})
 }
 
-func (m *Model) syncNotificationsWithForce(force bool) tea.Cmd {
+func (m *Model) syncNotificationsWithForce(force bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:sync", types.ConnectedSyncTimeout, api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.sync.Sync(ctx, m.userID, force)
 		if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
 			return types.ErrMsg{Err: err}
 		}
-		return syncCompleteMsg{rateLimit: rl, IsForced: force}
+		return syncCompleteMsg{rateLimit: rl, IsForced: force, IsManual: isManual}
 	})
 }
 
@@ -421,6 +423,7 @@ type notificationsLoadedMsg struct {
 	notifications []triage.NotificationWithState
 	IsInitial     bool
 	IsForced      bool
+	IsManual      bool
 }
 
 type priorityUpdatedMsg struct {
@@ -431,6 +434,7 @@ type priorityUpdatedMsg struct {
 type syncCompleteMsg struct {
 	rateLimit models.RateLimitInfo
 	IsForced  bool
+	IsManual  bool
 }
 type detailLoadedMsg struct {
 	GitHubID         string
@@ -456,3 +460,7 @@ type (
 	pollTickMsg  struct{ ID uint64 }
 	clockTickMsg struct{ ID uint64 }
 )
+
+func notificationStateSignature(notifications []triage.NotificationWithState) string {
+	return fmt.Sprintf("%#v", notifications)
+}
