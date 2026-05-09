@@ -37,7 +37,7 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 	}
 
 	if a, ok := action.(ActionSyncNotifications); ok {
-		return i.model.syncNotificationsWithForce(a.Force)
+		return i.model.syncNotificationsWithForce(a.Force, a.IsManual)
 	}
 
 	if a, ok := action.(ActionMarkRead); ok {
@@ -69,7 +69,7 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 	}
 
 	if a, ok := action.(ActionLoadNotifications); ok {
-		return i.model.loadNotifications(a.IsInitial, a.IsForced)
+		return i.model.loadNotifications(a.IsInitial, a.IsForced, a.IsManual)
 	}
 
 	if a, ok := action.(ActionUpdateRateLimit); ok {

@@ -85,7 +85,7 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		}
 		return []Action{ActionEnrichItems{Notifications: m.getVisibleNotifications(false)}}
 	case types.ErrMsg:
-		m.handleTransitionError(msg)
+		return m.handleTransitionError(msg)
 	}
 
 	return nil
@@ -428,6 +428,16 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		ActionEnrichItems{Notifications: m.getVisibleNotifications(msg.IsForced), Force: msg.IsForced},
 	}
 
+	if msg.IsManual {
+		toast := "Sync complete"
+		if notificationStateSignature(msg.notifications) == m.manualSyncSnapshot {
+			toast = "No new notifications"
+		}
+		m.manualSyncPending = false
+		m.manualSyncSnapshot = ""
+		actions = append(actions, ActionShowToast{Message: toast})
+	}
+
 	if msg.IsInitial && !m.syncStarted {
 		m.syncStarted = true
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
@@ -449,7 +459,7 @@ func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.updateQuotaResetStatus()
 	return []Action{
 		ActionUpdateRateLimit{Info: msg.rateLimit},
-		ActionLoadNotifications{IsInitial: false, IsForced: msg.IsForced},
+		ActionLoadNotifications{IsInitial: false, IsForced: msg.IsForced, IsManual: msg.IsManual},
 	}
 }
 
@@ -539,7 +549,7 @@ func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 	}
 
 	m.ui.SetSyncing(true)
-	return append(actions, ActionSyncNotifications{Force: false})
+	return append(actions, ActionSyncNotifications{Force: false, IsManual: false})
 }
 
 func (m *Model) handleClockTick(msg clockTickMsg) []Action {
@@ -553,12 +563,20 @@ func (m *Model) handleClockTick(msg clockTickMsg) []Action {
 	}
 }
 
-func (m *Model) handleTransitionError(msg types.ErrMsg) {
+func (m *Model) handleTransitionError(msg types.ErrMsg) []Action {
 	m.err = msg.Err
 	m.ui.SetSyncing(false)
 	m.ui.SetFetching(false)
 	// Clear inflight on error to allow retry
 	m.inflightEnrichments = make(map[string]time.Time)
+
+	if m.manualSyncPending {
+		m.manualSyncPending = false
+		m.manualSyncSnapshot = ""
+		return []Action{ActionShowToast{Message: "Sync failed"}}
+	}
+
+	return nil
 }
 
 func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
@@ -653,10 +671,12 @@ func (m *Model) handlePriorityKeys(msg tea.KeyMsg) []Action {
 
 func (m *Model) handleSyncKey() []Action {
 	if m.ui.syncing {
-		return nil
+		return []Action{ActionShowToast{Message: "Sync already in progress"}}
 	}
+	m.manualSyncPending = true
+	m.manualSyncSnapshot = notificationStateSignature(m.allNotifications)
 	m.ui.SetSyncing(true)
-	return []Action{ActionSyncNotifications{Force: true}}
+	return []Action{ActionSyncNotifications{Force: true, IsManual: true}}
 }
 
 func (m *Model) handleToggleDetailKey() []Action {

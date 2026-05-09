@@ -65,13 +65,13 @@ func TestInterpreter_Execute(t *testing.T) {
 	actions := []Action{
 		ActionQuit{},
 		ActionShowToast{Message: "msg"},
-		ActionSyncNotifications{Force: true},
+		ActionSyncNotifications{Force: true, IsManual: false},
 		ActionMarkRead{ID: "1", Read: true},
 		ActionSetPriority{ID: "1", Priority: 1},
 		ActionViewWeb{Notification: notif},
 		ActionCheckoutPR{Repository: "o/r", Number: "1"},
 		ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}},
-		ActionLoadNotifications{IsInitial: true},
+		ActionLoadNotifications{IsInitial: true, IsManual: false},
 		ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 100}},
 		ActionScheduleTick{TickType: TickHeartbeat, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickClock, Interval: time.Millisecond},
@@ -150,7 +150,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *t
 		}).
 		Once()
 
-	cmd := m.syncNotificationsWithForce(true)
+	cmd := m.syncNotificationsWithForce(true, false)
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
@@ -158,7 +158,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *t
 	require.True(t, ok)
 	assert.ErrorIs(t, errMsg.Err, context.DeadlineExceeded)
 
-	m.handleTransitionError(errMsg)
+	_ = m.handleTransitionError(errMsg)
 	assert.False(t, m.ui.syncing)
 	assert.ErrorIs(t, m.err, context.DeadlineExceeded)
 }
@@ -198,7 +198,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedA
 		Return(models.RateLimitInfo{Remaining: 999}, types.ErrSyncIntervalNotReached).
 		Once()
 
-	cmd := m.syncNotificationsWithForce(false)
+	cmd := m.syncNotificationsWithForce(false, false)
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
@@ -209,7 +209,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedA
 
 	actions := m.handleSyncComplete(syncMsg)
 	assert.False(t, m.ui.syncing)
-	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false, IsForced: false})
+	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false, IsForced: false, IsManual: false})
 }
 
 func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
@@ -269,8 +269,52 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 
 	// 3. Sync Complete
 	actions = m.Transition(syncCompleteMsg{rateLimit: models.RateLimitInfo{Remaining: 500}}, 0)
-	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false})
+	assert.Contains(t, actions, ActionLoadNotifications{IsInitial: false, IsManual: false})
 	assert.Equal(t, 500, m.RateLimit.Remaining)
+}
+
+func TestModel_HandleSyncKey_AlreadyRunningShowsToast(t *testing.T) {
+	m := newTestModel(t)
+	m.ui.SetSyncing(true)
+
+	actions := m.handleSyncKey()
+	assert.Contains(t, actions, ActionShowToast{Message: "Sync already in progress"})
+}
+
+func TestModel_HandleNotificationsLoaded_ManualNoChangeShowsToast(t *testing.T) {
+	m := newTestModel(t)
+	notifs := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}
+	m.manualSyncPending = true
+	m.manualSyncSnapshot = notificationStateSignature(notifs)
+
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifs, IsManual: true})
+	assert.Contains(t, actions, ActionShowToast{Message: "No new notifications"})
+	assert.False(t, m.manualSyncPending)
+	assert.Empty(t, m.manualSyncSnapshot)
+}
+
+func TestModel_HandleNotificationsLoaded_ManualUpdatedShowsToast(t *testing.T) {
+	m := newTestModel(t)
+	before := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}
+	after := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "2"}}}
+	m.manualSyncPending = true
+	m.manualSyncSnapshot = notificationStateSignature(before)
+
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: after, IsManual: true})
+	assert.Contains(t, actions, ActionShowToast{Message: "Sync complete"})
+	assert.False(t, m.manualSyncPending)
+	assert.Empty(t, m.manualSyncSnapshot)
+}
+
+func TestModel_HandleTransitionError_ManualSyncShowsFailureToast(t *testing.T) {
+	m := newTestModel(t)
+	m.manualSyncPending = true
+	m.manualSyncSnapshot = "snapshot"
+
+	actions := m.handleTransitionError(types.ErrMsg{Err: context.DeadlineExceeded})
+	assert.Contains(t, actions, ActionShowToast{Message: "Sync failed"})
+	assert.False(t, m.manualSyncPending)
+	assert.Empty(t, m.manualSyncSnapshot)
 }
 
 func TestModel_Transition_Navigation(t *testing.T) {
