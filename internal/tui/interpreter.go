@@ -36,6 +36,14 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.model.ui.SetToast(a.Message)
 	}
 
+	if a, ok := action.(ActionSetSyncing); ok {
+		return i.model.ui.SetSyncing(a.Enabled)
+	}
+
+	if a, ok := action.(ActionSetFetching); ok {
+		return i.model.ui.SetFetching(a.Enabled)
+	}
+
 	if a, ok := action.(ActionSyncNotifications); ok {
 		return i.model.syncNotificationsWithForce(a.Force, a.IsManual)
 	}

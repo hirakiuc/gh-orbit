@@ -65,6 +65,8 @@ func TestInterpreter_Execute(t *testing.T) {
 	actions := []Action{
 		ActionQuit{},
 		ActionShowToast{Message: "msg"},
+		ActionSetSyncing{Enabled: true},
+		ActionSetFetching{Enabled: true},
 		ActionSyncNotifications{Force: true, IsManual: false},
 		ActionMarkRead{ID: "1", Read: true},
 		ActionSetPriority{ID: "1", Priority: 1},
@@ -273,12 +275,40 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 	assert.Equal(t, 500, m.RateLimit.Remaining)
 }
 
+func TestModel_HandlePollTick_StartsSyncingViaAction(t *testing.T) {
+	m := newTestModel(t)
+	m.heartbeatID = 7
+	m.LastSyncAt = time.Now().Add(-time.Duration(m.PollInterval+1) * time.Second)
+
+	actions := m.handlePollTick(pollTickMsg{ID: 7})
+	assert.Contains(t, actions, ActionSetSyncing{Enabled: true})
+	assert.Contains(t, actions, ActionSyncNotifications{Force: false, IsManual: false})
+}
+
+func TestModel_HandlePollTick_WithinIntervalDoesNotStartSyncing(t *testing.T) {
+	m := newTestModel(t)
+	m.heartbeatID = 7
+	m.LastSyncAt = time.Now()
+
+	actions := m.handlePollTick(pollTickMsg{ID: 7})
+	assert.NotContains(t, actions, ActionSetSyncing{Enabled: true})
+	assert.NotContains(t, actions, ActionSyncNotifications{Force: false, IsManual: false})
+}
+
 func TestModel_HandleSyncKey_AlreadyRunningShowsToast(t *testing.T) {
 	m := newTestModel(t)
 	m.ui.SetSyncing(true)
 
 	actions := m.handleSyncKey()
 	assert.Contains(t, actions, ActionShowToast{Message: "Sync already in progress"})
+}
+
+func TestModel_HandleSyncKey_StartsSyncingViaAction(t *testing.T) {
+	m := newTestModel(t)
+
+	actions := m.handleSyncKey()
+	assert.Contains(t, actions, ActionSetSyncing{Enabled: true})
+	assert.Contains(t, actions, ActionSyncNotifications{Force: true, IsManual: true})
 }
 
 func TestModel_HandleNotificationsLoaded_ManualNoChangeShowsToast(t *testing.T) {
@@ -341,6 +371,7 @@ func TestModel_Transition_Navigation(t *testing.T) {
 	actions := m.Transition(msg, 0)
 	assert.Equal(t, StateDetail, m.state)
 	// Should return ActionEnrichItems because notif.IsEnriched is false
+	assert.Contains(t, actions, ActionSetFetching{Enabled: true})
 	assert.Contains(t, actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}})
 
 	// 2. Return to List View
@@ -370,6 +401,34 @@ func TestModel_Transition_Priority(t *testing.T) {
 	msg = keyPress("0") // Matches PriorityNone
 	actions = m.Transition(msg, 0)
 	assert.Contains(t, actions, ActionSetPriority{ID: "1", Priority: 0})
+}
+
+func TestModel_Transition_DetailRefreshStartsFetchingViaAction(t *testing.T) {
+	m := newTestModel(t)
+	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "1",
+			SubjectURL:  "https://api.github.com/repos/o/r/issues/1",
+			SubjectType: triage.SubjectIssue,
+			IsEnriched:  true,
+			UpdatedAt:   time.Now(),
+		},
+	}
+	m.allNotifications = []triage.NotificationWithState{notif}
+	m.applyFilters()
+	m.listView.list.Select(0)
+	m.state = StateDetail
+
+	actions := m.Transition(keyPress("r"), 0)
+	assert.Contains(t, actions, ActionSetFetching{Enabled: true})
+	assert.Contains(t, actions, ActionFetchDetail{
+		ID:          notif.GitHubID,
+		URL:         notif.SubjectURL,
+		SubjectType: notif.SubjectType,
+		Force:       true,
+	})
 }
 
 func TestModel_Transition_Tabs(t *testing.T) {

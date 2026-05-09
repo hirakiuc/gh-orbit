@@ -115,8 +115,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 			m.state = StateList
 		case key.Matches(msg, m.keys.Sync):
 			if n, ok := m.selectedNotification(); ok {
-				m.ui.SetFetching(true)
-				actions = append(actions, ActionFetchDetail{
+				actions = append(actions, ActionSetFetching{Enabled: true}, ActionFetchDetail{
 					ID:          n.GitHubID,
 					URL:         n.SubjectURL,
 					SubjectType: n.SubjectType,
@@ -548,8 +547,10 @@ func (m *Model) handlePollTick(msg pollTickMsg) []Action {
 		return actions
 	}
 
-	m.ui.SetSyncing(true)
-	return append(actions, ActionSyncNotifications{Force: false, IsManual: false})
+	return append(actions,
+		ActionSetSyncing{Enabled: true},
+		ActionSyncNotifications{Force: false, IsManual: false},
+	)
 }
 
 func (m *Model) handleClockTick(msg clockTickMsg) []Action {
@@ -675,8 +676,10 @@ func (m *Model) handleSyncKey() []Action {
 	}
 	m.manualSyncPending = true
 	m.manualSyncSnapshot = notificationStateSignature(m.allNotifications)
-	m.ui.SetSyncing(true)
-	return []Action{ActionSyncNotifications{Force: true, IsManual: true}}
+	return []Action{
+		ActionSetSyncing{Enabled: true},
+		ActionSyncNotifications{Force: true, IsManual: true},
+	}
 }
 
 func (m *Model) handleToggleDetailKey() []Action {
@@ -688,8 +691,10 @@ func (m *Model) handleToggleDetailKey() []Action {
 	m.state = StateDetail
 	actions := []Action{}
 	if !n.IsEnriched {
-		m.ui.SetFetching(true)
-		actions = append(actions, ActionEnrichItems{Notifications: []triage.NotificationWithState{n}})
+		actions = append(actions,
+			ActionSetFetching{Enabled: true},
+			ActionEnrichItems{Notifications: []triage.NotificationWithState{n}},
+		)
 	}
 	m.refreshDetailView()
 	return actions
