@@ -209,6 +209,8 @@ func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.
 	// Check for lockout (primary fallback)
 	if info.Remaining == 0 && !info.Reset.IsZero() {
 		c.lockoutUntil.Store(&info.Reset)
+	} else if info.Remaining > 0 {
+		c.lockoutUntil.Store(nil)
 	}
 }
 

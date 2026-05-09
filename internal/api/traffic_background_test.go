@@ -58,6 +58,35 @@ func TestAPITrafficController_Background(t *testing.T) {
 	})
 }
 
+func TestAPITrafficController_LockoutClearsAfterHealthyRecovery(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		reset := time.Now().Add(time.Hour)
+		tc.UpdateRateLimit(ctx, models.RateLimitInfo{Remaining: 0, Reset: reset})
+
+		res, err := tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
+			return "should-not-run"
+		})
+		assert.NoError(t, err)
+		synctest.Wait()
+		assert.Nil(t, <-res, "sync task should be skipped while lockout is active")
+
+		tc.UpdateRateLimit(ctx, models.RateLimitInfo{Remaining: 1000, Reset: reset})
+
+		res, err = tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
+			return "recovered"
+		})
+		assert.NoError(t, err)
+		synctest.Wait()
+		assert.Equal(t, "recovered", <-res, "healthy update should clear stale lockout state")
+	})
+}
+
 func TestAPITrafficController_Shutdown_Channels(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
