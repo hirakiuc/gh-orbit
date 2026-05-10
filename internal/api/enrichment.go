@@ -32,6 +32,7 @@ type EnrichmentEngine struct {
 	db         types.EnrichmentRepository
 	logger     *slog.Logger
 	cache      map[string]models.EnrichmentResult
+	nodeToURLs map[string]map[string]struct{}
 	mu         sync.RWMutex
 	sf         singleflight.Group
 	done       chan struct{}
@@ -56,6 +57,7 @@ func NewEnrichmentEngine(ctx context.Context, p EnrichParams) (*EnrichmentEngine
 		db:         p.DB,
 		logger:     p.Logger,
 		cache:      make(map[string]models.EnrichmentResult),
+		nodeToURLs: make(map[string]map[string]struct{}),
 		done:       make(chan struct{}),
 		config:     cfg,
 		OnMutation: func() {}, // Default no-op
@@ -79,6 +81,48 @@ func (e *EnrichmentEngine) contentTTL() time.Duration {
 	}
 
 	return time.Duration(e.config.Enrichment.ContentTTLSeconds) * time.Second
+}
+
+func (e *EnrichmentEngine) rememberCacheEntryLocked(cacheKey string, res models.EnrichmentResult) {
+	e.cache[cacheKey] = res
+
+	if res.SubjectNodeID == "" {
+		return
+	}
+
+	aliases := e.nodeToURLs[res.SubjectNodeID]
+	if aliases == nil {
+		aliases = make(map[string]struct{})
+		e.nodeToURLs[res.SubjectNodeID] = aliases
+	}
+
+	aliases[cacheKey] = struct{}{}
+	if res.HTMLURL != "" {
+		aliases[res.HTMLURL] = struct{}{}
+	}
+}
+
+func (e *EnrichmentEngine) invalidateByURLLocked(url string) {
+	for nodeID, aliases := range e.nodeToURLs {
+		if _, ok := aliases[url]; !ok {
+			continue
+		}
+
+		for alias := range aliases {
+			delete(e.cache, alias)
+		}
+		delete(e.nodeToURLs, nodeID)
+		return
+	}
+
+	delete(e.cache, url)
+}
+
+func (e *EnrichmentEngine) invalidateByNodeIDLocked(nodeID string) {
+	for url := range e.nodeToURLs[nodeID] {
+		delete(e.cache, url)
+	}
+	delete(e.nodeToURLs, nodeID)
 }
 
 // FetchDetail retrieves detailed information for a notification from GitHub.
@@ -152,7 +196,7 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 
 		// 3. Update cache
 		e.mu.Lock()
-		e.cache[u] = res
+		e.rememberCacheEntryLocked(u, res)
 		e.mu.Unlock()
 
 		return res, nil
@@ -163,6 +207,38 @@ func (e *EnrichmentEngine) FetchDetail(ctx context.Context, u string, subjectTyp
 	}
 
 	return val.(models.EnrichmentResult), nil
+}
+
+func (e *EnrichmentEngine) PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error {
+	if err := e.db.EnrichNotification(ctx, id, res.SubjectNodeID, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState); err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	e.rememberCacheEntryLocked(sourceURL, res)
+	e.mu.Unlock()
+
+	e.OnMutation()
+
+	return nil
+}
+
+func (e *EnrichmentEngine) PersistIndependentDetail(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
+	if err := e.db.EnrichNotification(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState); err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	if nodeID != "" {
+		e.invalidateByNodeIDLocked(nodeID)
+	} else if htmlURL != "" {
+		e.invalidateByURLLocked(htmlURL)
+	}
+	e.mu.Unlock()
+
+	e.OnMutation()
+
+	return nil
 }
 
 func (e *EnrichmentEngine) fetchPullRequestGQL(ctx context.Context, u string) (models.EnrichmentResult, error) {
@@ -497,6 +573,10 @@ func (e *EnrichmentEngine) updateNodeState(ctx context.Context, nodeID, state, s
 	if err := e.db.UpdateResourceStateByNodeID(ctx, nodeID, state, subState); err != nil {
 		e.logger.ErrorContext(ctx, "enrichment: failed to update resource state", "node_id", nodeID, "error", err)
 	}
+
+	e.mu.Lock()
+	e.invalidateByNodeIDLocked(nodeID)
+	e.mu.Unlock()
 
 	results[nodeID] = models.EnrichmentResult{
 		ResourceState:    state,

@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -495,6 +496,53 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 6. Enrichment Persistence Tool
+	persistFetchedDetailTool := mcp.NewTool(
+		"persist_fetched_detail",
+		mcp.WithDescription("Persist freshly fetched detail through the enrichment owner without self-evicting the cache"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The GitHub notification ID")),
+		mcp.WithString("source_url", mcp.Required(), mcp.Description("The source URL used for the fetch cache key")),
+		mcp.WithString("node_id", mcp.Description("The GitHub subject node ID")),
+		mcp.WithString("body", mcp.Description("The enriched body text")),
+		mcp.WithString("author", mcp.Description("The enriched author login")),
+		mcp.WithString("html_url", mcp.Description("The canonical GitHub HTML URL")),
+		mcp.WithString("resource_state", mcp.Description("The enriched resource state")),
+		mcp.WithString("resource_sub_state", mcp.Description("The enriched resource sub state")),
+	)
+
+	s.server.AddTool(persistFetchedDetailTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		id, _ := args["id"].(string)
+		sourceURL, _ := args["source_url"].(string)
+		if id == "" || sourceURL == "" {
+			return mcp.NewToolResultError("id and source_url are required"), nil
+		}
+
+		nodeID, _ := args["node_id"].(string)
+		body, _ := args["body"].(string)
+		author, _ := args["author"].(string)
+		htmlURL, _ := args["html_url"].(string)
+		resourceState, _ := args["resource_state"].(string)
+		resourceSubState, _ := args["resource_sub_state"].(string)
+
+		if err := s.engine.Enrich.PersistFetchedDetail(ctx, id, sourceURL, models.EnrichmentResult{
+			SubjectNodeID:    nodeID,
+			Body:             body,
+			Author:           author,
+			HTMLURL:          htmlURL,
+			ResourceState:    resourceState,
+			ResourceSubState: resourceSubState,
+			FetchedAt:        time.Now(),
+		}); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to persist fetched detail: %v", err)), nil
+		}
+
+		return mcp.NewToolResultText("Fetched detail persisted"), nil
+	})
+
 	enrichNotificationTool := mcp.NewTool(
 		"enrich_notification",
 		mcp.WithDescription("Persist enriched notification fields through the engine-backed repository"),
@@ -525,7 +573,7 @@ func (s *MCPServer) registerTools() {
 		resourceState, _ := args["resource_state"].(string)
 		resourceSubState, _ := args["resource_sub_state"].(string)
 
-		if err := s.engine.DB.EnrichNotification(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState); err != nil {
+		if err := s.engine.Enrich.PersistIndependentDetail(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to persist enrichment: %v", err)), nil
 		}
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -295,6 +296,191 @@ func TestEnrichmentEngine_ContentTTL(t *testing.T) {
 		}
 		assert.Equal(t, 45*time.Second, engine.contentTTL())
 	})
+}
+
+func TestEnrichmentEngine_PersistFetchedDetailPreservesCache(t *testing.T) {
+	ctx := context.Background()
+	mockClient := mocks.NewMockClient(t)
+	mockRepo := mocks.NewMockEnrichmentRepository(t)
+
+	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+		Client: mockClient,
+		DB:     mockRepo,
+		Logger: slog.Default(),
+	})
+	assert.NoError(t, err)
+	t.Cleanup(func() { engine.Shutdown(ctx) })
+
+	res := models.EnrichmentResult{
+		SubjectNodeID: "node-1",
+		Body:          "fresh body",
+		Author:        "octocat",
+		HTMLURL:       "https://github.com/o/r/pull/1",
+		FetchedAt:     time.Now(),
+	}
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-1", "node-1", "fresh body", "octocat", "https://github.com/o/r/pull/1", "", "").
+		Return(nil).
+		Once()
+
+	err = engine.PersistFetchedDetail(ctx, "notif-1", "https://api.github.com/repos/o/r/pulls/1", res)
+	assert.NoError(t, err)
+
+	got, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/pulls/1", "PullRequest", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "fresh body", got.Body)
+	assert.Equal(t, "node-1", got.SubjectNodeID)
+}
+
+func TestEnrichmentEngine_PersistIndependentDetailInvalidatesCacheByNodeID(t *testing.T) {
+	ctx := context.Background()
+	mockClient := mocks.NewMockClient(t)
+	mockRepo := mocks.NewMockEnrichmentRepository(t)
+	mockREST := mocks.NewMockRESTClient(t)
+
+	mockClient.EXPECT().REST().Return(mockREST).Maybe()
+
+	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+		Client: mockClient,
+		DB:     mockRepo,
+		Logger: slog.Default(),
+	})
+	assert.NoError(t, err)
+	t.Cleanup(func() { engine.Shutdown(ctx) })
+
+	cached := models.EnrichmentResult{
+		SubjectNodeID: "node-2",
+		Body:          "cached body",
+		Author:        "octocat",
+		HTMLURL:       "https://github.com/o/r/issues/2",
+		FetchedAt:     time.Now(),
+	}
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-2", "node-2", "cached body", "octocat", "https://github.com/o/r/issues/2", "", "").
+		Return(nil).
+		Once()
+	assert.NoError(t, engine.PersistFetchedDetail(ctx, "notif-2", "https://api.github.com/repos/o/r/issues/2", cached))
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-2", "node-2", "persisted body", "hirakiuc", "https://github.com/o/r/issues/2", "Closed", "COMPLETED").
+		Return(nil).
+		Once()
+	assert.NoError(t, engine.PersistIndependentDetail(ctx, "notif-2", "node-2", "persisted body", "hirakiuc", "https://github.com/o/r/issues/2", "Closed", "COMPLETED"))
+
+	mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "https://api.github.com/repos/o/r/issues/2", nil, mock.Anything).Run(func(ctx context.Context, method string, path string, body io.Reader, response any) {
+		res := response.(*struct {
+			ID      string `json:"node_id"`
+			Body    string `json:"body"`
+			HTMLURL string `json:"html_url"`
+			User    struct {
+				Login string `json:"login"`
+			} `json:"user"`
+			State       string  `json:"state"`
+			StateReason *string `json:"state_reason"`
+		})
+		res.ID = "node-2"
+		res.Body = "refetched body"
+		res.HTMLURL = "https://github.com/o/r/issues/2"
+		res.User.Login = "hirakiuc"
+	}).Return(nil).Once()
+
+	got, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/issues/2", "Issue", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "refetched body", got.Body)
+}
+
+func TestEnrichmentEngine_PersistIndependentDetailInvalidatesCacheByHTMLURL(t *testing.T) {
+	ctx := context.Background()
+	mockClient := mocks.NewMockClient(t)
+	mockRepo := mocks.NewMockEnrichmentRepository(t)
+	mockREST := mocks.NewMockRESTClient(t)
+
+	mockClient.EXPECT().REST().Return(mockREST).Maybe()
+
+	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+		Client: mockClient,
+		DB:     mockRepo,
+		Logger: slog.Default(),
+	})
+	assert.NoError(t, err)
+	t.Cleanup(func() { engine.Shutdown(ctx) })
+
+	cached := models.EnrichmentResult{
+		SubjectNodeID: "node-4",
+		Body:          "cached body",
+		Author:        "octocat",
+		HTMLURL:       "https://github.com/o/r/issues/4",
+		FetchedAt:     time.Now(),
+	}
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-4", "node-4", "cached body", "octocat", "https://github.com/o/r/issues/4", "", "").
+		Return(nil).
+		Once()
+	assert.NoError(t, engine.PersistFetchedDetail(ctx, "notif-4", "https://api.github.com/repos/o/r/issues/4", cached))
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-4", "", "persisted body", "hirakiuc", "https://github.com/o/r/issues/4", "Closed", "COMPLETED").
+		Return(nil).
+		Once()
+	assert.NoError(t, engine.PersistIndependentDetail(ctx, "notif-4", "", "persisted body", "hirakiuc", "https://github.com/o/r/issues/4", "Closed", "COMPLETED"))
+
+	mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "https://api.github.com/repos/o/r/issues/4", nil, mock.Anything).Run(func(ctx context.Context, method string, path string, body io.Reader, response any) {
+		res := response.(*struct {
+			ID      string `json:"node_id"`
+			Body    string `json:"body"`
+			HTMLURL string `json:"html_url"`
+			User    struct {
+				Login string `json:"login"`
+			} `json:"user"`
+			State       string  `json:"state"`
+			StateReason *string `json:"state_reason"`
+		})
+		res.ID = "node-4"
+		res.Body = "refetched from html-url invalidation"
+		res.HTMLURL = "https://github.com/o/r/issues/4"
+		res.User.Login = "hirakiuc"
+	}).Return(nil).Once()
+
+	got, err := engine.FetchDetail(ctx, "https://api.github.com/repos/o/r/issues/4", "Issue", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "refetched from html-url invalidation", got.Body)
+}
+
+func TestEnrichmentEngine_UpdateNodeStateInvalidatesCacheByNodeID(t *testing.T) {
+	ctx := context.Background()
+	mockClient := mocks.NewMockClient(t)
+	mockRepo := mocks.NewMockEnrichmentRepository(t)
+
+	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
+		Client: mockClient,
+		DB:     mockRepo,
+		Logger: slog.Default(),
+	})
+	assert.NoError(t, err)
+	t.Cleanup(func() { engine.Shutdown(ctx) })
+
+	mockRepo.EXPECT().
+		EnrichNotification(mock.Anything, "notif-3", "node-3", "cached body", "octocat", "https://github.com/o/r/pull/3", "", "").
+		Return(nil).
+		Once()
+	assert.NoError(t, engine.PersistFetchedDetail(ctx, "notif-3", "https://api.github.com/repos/o/r/pulls/3", models.EnrichmentResult{
+		SubjectNodeID: "node-3",
+		Body:          "cached body",
+		Author:        "octocat",
+		HTMLURL:       "https://github.com/o/r/pull/3",
+		FetchedAt:     time.Now(),
+	}))
+
+	mockRepo.EXPECT().UpdateResourceStateByNodeID(mock.Anything, "node-3", "Merged", "APPROVED").Return(nil).Once()
+	engine.updateNodeState(ctx, "node-3", "Merged", "APPROVED", map[string]models.EnrichmentResult{})
+
+	engine.mu.RLock()
+	_, ok := engine.cache["https://api.github.com/repos/o/r/pulls/3"]
+	engine.mu.RUnlock()
+	assert.False(t, ok)
 }
 
 func TestNewEnrichmentEngine_Guards(t *testing.T) {

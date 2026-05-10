@@ -146,8 +146,26 @@ func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) e
 	return err
 }
 
-// No-ops for client mode (Engine is authority)
-func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
+func (a *MCPAdapter) PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error {
+	_, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "persist_fetched_detail",
+			Arguments: map[string]any{
+				"id":                 id,
+				"source_url":         sourceURL,
+				"node_id":            res.SubjectNodeID,
+				"body":               res.Body,
+				"author":             res.Author,
+				"html_url":           res.HTMLURL,
+				"resource_state":     res.ResourceState,
+				"resource_sub_state": res.ResourceSubState,
+			},
+		},
+	})
+	return err
+}
+
+func (a *MCPAdapter) PersistIndependentDetail(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
 	_, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "enrich_notification",
@@ -163,6 +181,11 @@ func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, a
 		},
 	})
 	return err
+}
+
+// No-ops for client mode (Engine is authority)
+func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
+	return a.PersistIndependentDetail(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
 }
 
 func (a *MCPAdapter) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, resourceSubState string) error {

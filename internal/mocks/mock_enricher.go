@@ -182,6 +182,138 @@ func (_c *MockEnricher_FetchHybridBatch_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// PersistFetchedDetail provides a mock function for the type MockEnricher
+func (_mock *MockEnricher) PersistFetchedDetail(ctx context.Context, id string, sourceURL string, res models.EnrichmentResult) error {
+	ret := _mock.Called(ctx, id, sourceURL, res)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PersistFetchedDetail")
+	}
+
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, models.EnrichmentResult) error); ok {
+		return returnFunc(ctx, id, sourceURL, res)
+	}
+
+	return ret.Error(0)
+}
+
+// MockEnricher_PersistFetchedDetail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PersistFetchedDetail'
+type MockEnricher_PersistFetchedDetail_Call struct {
+	*mock.Call
+}
+
+// PersistFetchedDetail is a helper method to define mock.On call
+func (_e *MockEnricher_Expecter) PersistFetchedDetail(ctx interface{}, id interface{}, sourceURL interface{}, res interface{}) *MockEnricher_PersistFetchedDetail_Call {
+	return &MockEnricher_PersistFetchedDetail_Call{Call: _e.mock.On("PersistFetchedDetail", ctx, id, sourceURL, res)}
+}
+
+func (_c *MockEnricher_PersistFetchedDetail_Call) Run(run func(ctx context.Context, id string, sourceURL string, res models.EnrichmentResult)) *MockEnricher_PersistFetchedDetail_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 models.EnrichmentResult
+		if args[3] != nil {
+			arg3 = args[3].(models.EnrichmentResult)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockEnricher_PersistFetchedDetail_Call) Return(err error) *MockEnricher_PersistFetchedDetail_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockEnricher_PersistFetchedDetail_Call) RunAndReturn(run func(ctx context.Context, id string, sourceURL string, res models.EnrichmentResult) error) *MockEnricher_PersistFetchedDetail_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PersistIndependentDetail provides a mock function for the type MockEnricher
+func (_mock *MockEnricher) PersistIndependentDetail(ctx context.Context, id string, nodeID string, body string, author string, htmlURL string, resourceState string, resourceSubState string) error {
+	ret := _mock.Called(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PersistIndependentDetail")
+	}
+
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, string) error); ok {
+		return returnFunc(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
+	}
+
+	return ret.Error(0)
+}
+
+// MockEnricher_PersistIndependentDetail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PersistIndependentDetail'
+type MockEnricher_PersistIndependentDetail_Call struct {
+	*mock.Call
+}
+
+// PersistIndependentDetail is a helper method to define mock.On call
+func (_e *MockEnricher_Expecter) PersistIndependentDetail(ctx interface{}, id interface{}, nodeID interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockEnricher_PersistIndependentDetail_Call {
+	return &MockEnricher_PersistIndependentDetail_Call{Call: _e.mock.On("PersistIndependentDetail", ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)}
+}
+
+func (_c *MockEnricher_PersistIndependentDetail_Call) Run(run func(ctx context.Context, id string, nodeID string, body string, author string, htmlURL string, resourceState string, resourceSubState string)) *MockEnricher_PersistIndependentDetail_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		var arg5 string
+		if args[5] != nil {
+			arg5 = args[5].(string)
+		}
+		var arg6 string
+		if args[6] != nil {
+			arg6 = args[6].(string)
+		}
+		var arg7 string
+		if args[7] != nil {
+			arg7 = args[7].(string)
+		}
+		run(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+	})
+	return _c
+}
+
+func (_c *MockEnricher_PersistIndependentDetail_Call) Return(err error) *MockEnricher_PersistIndependentDetail_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockEnricher_PersistIndependentDetail_Call) RunAndReturn(run func(ctx context.Context, id string, nodeID string, body string, author string, htmlURL string, resourceState string, resourceSubState string) error) *MockEnricher_PersistIndependentDetail_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Shutdown provides a mock function for the type MockEnricher
 func (_mock *MockEnricher) Shutdown(ctx context.Context) {
 	_mock.Called(ctx)
