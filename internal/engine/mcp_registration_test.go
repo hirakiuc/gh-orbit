@@ -38,6 +38,7 @@ func TestMCPServer_Registration_Coverage(t *testing.T) {
 		assert.Greater(t, len(tools), 0)
 		assert.Contains(t, tools, "fetch_detail")
 		assert.Contains(t, tools, "fetch_hybrid_batch")
+		assert.Contains(t, tools, "persist_fetched_detail")
 		assert.Contains(t, tools, "enrich_notification")
 	})
 }

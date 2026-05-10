@@ -118,8 +118,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 			if err != nil {
 				return types.ErrMsg{Err: err}
 			}
-			// Atomic DB update including nodeID
-			if err := m.db.EnrichNotification(ctx, id, res.SubjectNodeID, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState); err != nil {
+			if err := m.enrich.PersistFetchedDetail(ctx, id, url, res); err != nil {
 				return types.ErrMsg{Err: err}
 			}
 			return detailLoadedMsg{
@@ -166,9 +165,7 @@ func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType, for
 			return types.ErrMsg{Err: err}
 		}
 
-		// Update database with granular enrich method
-		err = m.db.EnrichNotification(ctx, id, res.SubjectNodeID, res.Body, res.Author, res.HTMLURL, res.ResourceState, res.ResourceSubState)
-		if err != nil {
+		if err := m.enrich.PersistFetchedDetail(ctx, id, u, res); err != nil {
 			return types.ErrMsg{Err: err}
 		}
 

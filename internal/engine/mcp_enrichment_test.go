@@ -93,7 +93,7 @@ func decodeTextResult[T any](t *testing.T, resp *mcp.CallToolResult) T {
 }
 
 func TestMCPServer_EnrichmentTools(t *testing.T) {
-	srv, mockRepo, mockEnrich := newTestMCPServerForEnrichment(t)
+	srv, _, mockEnrich := newTestMCPServerForEnrichment(t)
 	client := newInMemoryMCPClient(t, srv)
 
 	t.Run("fetch_detail returns a real enrichment payload", func(t *testing.T) {
@@ -163,8 +163,8 @@ func TestMCPServer_EnrichmentTools(t *testing.T) {
 	})
 
 	t.Run("enrich_notification persists enriched fields", func(t *testing.T) {
-		mockRepo.EXPECT().
-			EnrichNotification(mock.Anything, "1", "node-1", "detail body", "hirakiuc", "https://github.com/o/r/pull/1", "OPEN", "APPROVED").
+		mockEnrich.EXPECT().
+			PersistIndependentDetail(mock.Anything, "1", "node-1", "detail body", "hirakiuc", "https://github.com/o/r/pull/1", "OPEN", "APPROVED").
 			Return(nil).
 			Once()
 
@@ -239,7 +239,7 @@ func TestMCPAdapter_FetchHybridBatch_ThroughMCP(t *testing.T) {
 }
 
 func TestMCPAdapter_SingleItemEnrichmentFlow_ThroughMCP(t *testing.T) {
-	srv, mockRepo, mockEnrich := newTestMCPServerForEnrichment(t)
+	srv, _, mockEnrich := newTestMCPServerForEnrichment(t)
 	client := newInMemoryMCPClient(t, srv)
 	adapter := NewMCPAdapter(client)
 
@@ -255,8 +255,8 @@ func TestMCPAdapter_SingleItemEnrichmentFlow_ThroughMCP(t *testing.T) {
 		FetchDetail(mock.Anything, "https://api.github.com/repos/o/r/pulls/3", "PullRequest", true).
 		Return(expected, nil).
 		Once()
-	mockRepo.EXPECT().
-		EnrichNotification(mock.Anything, "notif-3", "node-3", "persisted detail body", "octocat", "https://github.com/o/r/pull/3", "OPEN", "REVIEW_REQUIRED").
+	mockEnrich.EXPECT().
+		PersistIndependentDetail(mock.Anything, "notif-3", "node-3", "persisted detail body", "octocat", "https://github.com/o/r/pull/3", "OPEN", "REVIEW_REQUIRED").
 		Return(nil).
 		Once()
 

@@ -98,6 +98,8 @@ type Syncer interface {
 type Enricher interface {
 	FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error)
 	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult
+	PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error
+	PersistIndependentDetail(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error
 	Shutdown(ctx context.Context)
 }
 
