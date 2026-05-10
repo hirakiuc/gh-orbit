@@ -47,3 +47,34 @@ func TestAppLifecycle_Shutdown(t *testing.T) {
 		t.Fatal("lifecycle context was not canceled after Shutdown()")
 	}
 }
+
+func TestAppLifecycle_ShutdownIsIdempotent(t *testing.T) {
+	l := NewAppLifecycle(context.Background())
+
+	assert.NotNil(t, l.sigChan)
+
+	l.Shutdown()
+	l.Shutdown()
+
+	select {
+	case <-l.Context().Done():
+		// Success
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("lifecycle context was not canceled after repeated Shutdown()")
+	}
+}
+
+func TestAppLifecycle_RepeatedCreateShutdown(t *testing.T) {
+	for i := 0; i < 25; i++ {
+		l := NewAppLifecycle(context.Background())
+		assert.NotNil(t, l.sigChan)
+		l.Shutdown()
+
+		select {
+		case <-l.Context().Done():
+			// Success
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("lifecycle context was not canceled during repeated create/shutdown sequence")
+		}
+	}
+}
