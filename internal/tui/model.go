@@ -114,6 +114,7 @@ type Model struct {
 	taskCancelSeq       uint64
 	taskCancels         map[string]scopedTaskCancel
 	taskRoot            context.Context
+	ownsSubsystems      bool
 	manualSyncPending   bool
 	manualSyncSnapshot  string
 
@@ -156,6 +157,14 @@ func WithVersion(v string) Option {
 func WithConnectionMode(mode string) Option {
 	return func(m *Model) {
 		m.ConnectionMode = mode
+	}
+}
+
+// WithOwnedSubsystemShutdown makes Model.Shutdown responsible for shutting down
+// the injected sync/enrich/traffic/alerter services.
+func WithOwnedSubsystemShutdown() Option {
+	return func(m *Model) {
+		m.ownsSubsystems = true
 	}
 }
 
@@ -297,9 +306,14 @@ func (m *Model) tickEnrich() tea.Cmd {
 }
 
 func (m *Model) Shutdown() {
+	m.cancelScopedTasks()
+
+	if !m.ownsSubsystems {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	m.cancelScopedTasks()
 
 	if m.sync != nil {
 		m.sync.Shutdown(ctx)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -24,7 +25,14 @@ func (f fakeTeaProgram) Run() (tea.Model, error) {
 	return f.run()
 }
 
-func newRunProgramTestModel(t *testing.T, taskRoot context.Context) *tui.Model {
+type runProgramTestDeps struct {
+	model    *tui.Model
+	syncer   *mocks.MockSyncer
+	enricher *mocks.MockEnricher
+	alerter  *mocks.MockAlerter
+}
+
+func newRunProgramTestModel(t *testing.T, taskRoot context.Context, opts ...tui.Option) runProgramTestDeps {
 	t.Helper()
 
 	cfg := config.DefaultConfig()
@@ -37,15 +45,6 @@ func newRunProgramTestModel(t *testing.T, taskRoot context.Context) *tui.Model {
 	syncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	alerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
-	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
-		err := ctx.Err()
-		_, hasDeadline := ctx.Deadline()
-		return err == nil && hasDeadline
-	})
-	syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   "user",
 		Config:   cfg,
@@ -55,10 +54,16 @@ func newRunProgramTestModel(t *testing.T, taskRoot context.Context) *tui.Model {
 		Syncer:   syncer,
 		Enricher: enricher,
 		Alerter:  alerter,
+		Options:  opts,
 	})
 	assert.NoError(t, err)
 
-	return m
+	return runProgramTestDeps{
+		model:    m,
+		syncer:   syncer,
+		enricher: enricher,
+		alerter:  alerter,
+	}
 }
 
 func TestRunProgram_ShutsDownModelOnSuccess(t *testing.T) {
@@ -66,7 +71,15 @@ func TestRunProgram_ShutsDownModelOnSuccess(t *testing.T) {
 	t.Cleanup(func() { newTeaProgram = orig })
 
 	lifecycle := api.NewAppLifecycle(context.Background())
-	m := newRunProgramTestModel(t, lifecycle.Context())
+	deps := newRunProgramTestModel(t, lifecycle.Context(), tui.WithOwnedSubsystemShutdown())
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		err := ctx.Err()
+		_, hasDeadline := ctx.Deadline()
+		return err == nil && hasDeadline
+	})
+	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
 		return fakeTeaProgram{
@@ -76,7 +89,7 @@ func TestRunProgram_ShutsDownModelOnSuccess(t *testing.T) {
 		}
 	}
 
-	err := runProgram(lifecycle, m)
+	err := runProgram(lifecycle, deps.model)
 	assert.NoError(t, err)
 }
 
@@ -88,7 +101,15 @@ func TestRunProgram_ShutsDownModelAfterLifecycleCancellation(t *testing.T) {
 	t.Cleanup(cancel)
 
 	lifecycle := api.NewAppLifecycle(parent)
-	m := newRunProgramTestModel(t, lifecycle.Context())
+	deps := newRunProgramTestModel(t, lifecycle.Context(), tui.WithOwnedSubsystemShutdown())
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		err := ctx.Err()
+		_, hasDeadline := ctx.Deadline()
+		return err == nil && hasDeadline
+	})
+	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
 		return fakeTeaProgram{
@@ -99,7 +120,7 @@ func TestRunProgram_ShutsDownModelAfterLifecycleCancellation(t *testing.T) {
 		}
 	}
 
-	err := runProgram(lifecycle, m)
+	err := runProgram(lifecycle, deps.model)
 	assert.NoError(t, err)
 }
 
@@ -108,7 +129,15 @@ func TestRunProgram_ShutsDownModelOnProgramError(t *testing.T) {
 	t.Cleanup(func() { newTeaProgram = orig })
 
 	lifecycle := api.NewAppLifecycle(context.Background())
-	m := newRunProgramTestModel(t, lifecycle.Context())
+	deps := newRunProgramTestModel(t, lifecycle.Context(), tui.WithOwnedSubsystemShutdown())
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		err := ctx.Err()
+		_, hasDeadline := ctx.Deadline()
+		return err == nil && hasDeadline
+	})
+	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
 		return fakeTeaProgram{
@@ -118,7 +147,41 @@ func TestRunProgram_ShutsDownModelOnProgramError(t *testing.T) {
 		}
 	}
 
-	err := runProgram(lifecycle, m)
+	err := runProgram(lifecycle, deps.model)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "TUI error: boom")
+}
+
+func TestRunProgram_StandaloneOwnershipLeavesSubsystemShutdownToOuterLayer(t *testing.T) {
+	orig := newTeaProgram
+	t.Cleanup(func() { newTeaProgram = orig })
+
+	lifecycle := api.NewAppLifecycle(context.Background())
+	deps := newRunProgramTestModel(t, lifecycle.Context())
+
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		err := ctx.Err()
+		_, hasDeadline := ctx.Deadline()
+		return err == nil && hasDeadline
+	})
+	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+
+	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
+		return fakeTeaProgram{
+			run: func() (tea.Model, error) {
+				return m, nil
+			},
+		}
+	}
+
+	err := runProgram(lifecycle, deps.model)
+	assert.NoError(t, err)
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	deps.syncer.Shutdown(cleanupCtx)
+	deps.enricher.Shutdown(cleanupCtx)
+	deps.alerter.Shutdown(cleanupCtx)
 }

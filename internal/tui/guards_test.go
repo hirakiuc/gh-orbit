@@ -93,6 +93,7 @@ func TestModel_NewTaskContext_UsesTaskRootCancellation(t *testing.T) {
 func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {
 	m := newTestModel(t)
 	m.traffic = nil
+	m.ownsSubsystems = true
 	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
 		err := ctx.Err()
 		_, hasDeadline := ctx.Deadline()
@@ -105,20 +106,10 @@ func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {
 	m.Shutdown()
 }
 
-func TestModel_Shutdown_StandaloneModeShutsDownAllSubsystemsWithUsableCleanupContext(t *testing.T) {
+func TestModel_Shutdown_StandaloneModeDoesNotShutdownEngineOwnedSubsystems(t *testing.T) {
 	taskRoot, cancel := context.WithCancel(context.Background())
 	m := newTestModelWithTaskRoot(t, taskRoot)
 	cancel()
-
-	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
-		err := ctx.Err()
-		_, hasDeadline := ctx.Deadline()
-		return err == nil && hasDeadline
-	})
-	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	m.traffic.(*mocks.MockTrafficController).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	m.Shutdown()
 }

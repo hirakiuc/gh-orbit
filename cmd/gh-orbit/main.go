@@ -397,6 +397,13 @@ func runTUI() error {
 
 func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdapter, userID string) error {
 	lifecycle := api.NewAppLifecycle(ctx)
+	lifecycleOwned := true
+	defer func() {
+		if lifecycleOwned {
+			lifecycle.Shutdown()
+		}
+	}()
+
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   config.DefaultConfig(), // Placeholder or from engine
@@ -410,6 +417,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 		Alerter:  adapter, // Alerter (Mock/Engine bridge)
 		Options: []tui.Option{
 			tui.WithConnectionMode("Connected"),
+			tui.WithOwnedSubsystemShutdown(),
 			tui.WithVersion(buildinfo.Version),
 		},
 	})
@@ -417,6 +425,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 		return err
 	}
 
+	lifecycleOwned = false
 	return runProgram(lifecycle, m)
 }
 
@@ -425,6 +434,13 @@ func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.Core
 	eng.Client.SetRateLimitReporter(eng.Traffic.ReportRateLimit)
 
 	lifecycle := api.NewAppLifecycle(ctx)
+	lifecycleOwned := true
+	defer func() {
+		if lifecycleOwned {
+			lifecycle.Shutdown()
+		}
+	}()
+
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   eng.Config,
@@ -447,6 +463,7 @@ func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.Core
 		return err
 	}
 
+	lifecycleOwned = false
 	return runProgram(lifecycle, m)
 }
 
