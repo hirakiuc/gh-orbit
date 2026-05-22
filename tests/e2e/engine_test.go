@@ -316,7 +316,6 @@ func TestIsUnixSocketBindPermissionError(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, isUnixSocketBindPermissionError(tc.err))
@@ -375,7 +374,6 @@ func TestIsSandboxUDSBindFailure(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.wantMatch, isSandboxUDSBindFailure(tc.startErr, tc.stderr, tc.socket))
