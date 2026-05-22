@@ -113,6 +113,8 @@ type Model struct {
 	taskCancelMu        sync.Mutex
 	taskCancelSeq       uint64
 	taskCancels         map[string]scopedTaskCancel
+	taskRoot            context.Context
+	ownsSubsystems      bool
 	manualSyncPending   bool
 	manualSyncSnapshot  string
 
@@ -158,11 +160,20 @@ func WithConnectionMode(mode string) Option {
 	}
 }
 
+// WithOwnedSubsystemShutdown makes Model.Shutdown responsible for shutting down
+// the injected sync/enrich/traffic/alerter services.
+func WithOwnedSubsystemShutdown() Option {
+	return func(m *Model) {
+		m.ownsSubsystems = true
+	}
+}
+
 // ModelParams contains dependencies for the TUI Model.
 type ModelParams struct {
 	UserID   string
 	Config   *config.Config
 	Logger   *slog.Logger
+	TaskRoot context.Context
 	DB       notificationStore
 	Client   github.Client
 	Syncer   types.Syncer
@@ -182,6 +193,9 @@ func NewModel(p ModelParams) (*Model, error) {
 	}
 	if p.Logger == nil {
 		return nil, fmt.Errorf("logger is required for TUI")
+	}
+	if p.TaskRoot == nil {
+		return nil, fmt.Errorf("task root context is required for TUI")
 	}
 	if p.DB == nil {
 		return nil, fmt.Errorf("database is required for TUI")
@@ -242,6 +256,7 @@ func NewModel(p ModelParams) (*Model, error) {
 		clockInterval:       1 * time.Minute,
 		inflightEnrichments: make(map[string]time.Time),
 		taskCancels:         make(map[string]scopedTaskCancel),
+		taskRoot:            p.TaskRoot,
 		executor:            api.NewOSCommandExecutor(), // Default executor
 	}
 
@@ -291,9 +306,14 @@ func (m *Model) tickEnrich() tea.Cmd {
 }
 
 func (m *Model) Shutdown() {
+	m.cancelScopedTasks()
+
+	if !m.ownsSubsystems {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	m.cancelScopedTasks()
 
 	if m.sync != nil {
 		m.sync.Shutdown(ctx)
@@ -331,7 +351,7 @@ func (m *Model) submitTask(scope string, timeout time.Duration, priority int, fn
 }
 
 func (m *Model) newTaskContext(scope string, timeout time.Duration) (context.Context, func()) {
-	base := context.Background()
+	base := m.taskRoot
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc

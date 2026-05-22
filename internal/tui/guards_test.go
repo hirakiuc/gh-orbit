@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
@@ -23,64 +25,91 @@ func TestNewModel_Guards(t *testing.T) {
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
 	t.Run("Missing UserID", func(t *testing.T) {
-		_, err := NewModel(ModelParams{Config: cfg, Logger: logger, DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{Config: cfg, Logger: logger, TaskRoot: context.Background(), DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "user ID is required")
 	})
 
 	t.Run("Missing Config", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Logger: logger, DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Logger: logger, TaskRoot: context.Background(), DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "config is required")
 	})
 
 	t.Run("Missing Logger", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, TaskRoot: context.Background(), DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "logger is required")
 	})
 
+	t.Run("Missing TaskRoot", func(t *testing.T) {
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "task root context is required")
+	})
+
 	t.Run("Missing DB", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), Syncer: mockSyncer, Enricher: mockEnricher, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "database is required")
 	})
 
 	t.Run("Missing Syncer", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, DB: mockRepo, Enricher: mockEnricher, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), DB: mockRepo, Enricher: mockEnricher, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "syncer is required")
 	})
 
 	t.Run("Missing Enricher", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, DB: mockRepo, Syncer: mockSyncer, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), DB: mockRepo, Syncer: mockSyncer, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "enricher is required")
 	})
 
 	t.Run("Missing Alerter", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), DB: mockRepo, Syncer: mockSyncer, Enricher: mockEnricher})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "alerter is required")
 	})
 }
 
+func TestModel_NewTaskContext_UsesTaskRootCancellation(t *testing.T) {
+	taskRoot, cancel := context.WithCancel(context.Background())
+	m := newTestModelWithTaskRoot(t, taskRoot)
+
+	ctx, release := m.newTaskContext("notifications:sync", 0)
+	t.Cleanup(release)
+
+	assert.NoError(t, ctx.Err())
+	cancel()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("expected scoped task context to be canceled when task root is canceled")
+	}
+}
+
 func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {
 	m := newTestModel(t)
 	m.traffic = nil
-	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(mock.Anything).Return().Once()
-	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(mock.Anything).Return().Once()
-	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(mock.Anything).Return().Once()
+	m.ownsSubsystems = true
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		err := ctx.Err()
+		_, hasDeadline := ctx.Deadline()
+		return err == nil && hasDeadline
+	})
+	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	m.Shutdown()
 }
 
-func TestModel_Shutdown_StandaloneModeShutsDownAllSubsystems(t *testing.T) {
-	m := newTestModel(t)
-	m.sync.(*mocks.MockSyncer).EXPECT().Shutdown(mock.Anything).Return().Once()
-	m.enrich.(*mocks.MockEnricher).EXPECT().Shutdown(mock.Anything).Return().Once()
-	m.traffic.(*mocks.MockTrafficController).EXPECT().Shutdown(mock.Anything).Return().Once()
-	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(mock.Anything).Return().Once()
+func TestModel_Shutdown_StandaloneModeDoesNotShutdownEngineOwnedSubsystems(t *testing.T) {
+	taskRoot, cancel := context.WithCancel(context.Background())
+	m := newTestModelWithTaskRoot(t, taskRoot)
+	cancel()
 
 	m.Shutdown()
 }
