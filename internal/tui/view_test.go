@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"testing"
@@ -133,6 +134,7 @@ func TestRenderHeader_States(t *testing.T) {
 			UserID:   "user",
 			Config:   cfg,
 			Logger:   logger,
+			TaskRoot: context.Background(),
 			DB:       mocks.NewMockRepository(t),
 			Syncer:   mockSyncer,
 			Enricher: mocks.NewMockEnricher(t),

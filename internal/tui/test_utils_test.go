@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
@@ -22,6 +23,10 @@ type TestingT interface {
 
 // newTestModel creates a model with basic mocks.
 func newTestModel(t TestingT) *Model {
+	return newTestModelWithTaskRoot(t, context.Background())
+}
+
+func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	userID := "test-user"
@@ -44,6 +49,7 @@ func newTestModel(t TestingT) *Model {
 		UserID:   userID,
 		Config:   cfg,
 		Logger:   logger,
+		TaskRoot: taskRoot,
 		DB:       mockRepo,
 		Client:   mockClient,
 		Syncer:   mockSyncer,
