@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,6 +27,42 @@ type testEngine struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	errChan    chan error
+}
+
+func isCI() bool {
+	return os.Getenv("CI") != ""
+}
+
+func isUnixSocketBindPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "operation not permitted") || strings.Contains(msg, "permission denied")
+}
+
+func isSandboxUDSBindFailure(startErr error, stderr string, socketPath string) bool {
+	if startErr == nil {
+		return false
+	}
+
+	lowerStderr := strings.ToLower(stderr)
+	lowerSocketPath := strings.ToLower(socketPath)
+
+	if !strings.Contains(lowerStderr, "listen unix") {
+		return false
+	}
+
+	if !strings.Contains(lowerStderr, lowerSocketPath) {
+		return false
+	}
+
+	return isUnixSocketBindPermissionError(fmt.Errorf("%w: %s", startErr, stderr))
 }
 
 func newSocketPath(t *testing.T) string {
@@ -76,20 +114,39 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 	// Wait for socket to become available (Retry loop)
 	maxAttempts := 20
 	var connected bool
+	var startErr error
 	for i := 0; i < maxAttempts; i++ {
 		if _, err := os.Stat(socketPath); err == nil {
 			connected = true
 			break
 		}
+
+		select {
+		case startErr = <-errChan:
+			if isSandboxUDSBindFailure(startErr, stderr.String(), socketPath) && !isCI() {
+				cancel()
+				t.Skipf("engine UDS bind unavailable in local sandbox: %v\n%s", startErr, strings.TrimSpace(stderr.String()))
+			}
+		default:
+		}
+
+		if startErr != nil {
+			break
+		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !connected {
 		var details []string
-		select {
-		case err := <-errChan:
-			details = append(details, fmt.Sprintf("process exited: %v", err))
-		default:
+		if startErr == nil {
+			select {
+			case startErr = <-errChan:
+			default:
+			}
+		}
+		if startErr != nil {
+			details = append(details, fmt.Sprintf("process exited: %v", startErr))
 		}
 		if logs := strings.TrimSpace(stderr.String()); logs != "" {
 			details = append(details, "stderr:\n"+logs)
