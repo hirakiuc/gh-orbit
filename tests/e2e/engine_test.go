@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,6 +27,42 @@ type testEngine struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	errChan    chan error
+}
+
+func isCI() bool {
+	return os.Getenv("CI") != ""
+}
+
+func isUnixSocketBindPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "operation not permitted") || strings.Contains(msg, "permission denied")
+}
+
+func isSandboxUDSBindFailure(startErr error, stderr string, socketPath string) bool {
+	if startErr == nil {
+		return false
+	}
+
+	lowerStderr := strings.ToLower(stderr)
+	lowerSocketPath := strings.ToLower(socketPath)
+
+	if !strings.Contains(lowerStderr, "listen unix") {
+		return false
+	}
+
+	if !strings.Contains(lowerStderr, lowerSocketPath) {
+		return false
+	}
+
+	return isUnixSocketBindPermissionError(fmt.Errorf("%w: %s", startErr, stderr))
 }
 
 func newSocketPath(t *testing.T) string {
@@ -76,20 +114,39 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 	// Wait for socket to become available (Retry loop)
 	maxAttempts := 20
 	var connected bool
+	var startErr error
 	for i := 0; i < maxAttempts; i++ {
 		if _, err := os.Stat(socketPath); err == nil {
 			connected = true
 			break
 		}
+
+		select {
+		case startErr = <-errChan:
+			if isSandboxUDSBindFailure(startErr, stderr.String(), socketPath) && !isCI() {
+				cancel()
+				t.Skipf("engine UDS bind unavailable in local sandbox: %v\n%s", startErr, strings.TrimSpace(stderr.String()))
+			}
+		default:
+		}
+
+		if startErr != nil {
+			break
+		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !connected {
 		var details []string
-		select {
-		case err := <-errChan:
-			details = append(details, fmt.Sprintf("process exited: %v", err))
-		default:
+		if startErr == nil {
+			select {
+			case startErr = <-errChan:
+			default:
+			}
+		}
+		if startErr != nil {
+			details = append(details, fmt.Sprintf("process exited: %v", startErr))
 		}
 		if logs := strings.TrimSpace(stderr.String()); logs != "" {
 			details = append(details, "stderr:\n"+logs)
@@ -208,4 +265,118 @@ func TestEngine_MCP_Tools(t *testing.T) {
 		}
 	}
 	assert.True(t, foundSync, "Engine should expose 'sync' tool via MCP")
+}
+
+func TestIsCI(t *testing.T) {
+	t.Setenv("CI", "")
+	assert.False(t, isCI())
+
+	t.Setenv("CI", "1")
+	assert.True(t, isCI())
+}
+
+func TestIsUnixSocketBindPermissionError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "os err permission",
+			err:  os.ErrPermission,
+			want: true,
+		},
+		{
+			name: "syscall eperm",
+			err:  syscall.EPERM,
+			want: true,
+		},
+		{
+			name: "wrapped permission denied message",
+			err:  fmt.Errorf("listen unix: %w", errors.New("permission denied")),
+			want: true,
+		},
+		{
+			name: "wrapped operation not permitted message",
+			err:  fmt.Errorf("listen unix: %w", errors.New("operation not permitted")),
+			want: true,
+		},
+		{
+			name: "unrelated startup failure",
+			err:  errors.New("unexpected EOF"),
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, isUnixSocketBindPermissionError(tc.err))
+		})
+	}
+}
+
+func TestIsSandboxUDSBindFailure(t *testing.T) {
+	t.Parallel()
+
+	socketPath := "/tmp/e2e-sock-123/engine.sock"
+	startErr := errors.New("exit status 1")
+
+	testCases := []struct {
+		name      string
+		startErr  error
+		stderr    string
+		socket    string
+		wantMatch bool
+	}{
+		{
+			name:      "known uds bind denial",
+			startErr:  startErr,
+			stderr:    fmt.Sprintf("Error: failed to listen on UDS %s: listen unix %s: bind: operation not permitted", socketPath, socketPath),
+			socket:    socketPath,
+			wantMatch: true,
+		},
+		{
+			name:      "nil startup error",
+			startErr:  nil,
+			stderr:    fmt.Sprintf("listen unix %s: bind: operation not permitted", socketPath),
+			socket:    socketPath,
+			wantMatch: false,
+		},
+		{
+			name:      "unrelated stderr",
+			startErr:  startErr,
+			stderr:    "unexpected EOF while starting engine",
+			socket:    socketPath,
+			wantMatch: false,
+		},
+		{
+			name:      "missing socket path in stderr",
+			startErr:  startErr,
+			stderr:    "listen unix /tmp/other.sock: bind: operation not permitted",
+			socket:    socketPath,
+			wantMatch: false,
+		},
+		{
+			name:      "non permission startup failure",
+			startErr:  startErr,
+			stderr:    fmt.Sprintf("listen unix %s: address already in use", socketPath),
+			socket:    socketPath,
+			wantMatch: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.wantMatch, isSandboxUDSBindFailure(tc.startErr, tc.stderr, tc.socket))
+		})
+	}
 }

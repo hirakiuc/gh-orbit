@@ -2,18 +2,69 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func requireLoopbackHTTPCapability(t *testing.T) {
+	t.Helper()
+
+	probes := []struct {
+		network string
+		address string
+	}{
+		{network: "tcp", address: "127.0.0.1:0"},
+		{network: "tcp6", address: "[::1]:0"},
+	}
+
+	var errs []error
+	for _, probe := range probes {
+		ln, err := net.Listen(probe.network, probe.address)
+		if err == nil {
+			_ = ln.Close()
+			return
+		}
+
+		errs = append(errs, err)
+		if !isLoopbackBindPermissionError(err) {
+			require.NoError(t, err, "loopback TCP bind required for e2e HTTP server (%s %s)", probe.network, probe.address)
+		}
+	}
+
+	if os.Getenv("CI") == "" {
+		t.Skipf("loopback TCP bind unavailable in local sandbox: ipv4=%v; ipv6=%v", errs[0], errs[1])
+	}
+
+	require.FailNowf(t, "loopback TCP bind unavailable in CI", "ipv4=%v; ipv6=%v", errs[0], errs[1])
+}
+
+func isLoopbackBindPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "operation not permitted") || strings.Contains(msg, "permission denied")
+}
+
 func TestCLI_Bootstrap(t *testing.T) {
+	requireLoopbackHTTPCapability(t)
+
 	// 1. Setup Mock GitHub API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -59,6 +110,8 @@ func TestCLI_Bootstrap(t *testing.T) {
 }
 
 func TestCLI_Sync(t *testing.T) {
+	requireLoopbackHTTPCapability(t)
+
 	// 1. Setup Mock GitHub API
 	notifID := "e2e-sync-123"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

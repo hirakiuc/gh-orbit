@@ -396,10 +396,19 @@ func runTUI() error {
 }
 
 func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdapter, userID string) error {
+	lifecycle := api.NewAppLifecycle(ctx)
+	lifecycleOwned := true
+	defer func() {
+		if lifecycleOwned {
+			lifecycle.Shutdown()
+		}
+	}()
+
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   config.DefaultConfig(), // Placeholder or from engine
 		Logger:   env.logger,
+		TaskRoot: lifecycle.Context(),
 		DB:       adapter, // Repository
 		Client:   nil,     // Client (unused in MCP mode)
 		Syncer:   adapter, // Syncer
@@ -408,6 +417,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 		Alerter:  adapter, // Alerter (Mock/Engine bridge)
 		Options: []tui.Option{
 			tui.WithConnectionMode("Connected"),
+			tui.WithOwnedSubsystemShutdown(),
 			tui.WithVersion(buildinfo.Version),
 		},
 	})
@@ -415,17 +425,27 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 		return err
 	}
 
-	return runProgram(ctx, m)
+	lifecycleOwned = false
+	return runProgram(lifecycle, m)
 }
 
 func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
 	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
 	eng.Client.SetRateLimitReporter(eng.Traffic.ReportRateLimit)
 
+	lifecycle := api.NewAppLifecycle(ctx)
+	lifecycleOwned := true
+	defer func() {
+		if lifecycleOwned {
+			lifecycle.Shutdown()
+		}
+	}()
+
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   eng.Config,
 		Logger:   env.logger,
+		TaskRoot: lifecycle.Context(),
 		DB:       eng.DB,
 		Client:   eng.Client,
 		Syncer:   eng.Sync,
@@ -443,14 +463,25 @@ func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.Core
 		return err
 	}
 
-	return runProgram(ctx, m)
+	lifecycleOwned = false
+	return runProgram(lifecycle, m)
 }
 
-func runProgram(ctx context.Context, m *tui.Model) error {
-	lifecycle := api.NewAppLifecycle(ctx)
-	defer lifecycle.Shutdown()
+type teaProgram interface {
+	Run() (tea.Model, error)
+}
 
-	p := tea.NewProgram(m, tea.WithContext(lifecycle.Context()))
+var newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
+	return tea.NewProgram(m, opts...)
+}
+
+func runProgram(lifecycle *api.AppLifecycle, m *tui.Model) error {
+	defer func() {
+		lifecycle.Shutdown()
+		m.Shutdown()
+	}()
+
+	p := newTeaProgram(m, tea.WithContext(lifecycle.Context()))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
