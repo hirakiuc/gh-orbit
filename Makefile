@@ -26,6 +26,9 @@ else
     SED_INPLACE := sed -i
 endif
 
+# Serena Version
+SERENA_VERSION=v1.5.1
+
 # --- Top-Level (Meta) Targets ---
 
 .PHONY: all build cockpit test lint fmt clean check help quality quality-report quality-mutation task reset-task
@@ -240,7 +243,12 @@ native/clean:
 
 serena:
 	@echo "Starting Serena MCP server..."
-	@uvx --from git+https://github.com/oraios/serena serena start-mcp-server --transport streamable-http --host localhost --port 9121 --project . --context ide-assistant
+	@uvx --from git+https://github.com/oraios/serena@${SERENA_VERSION} serena start-mcp-server --transport streamable-http --host localhost --port 9121 --project . --context ide-assistant
+
+serena/codex:
+	@echo "Starting Serena MCP server for codex..."
+	@uvx --from git+https://github.com/oraios/serena@${SERENA_VERSION} serena start-mcp-server --transport streamable-http --host localhost --port 9121 --project . --context codex
+
 
 roadmap:
 	@echo "--- Project Roadmap (GitHub Milestones) ---"
