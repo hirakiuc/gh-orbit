@@ -19,3 +19,43 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: chore
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: swift
+    directory: "/native/OrbitCockpit"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - swift
+    commit-message:
+      prefix: chore
+    groups:
+      swift-dependencies:
+        patterns:
+          - "*"
