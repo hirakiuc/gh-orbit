@@ -8,7 +8,10 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCoreEngine_Initialization(t *testing.T) {
@@ -57,5 +60,36 @@ func TestNewCoreEngine_Guards(t *testing.T) {
 		_, err := NewCoreEngine(ctx, cfg, logger, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "executor is required")
+	})
+}
+
+func TestCoreEngine_Shutdown_IntegratedModeOwnsSharedServices(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.Default()
+
+	mockSyncer := mocks.NewMockSyncer(t)
+	mockEnricher := mocks.NewMockEnricher(t)
+	mockTraffic := mocks.NewMockTrafficController(t)
+	mockAlerter := mocks.NewMockAlerter(t)
+
+	usableCleanupCtx := mock.MatchedBy(func(ctx context.Context) bool {
+		return ctx != nil
+	})
+
+	mockSyncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	mockEnricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	mockTraffic.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+	mockAlerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
+
+	engine := &CoreEngine{
+		Logger:  logger,
+		Sync:    mockSyncer,
+		Enrich:  mockEnricher,
+		Traffic: mockTraffic,
+		Alert:   mockAlerter,
+	}
+
+	require.NotPanics(t, func() {
+		engine.Shutdown(ctx)
 	})
 }
