@@ -164,6 +164,13 @@ func (s *MCPServer) eventLoop(ctx context.Context) {
 	}
 }
 
+func (s *MCPServer) publishNotificationsChanged() {
+	if s.engine == nil || s.engine.Bus == nil {
+		return
+	}
+	s.engine.Bus.Publish(EventNotificationsChanged)
+}
+
 func (s *MCPServer) handleStaleSocket() error {
 	if _, err := os.Stat(s.socket); os.IsNotExist(err) {
 		return nil
@@ -383,6 +390,7 @@ func (s *MCPServer) registerTools() {
 		if err := s.engine.DB.MarkReadLocally(ctx, id, read); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", err)), nil
 		}
+		s.publishNotificationsChanged()
 		if read {
 			if err := s.engine.Client.MarkThreadAsRead(ctx, id); err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", err)), nil
@@ -412,6 +420,7 @@ func (s *MCPServer) registerTools() {
 		if err := s.engine.DB.SetPriority(ctx, id, level); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", err)), nil
 		}
+		s.publishNotificationsChanged()
 		return mcp.NewToolResultText("Priority updated"), nil
 	})
 
