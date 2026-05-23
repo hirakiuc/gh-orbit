@@ -12,17 +12,104 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func isCI() bool {
+	return os.Getenv("CI") != ""
+}
+
+func isUnixSocketBindPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "operation not permitted") || strings.Contains(msg, "permission denied")
+}
+
+func waitForUDSServer(t *testing.T, socketPath string, errCh <-chan error) {
+	t.Helper()
+
+	var serveErr error
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(socketPath); err == nil {
+			return
+		}
+
+		select {
+		case serveErr = <-errCh:
+			if isUnixSocketBindPermissionError(serveErr) && !isCI() {
+				t.Skipf("UDS bind unavailable in local sandbox: %v", serveErr)
+			}
+		default:
+		}
+
+		if serveErr != nil {
+			break
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if serveErr != nil {
+		t.Fatalf("server failed to create UDS socket: %v", serveErr)
+	}
+	t.Fatalf("server failed to create UDS socket within timeout: %s", socketPath)
+}
+
+func newShortSocketPath(t *testing.T, name string) string {
+	t.Helper()
+
+	require.NoError(t, os.MkdirAll("tmp", 0o700))
+	dir, err := os.MkdirTemp("tmp", "mcp-uds-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	return filepath.Join(dir, name)
+}
+
+func dialUnixEventually(t *testing.T, socketPath string) net.Conn {
+	t.Helper()
+
+	var conn net.Conn
+	require.Eventually(t, func() bool {
+		var err error
+		conn, err = net.Dial("unix", socketPath)
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond)
+
+	return conn
+}
+
+func readJSONLine(t *testing.T, conn net.Conn, reader *bufio.Reader, timeout time.Duration) map[string]any {
+	t.Helper()
+
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(timeout)))
+	line, err := reader.ReadString('\n')
+	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Time{}))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(line), &payload))
+	return payload
+}
 
 func TestMCPServer_UDSHandshake(t *testing.T) {
 	// Setup CoreEngine
@@ -32,11 +119,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 	cfg := config.DefaultConfig()
 	executor := api.NewOSCommandExecutor()
 
-	// Ensure project-local tmp exists for socket
-	cwd, _ := os.Getwd()
-	tmpDir := filepath.Join(cwd, "../../tmp")
-	_ = os.MkdirAll(tmpDir, 0o700)
-	socketPath := filepath.Join(tmpDir, "mcp-test.sock")
+	socketPath := newShortSocketPath(t, "mcp-test.sock")
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	eng, err := NewCoreEngine(ctx, cfg, logger, executor)
@@ -54,12 +137,10 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 		errChan <- server.Serve(ctx)
 	}()
 
-	// Give server a moment to start
-	time.Sleep(200 * time.Millisecond)
+	waitForUDSServer(t, socketPath, errChan)
 
-	// Connect to UDS
-	conn, err := net.Dial("unix", socketPath)
-	require.NoError(t, err)
+	// Connect to UDS once the listener is ready.
+	conn := dialUnixEventually(t, socketPath)
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -112,10 +193,7 @@ func TestMCPServer_ProtocolChaos(t *testing.T) {
 	executor := api.NewOSCommandExecutor()
 	logger := slog.Default()
 
-	cwd, _ := os.Getwd()
-	tmpDir := filepath.Join(cwd, "../../tmp")
-	_ = os.MkdirAll(tmpDir, 0o700)
-	socketPath := filepath.Join(tmpDir, "mcp-chaos-test.sock")
+	socketPath := newShortSocketPath(t, "mcp-chaos-test.sock")
 
 	eng, err := NewCoreEngine(ctx, cfg, logger, executor)
 	if err != nil {
@@ -125,12 +203,12 @@ func TestMCPServer_ProtocolChaos(t *testing.T) {
 	defer eng.Shutdown(ctx)
 
 	server := NewMCPServer(eng, socketPath, true, false)
-	go func() { _ = server.Serve(ctx) }()
-	time.Sleep(100 * time.Millisecond)
+	errChan := make(chan error, 1)
+	go func() { errChan <- server.Serve(ctx) }()
+	waitForUDSServer(t, socketPath, errChan)
 
 	t.Run("Malformed JSON", func(t *testing.T) {
-		conn, err := net.Dial("unix", socketPath)
-		require.NoError(t, err)
+		conn := dialUnixEventually(t, socketPath)
 		defer func() { _ = conn.Close() }()
 
 		_, _ = fmt.Fprintf(conn, "{invalid-json\n")
@@ -139,8 +217,7 @@ func TestMCPServer_ProtocolChaos(t *testing.T) {
 	})
 
 	t.Run("Unexpected Disconnect", func(t *testing.T) {
-		conn, err := net.Dial("unix", socketPath)
-		require.NoError(t, err)
+		conn := dialUnixEventually(t, socketPath)
 		// Immediate close
 		_ = conn.Close()
 		time.Sleep(50 * time.Millisecond)
@@ -155,10 +232,7 @@ func TestMCPServer_GracefulShutdown(t *testing.T) {
 
 	executor := api.NewOSCommandExecutor()
 
-	cwd, _ := os.Getwd()
-	tmpDir := filepath.Join(cwd, "../../tmp")
-	_ = os.MkdirAll(tmpDir, 0o700)
-	socketPath := filepath.Join(tmpDir, "mcp-shutdown-test.sock")
+	socketPath := newShortSocketPath(t, "mcp-shutdown-test.sock")
 
 	// Use a buffer to capture logs
 	var logBuf strings.Builder
@@ -178,8 +252,7 @@ func TestMCPServer_GracefulShutdown(t *testing.T) {
 		errChan <- server.Serve(ctx)
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
+	waitForUDSServer(t, socketPath, errChan)
 
 	// Trigger shutdown
 	cancel()
@@ -193,6 +266,164 @@ func TestMCPServer_GracefulShutdown(t *testing.T) {
 
 	// Verify no "failed to accept connection" errors in log
 	assert.NotContains(t, logBuf.String(), "failed to accept connection")
+}
+
+func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
+	newTestServer := func(t *testing.T) (*MCPServer, *mocks.MockRepository, *mocks.MockClient) {
+		t.Helper()
+
+		mockRepo := mocks.NewMockRepository(t)
+		mockGH := mocks.NewMockClient(t)
+		mockSync := mocks.NewMockSyncer(t)
+
+		eng := &CoreEngine{
+			Logger: slog.Default(),
+			Bus:    NewEventBus(),
+			DB:     mockRepo,
+			Client: mockGH,
+			Sync:   mockSync,
+		}
+
+		return NewMCPServer(eng, filepath.Join(t.TempDir(), "mcp-mutation.sock"), true, false), mockRepo, mockGH
+	}
+
+	newSession := func(t *testing.T, srv *MCPServer) (context.Context, net.Conn, *bufio.Reader, func()) {
+		t.Helper()
+
+		parentCtx, cancel := context.WithCancel(context.Background())
+		serverConn, clientConn := net.Pipe()
+		session, sessionCtx, cleanup, err := srv.setupSession(parentCtx, serverConn)
+		require.NoError(t, err)
+		session.Initialize()
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			srv.runNotificationDispatcher(sessionCtx, session)
+		}()
+
+		eventLoopDone := make(chan struct{})
+		go func() {
+			defer close(eventLoopDone)
+			srv.eventLoop(parentCtx)
+		}()
+
+		require.Eventually(t, func() bool {
+			srv.engine.Bus.mu.RLock()
+			defer srv.engine.Bus.mu.RUnlock()
+			return len(srv.engine.Bus.subscribers[EventNotificationsChanged]) == 1 &&
+				len(srv.engine.Bus.subscribers[EventEnrichmentUpdated]) == 1
+		}, time.Second, 10*time.Millisecond)
+
+		return sessionCtx, clientConn, bufio.NewReader(clientConn), func() {
+			cancel()
+			cleanup()
+			_ = clientConn.Close()
+			_ = serverConn.Close()
+			<-done
+			<-eventLoopDone
+		}
+	}
+
+	callTool := func(t *testing.T, srv *MCPServer, sessionCtx context.Context, requestID int, toolName string, args map[string]any) map[string]any {
+		t.Helper()
+
+		payload, err := json.Marshal(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      requestID,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name":      toolName,
+				"arguments": args,
+			},
+		})
+		require.NoError(t, err)
+
+		message := srv.server.HandleMessage(sessionCtx, payload)
+		data, err := json.Marshal(message)
+		require.NoError(t, err)
+
+		var response map[string]any
+		require.NoError(t, json.Unmarshal(data, &response))
+		return response
+	}
+
+	readNotification := func(t *testing.T, conn net.Conn, reader *bufio.Reader, timeout time.Duration) map[string]any {
+		t.Helper()
+		return readJSONLine(t, conn, reader, timeout)
+	}
+
+	t.Run("set_priority success sends resources/list_changed", func(t *testing.T) {
+		srv, mockRepo, _ := newTestServer(t)
+		sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		mockRepo.EXPECT().
+			SetPriority(mock.Anything, "1", 2).
+			Return(nil).
+			Once()
+
+		response := callTool(t, srv, sessionCtx, 2, "set_priority", map[string]any{
+			"id":    "1",
+			"level": 2,
+		})
+		notification := readNotification(t, clientConn, reader, time.Second)
+
+		require.Contains(t, response, "result")
+		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
+	})
+
+	t.Run("mark_read remote failure still notifies after local commit", func(t *testing.T) {
+		srv, mockRepo, mockGH := newTestServer(t)
+		sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		mockRepo.EXPECT().
+			MarkReadLocally(mock.Anything, "2", true).
+			Return(nil).
+			Once()
+		mockGH.EXPECT().
+			MarkThreadAsRead(mock.Anything, "2").
+			Return(errors.New("boom")).
+			Once()
+
+		response := callTool(t, srv, sessionCtx, 2, "mark_read", map[string]any{
+			"id":   "2",
+			"read": true,
+		})
+		notification := readNotification(t, clientConn, reader, time.Second)
+
+		result, ok := response["result"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, true, result["isError"])
+		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
+	})
+
+	t.Run("mark_read local failure does not notify before commit", func(t *testing.T) {
+		srv, mockRepo, _ := newTestServer(t)
+		sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		mockRepo.EXPECT().
+			MarkReadLocally(mock.Anything, "3", true).
+			Return(errors.New("write failed")).
+			Once()
+
+		response := callTool(t, srv, sessionCtx, 2, "mark_read", map[string]any{
+			"id":   "3",
+			"read": true,
+		})
+		result, ok := response["result"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, true, result["isError"])
+
+		require.NoError(t, clientConn.SetReadDeadline(time.Now().Add(250*time.Millisecond)))
+		_, err := reader.ReadString('\n')
+		var netErr net.Error
+		require.ErrorAs(t, err, &netErr)
+		assert.True(t, netErr.Timeout(), "expected no notification after pre-commit failure")
+		require.NoError(t, clientConn.SetReadDeadline(time.Time{}))
+	})
 }
 
 func TestMCPAdapter_Debounce(t *testing.T) {
