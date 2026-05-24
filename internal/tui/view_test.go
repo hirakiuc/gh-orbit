@@ -130,7 +130,7 @@ func TestRenderHeader_States(t *testing.T) {
 		mockAlerter := mocks.NewMockAlerter(t)
 		mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 		mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
-		backend, err := api.NewTUIBackendClient("user", mocks.NewMockRepository(t), mockSyncer, mocks.NewMockEnricher(t), nil)
+		backend, err := api.NewBackend("user", mocks.NewMockRepository(t), mockSyncer, mocks.NewMockEnricher(t), nil, nil, nil, nil)
 		assert.NoError(t, err)
 
 		m, err := NewModel(ModelParams{

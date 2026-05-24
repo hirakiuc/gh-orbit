@@ -220,8 +220,6 @@ func (e *EnrichmentEngine) PersistFetchedDetail(ctx context.Context, id, sourceU
 	e.rememberCacheEntryLocked(sourceURL, res)
 	e.mu.Unlock()
 
-	e.OnMutation()
-
 	return nil
 }
 
@@ -237,8 +235,6 @@ func (e *EnrichmentEngine) PersistIndependentDetail(ctx context.Context, id, nod
 		e.invalidateByURLLocked(htmlURL)
 	}
 	e.mu.Unlock()
-
-	e.OnMutation()
 
 	return nil
 }

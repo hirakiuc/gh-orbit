@@ -25,7 +25,7 @@ func TestNewModel_Guards(t *testing.T) {
 	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
-	backend, err := api.NewTUIBackendClient("u", mockRepo, mockSyncer, mockEnricher, nil)
+	backend, err := api.NewBackend("u", mockRepo, mockSyncer, mockEnricher, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	t.Run("Missing UserID", func(t *testing.T) {
