@@ -2,6 +2,8 @@
 
 This document describes the high-level design and engineering standards of `gh-orbit`.
 
+For the approved v2 migration direction around backend authority, embedded-TUI support, and transport boundaries, see [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md).
+
 ## 1. Core Architecture (TEA + DI)
 
 `gh-orbit` follows **The Elm Architecture (TEA)** via the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework. To ensure testability and decoupling, we employ strict **Interface-Based Dependency Injection**.
