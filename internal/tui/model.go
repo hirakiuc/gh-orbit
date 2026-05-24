@@ -451,6 +451,21 @@ type priorityUpdatedMsg struct {
 	toast         string
 }
 
+type markReadReconcileStatus uint8
+
+const (
+	markReadReconcileSuccess markReadReconcileStatus = iota
+	markReadReconcileLocalFailure
+	markReadReconcileRemoteFailure
+)
+
+type markReadReconciledMsg struct {
+	notifications []triage.NotificationWithState
+	status        markReadReconcileStatus
+	err           error
+	toast         string
+}
+
 type syncCompleteMsg struct {
 	rateLimit models.RateLimitInfo
 	IsForced  bool
