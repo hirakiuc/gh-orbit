@@ -91,7 +91,7 @@ func (a *MCPAdapter) handleResourceUpdate(n mcp.JSONRPCNotification) {
 	})
 }
 
-// --- types.Repository Implementation ---
+// --- types.NotificationStore Implementation ---
 
 func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
 	resp, err := a.client.ReadResource(ctx, mcp.ReadResourceRequest{
@@ -183,40 +183,9 @@ func (a *MCPAdapter) PersistIndependentDetail(ctx context.Context, id, nodeID, b
 	return err
 }
 
-// No-ops for client mode (Engine is authority)
 func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error {
 	return a.PersistIndependentDetail(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
 }
-
-func (a *MCPAdapter) UpdateResourceStateByNodeID(ctx context.Context, nodeID, state, resourceSubState string) error {
-	return nil
-}
-func (a *MCPAdapter) UpdateSyncMeta(ctx context.Context, s models.SyncMeta) error { return nil }
-func (a *MCPAdapter) MarkNotifiedBatch(ctx context.Context, ids []string) error   { return nil }
-func (a *MCPAdapter) UpdateBridgeHealth(ctx context.Context, h models.BridgeHealth) error {
-	return nil
-}
-
-// Stubs for remaining Repository methods
-func (a *MCPAdapter) GetNotification(ctx context.Context, id string) (*triage.NotificationWithState, error) {
-	return nil, nil
-}
-
-func (a *MCPAdapter) GetSyncMeta(ctx context.Context, userID, key string) (*models.SyncMeta, error) {
-	return nil, nil
-}
-
-func (a *MCPAdapter) GetBridgeHealth(ctx context.Context) (*models.BridgeHealth, error) {
-	return nil, nil
-}
-
-func (a *MCPAdapter) UpsertNotifications(ctx context.Context, notifications []triage.Notification) error {
-	return nil
-}
-func (a *MCPAdapter) ArchiveThread(ctx context.Context, id string) error   { return nil }
-func (a *MCPAdapter) UnarchiveThread(ctx context.Context, id string) error { return nil }
-func (a *MCPAdapter) MuteThread(ctx context.Context, id string) error      { return nil }
-func (a *MCPAdapter) UnmuteThread(ctx context.Context, id string) error    { return nil }
 
 // --- types.Syncer Implementation ---
 
@@ -373,8 +342,8 @@ func (a *MCPAdapter) TestNotify(ctx context.Context, title, subtitle, body strin
 
 // Ensure MCPAdapter implements required interfaces
 var (
-	_ types.Repository = (*MCPAdapter)(nil)
-	_ types.Syncer     = (*MCPAdapter)(nil)
-	_ types.Enricher   = (*MCPAdapter)(nil)
-	_ api.Alerter      = (*MCPAdapter)(nil)
+	_ types.NotificationStore = (*MCPAdapter)(nil)
+	_ types.Syncer            = (*MCPAdapter)(nil)
+	_ types.Enricher          = (*MCPAdapter)(nil)
+	_ api.Alerter             = (*MCPAdapter)(nil)
 )

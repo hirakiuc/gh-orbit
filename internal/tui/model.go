@@ -51,14 +51,6 @@ type DetailModel struct {
 	lastRenderedWidth int
 }
 
-// notificationStore defines the notification persistence behavior the TUI needs.
-type notificationStore interface {
-	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
-	MarkReadLocally(ctx context.Context, id string, isRead bool) error
-	SetPriority(ctx context.Context, id string, priority int) error
-	EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error
-}
-
 // Model represents the application state.
 type Model struct {
 	// Sub-Models
@@ -66,7 +58,7 @@ type Model struct {
 	detailView DetailModel
 
 	// Shared State & Services (Interfaces)
-	db               notificationStore
+	db               types.NotificationStore
 	client           github.Client
 	sync             types.Syncer
 	enrich           types.Enricher
@@ -174,7 +166,7 @@ type ModelParams struct {
 	Config   *config.Config
 	Logger   *slog.Logger
 	TaskRoot context.Context
-	DB       notificationStore
+	DB       types.NotificationStore
 	Client   github.Client
 	Syncer   types.Syncer
 	Enricher types.Enricher
