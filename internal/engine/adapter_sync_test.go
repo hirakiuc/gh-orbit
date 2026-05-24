@@ -234,3 +234,8 @@ func TestMCPAdapter_SyncRejectsInvalidStructuredContract(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `invalid sync tool status "unknown"`)
 }
+
+func TestMCPAdapter_ImplementsConnectedNotificationStoreBoundary(t *testing.T) {
+	var store types.NotificationStore = NewMCPAdapter(nil)
+	require.NotNil(t, store)
+}

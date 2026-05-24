@@ -53,8 +53,9 @@ func (s *SyncEngine) Fetcher() github.Fetcher {
 
 // Shutdown ensures all background services are stopped gracefully.
 func (s *SyncEngine) Shutdown(ctx context.Context) {
+	// Injected alerts are caller-owned; SyncEngine only shuts down itself.
 	if s.alerts != nil {
-		s.alerts.Shutdown(ctx)
+		s.logger.DebugContext(ctx, "sync engine shutdown leaves injected alerts to caller ownership")
 	}
 	s.logger.DebugContext(ctx, "sync engine shutdown complete")
 }

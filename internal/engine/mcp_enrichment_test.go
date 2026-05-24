@@ -36,6 +36,14 @@ func newInMemoryMCPClient(t *testing.T, srv *MCPServer) *mcpclient.Client {
 		_ = stdioServer.Listen(ctx, serverReader, serverWriter)
 	}()
 
+	if srv.engine != nil && srv.engine.Bus != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			srv.eventLoop(ctx)
+		}()
+	}
+
 	var logBuf bytes.Buffer
 	transport := clienttransport.NewIO(clientReader, clientWriter, io.NopCloser(&logBuf))
 	require.NoError(t, transport.Start(ctx))
@@ -68,6 +76,7 @@ func newTestMCPServerForEnrichment(t *testing.T) (*MCPServer, *mocks.MockReposit
 	mockSync := mocks.NewMockSyncer(t)
 
 	engine := &CoreEngine{
+		Bus:    NewEventBus(),
 		DB:     mockRepo,
 		Enrich: mockEnrich,
 		Client: mockGH,

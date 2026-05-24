@@ -231,6 +231,23 @@ func TestNewSyncEngine_Guards(t *testing.T) {
 	})
 }
 
+func TestSyncEngine_Shutdown_DoesNotOwnInjectedAlerts(t *testing.T) {
+	logger := slog.Default()
+	mockFetcher := mocks.NewMockFetcher(t)
+	mockRepo := mocks.NewMockSyncRepository(t)
+	mockAlerter := mocks.NewMockAlerter(t)
+
+	engine, err := NewSyncEngine(SyncParams{
+		Fetcher: mockFetcher,
+		DB:      mockRepo,
+		Alerts:  mockAlerter,
+		Logger:  logger,
+	})
+	require.NoError(t, err)
+
+	engine.Shutdown(context.Background())
+}
+
 func TestConditionalRequest(t *testing.T) {
 	client := github.NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 		if r.Header.Get("If-None-Match") == "etag-123" {
