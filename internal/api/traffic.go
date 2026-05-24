@@ -210,8 +210,11 @@ func (c *APITrafficController) UpdateRateLimit(ctx context.Context, info models.
 }
 
 func (c *APITrafficController) supervisor() {
-	// We use a ticker to periodically check for workers becoming available
-	// while avoiding tight loop spinning.
+	// Keep the coordinator polling-based for now. The fixed 2ms ticker lets
+	// worker completion and rate-limit changes become visible without adding a
+	// second wakeup protocol between Submit, workers, and shutdown. Revisit this
+	// only if profiling shows measurable idle scheduler cost or if coordination
+	// bugs appear that need causal wakeups instead of periodic polling.
 	ticker := time.NewTicker(2 * time.Millisecond)
 	defer ticker.Stop()
 
