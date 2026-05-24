@@ -360,7 +360,7 @@ func runTUI() error {
 				adapter := engine.NewMCPAdapter(mcpClient)
 
 				user := "mcp-user" // Placeholder until tool added
-				return launchTUIMCP(ctx, env, adapter, user)
+				return launchTUIMCP(ctx, env, cfg, adapter, user)
 			}
 			if requireEngine {
 				return fmt.Errorf("cockpit-managed launch requires MCP engine initialization: %w", err)
@@ -395,7 +395,7 @@ func runTUI() error {
 	return launchTUIStandalone(ctx, env, eng, user.Login)
 }
 
-func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdapter, userID string) error {
+func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, adapter *engine.MCPAdapter, userID string) error {
 	lifecycle := api.NewAppLifecycle(ctx)
 	lifecycleOwned := true
 	defer func() {
@@ -406,7 +406,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
-		Config:   config.DefaultConfig(), // Placeholder or from engine
+		Config:   cfg,
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
 		DB:       adapter, // NotificationStore

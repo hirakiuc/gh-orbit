@@ -31,6 +31,7 @@ type SyncParams struct {
 type EnrichParams struct {
 	Client github.Client
 	DB     types.EnrichmentRepository
+	Config *config.Config
 	Logger *slog.Logger
 }
 
