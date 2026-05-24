@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -91,7 +92,7 @@ func (a *MCPAdapter) handleResourceUpdate(n mcp.JSONRPCNotification) {
 	})
 }
 
-// --- types.NotificationStore Implementation ---
+// --- types.TUIBackend / types.NotificationStore Implementation ---
 
 func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
 	resp, err := a.client.ReadResource(ctx, mcp.ReadResourceRequest{
@@ -120,8 +121,8 @@ func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.Notificati
 	return notifs, err
 }
 
-func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
-	_, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (types.MarkReadResult, error) {
+	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "mark_read",
 			Arguments: map[string]any{
@@ -130,6 +131,24 @@ func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool
 			},
 		},
 	})
+	if err != nil {
+		return types.MarkReadResult{}, err
+	}
+	if resp == nil {
+		return types.MarkReadResult{}, errors.New("mark_read returned nil result")
+	}
+	if resp.IsError {
+		toolErr := decodeToolResultError("mark_read", resp)
+		if api.IsRemoteMarkReadFailure(toolErr) {
+			return types.MarkReadResult{Status: types.MarkReadRemoteFailure, Err: toolErr}, nil
+		}
+		return types.MarkReadResult{}, toolErr
+	}
+	return types.MarkReadResult{Status: types.MarkReadSuccess}, nil
+}
+
+func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
+	_, err := a.MarkRead(ctx, id, isRead)
 	return err
 }
 
@@ -187,9 +206,9 @@ func (a *MCPAdapter) EnrichNotification(ctx context.Context, id, nodeID, body, a
 	return a.PersistIndependentDetail(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
 }
 
-// --- types.Syncer Implementation ---
+// --- types.TUIBackend Implementation ---
 
-func (a *MCPAdapter) Sync(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error) {
+func (a *MCPAdapter) Sync(ctx context.Context, force bool) (models.RateLimitInfo, error) {
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, types.ConnectedSyncTimeout)
@@ -253,6 +272,19 @@ func decodeSyncToolResult(resp *mcp.CallToolResult) (syncToolResult, bool) {
 	}
 
 	return payload, true
+}
+
+func decodeToolResultError(toolName string, resp *mcp.CallToolResult) error {
+	if resp == nil {
+		return fmt.Errorf("%s error: empty response", toolName)
+	}
+	if len(resp.Content) == 0 {
+		return fmt.Errorf("%s error: unknown tool failure", toolName)
+	}
+	if text, ok := resp.Content[0].(mcp.TextContent); ok && text.Text != "" {
+		return errors.New(text.Text)
+	}
+	return fmt.Errorf("%s error: unexpected tool failure payload", toolName)
 }
 
 func (a *MCPAdapter) Shutdown(ctx context.Context) {
@@ -342,8 +374,7 @@ func (a *MCPAdapter) TestNotify(ctx context.Context, title, subtitle, body strin
 
 // Ensure MCPAdapter implements required interfaces
 var (
-	_ types.NotificationStore = (*MCPAdapter)(nil)
-	_ types.Syncer            = (*MCPAdapter)(nil)
-	_ types.Enricher          = (*MCPAdapter)(nil)
-	_ api.Alerter             = (*MCPAdapter)(nil)
+	_ types.TUIBackend = (*MCPAdapter)(nil)
+	_ types.Enricher   = (*MCPAdapter)(nil)
+	_ api.Alerter      = (*MCPAdapter)(nil)
 )

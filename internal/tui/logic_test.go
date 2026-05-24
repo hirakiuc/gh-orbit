@@ -144,7 +144,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTimeoutClearsSyncing(t *t
 		types.ConnectedSyncTimeout = originalTimeout
 	})
 
-	m.sync.(*mocks.MockSyncer).EXPECT().
+	testSyncer(m).EXPECT().
 		Sync(mock.Anything, "test-user", true).
 		RunAndReturn(func(ctx context.Context, userID string, force bool) (models.RateLimitInfo, error) {
 			<-ctx.Done()
@@ -195,7 +195,7 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedA
 	m.traffic = nil
 	m.ui.SetSyncing(true)
 
-	m.sync.(*mocks.MockSyncer).EXPECT().
+	testSyncer(m).EXPECT().
 		Sync(mock.Anything, "test-user", false).
 		Return(models.RateLimitInfo{Remaining: 999}, types.ErrSyncIntervalNotReached).
 		Once()
@@ -216,13 +216,13 @@ func TestModel_SyncNotificationsWithForce_ConnectedModeTreatsIntervalNotReachedA
 
 func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	m := newTestModel(t)
-	m.client = nil
+	testBackend(m).Client = nil
 	m.traffic = nil
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
-	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
 	}, nil).Once()
 
@@ -247,9 +247,9 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
-	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
-	m.client.(*mocks.MockClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
+	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
 	}, nil).Once()
 
@@ -270,14 +270,14 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 
 func TestModel_MarkReadByID_LocalFailureReconcilesToPersistedState(t *testing.T) {
 	m := newTestModel(t)
-	m.client = nil
+	testBackend(m).Client = nil
 	m.traffic = nil
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	localErr := assert.AnError
-	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
 	}, nil).Once()
 
@@ -298,15 +298,15 @@ func TestModel_MarkReadByID_LocalFailureReconcilesToPersistedState(t *testing.T)
 
 func TestModel_MarkReadByID_LocalFailureReloadFailureRollsBackOptimisticState(t *testing.T) {
 	m := newTestModel(t)
-	m.client = nil
+	testBackend(m).Client = nil
 	m.traffic = nil
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	localErr := assert.AnError
 	reloadErr := sql.ErrConnDone
-	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, reloadErr).Once()
+	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, reloadErr).Once()
 
 	cmd := m.MarkReadByID("1", true)
 	require.NotNil(t, cmd)
@@ -326,9 +326,9 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	remoteErr := assert.AnError
-	m.db.(*mocks.MockRepository).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
-	m.client.(*mocks.MockClient).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(remoteErr).Once()
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
+	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(remoteErr).Once()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
 	}, nil).Once()
 
@@ -349,7 +349,7 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 
 func TestModel_Transition_EdgeCases(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 	m.allNotifications = []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}
 	m.applyFilters()
 
@@ -441,7 +441,7 @@ func TestModel_HandleTransitionError_ManualSyncShowsFailureToast(t *testing.T) {
 
 func TestModel_Transition_Navigation(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{
@@ -474,7 +474,7 @@ func TestModel_Transition_Navigation(t *testing.T) {
 
 func TestModel_Transition_Priority(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{GitHubID: "1"},
@@ -497,7 +497,7 @@ func TestModel_Transition_Priority(t *testing.T) {
 
 func TestModel_Transition_DetailRefreshStartsFetchingViaAction(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{
@@ -525,7 +525,7 @@ func TestModel_Transition_DetailRefreshStartsFetchingViaAction(t *testing.T) {
 
 func TestModel_Transition_Tabs(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	// 1. Next Tab
 	msg := keyPress("tab")
@@ -541,7 +541,7 @@ func TestModel_Transition_Tabs(t *testing.T) {
 
 func TestModel_Transition_Enrichment(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notifs := []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()}},
@@ -568,7 +568,7 @@ func TestModel_Transition_Enrichment(t *testing.T) {
 
 func TestModel_Enrichment_Deduplication(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{GitHubID: "1", IsEnriched: false, UpdatedAt: time.Now()},
@@ -592,7 +592,7 @@ func TestModel_Enrichment_Deduplication(t *testing.T) {
 
 func TestModel_Enrichment_SurgicalUpdate(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	notif := triage.NotificationWithState{
 		Notification: triage.Notification{
@@ -619,7 +619,7 @@ func TestModel_Enrichment_SurgicalUpdate(t *testing.T) {
 
 func TestModel_Transition_Filtering(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	// 1. Filter PRs
 	msg := keyPress("p") // matches FilterPR
@@ -731,7 +731,7 @@ func TestHelpers(t *testing.T) {
 
 func TestModel_Transition_Global(t *testing.T) {
 	m := newTestModel(t)
-	m.db.(*mocks.MockRepository).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Maybe()
 
 	// Window Size
 	actions := m.Transition(tea.WindowSizeMsg{Width: 100, Height: 50}, 0)

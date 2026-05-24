@@ -108,7 +108,7 @@ func TestMCPAdapter_SyncAddsFallbackTimeoutWhenCallerHasNoDeadline(t *testing.T)
 		},
 	})
 
-	_, err := adapter.Sync(context.Background(), "user-1", true)
+	_, err := adapter.Sync(context.Background(), true)
 	require.Error(t, err)
 	assert.True(t, sawDeadline)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
@@ -137,7 +137,7 @@ func TestMCPAdapter_SyncRespectsCallerDeadline(t *testing.T) {
 		},
 	})
 
-	_, err := adapter.Sync(parentCtx, "user-1", true)
+	_, err := adapter.Sync(parentCtx, true)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Equal(t, parentDeadline, seenDeadline)
@@ -158,7 +158,7 @@ func TestMCPAdapter_SyncPassesThroughSuccessfulResponse(t *testing.T) {
 		},
 	})
 
-	rl, err := adapter.Sync(context.Background(), "user-1", true)
+	rl, err := adapter.Sync(context.Background(), true)
 	require.NoError(t, err)
 	assert.Equal(t, models.RateLimitInfo{Remaining: 123}, rl)
 }
@@ -178,7 +178,7 @@ func TestMCPAdapter_SyncReconstructsIntervalNotReachedFromStructuredResult(t *te
 		},
 	})
 
-	rl, err := adapter.Sync(context.Background(), "user-1", false)
+	rl, err := adapter.Sync(context.Background(), false)
 	assert.Equal(t, models.RateLimitInfo{Remaining: 456}, rl)
 	assert.ErrorIs(t, err, types.ErrSyncIntervalNotReached)
 }
@@ -194,7 +194,7 @@ func TestMCPAdapter_SyncFallsBackToLegacySuccessParsingWithoutStructuredContent(
 		},
 	})
 
-	rl, err := adapter.Sync(context.Background(), "user-1", true)
+	rl, err := adapter.Sync(context.Background(), true)
 	require.NoError(t, err)
 	assert.Equal(t, models.RateLimitInfo{Remaining: 789}, rl)
 }
@@ -211,7 +211,7 @@ func TestMCPAdapter_SyncFallsBackToLegacyErrorWithoutStructuredContent(t *testin
 		},
 	})
 
-	_, err := adapter.Sync(context.Background(), "user-1", true)
+	_, err := adapter.Sync(context.Background(), true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sync error: sync failed: boom")
 }
@@ -230,12 +230,51 @@ func TestMCPAdapter_SyncRejectsInvalidStructuredContract(t *testing.T) {
 		},
 	})
 
-	_, err := adapter.Sync(context.Background(), "user-1", true)
+	_, err := adapter.Sync(context.Background(), true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `invalid sync tool status "unknown"`)
 }
 
-func TestMCPAdapter_ImplementsConnectedNotificationStoreBoundary(t *testing.T) {
-	var store types.NotificationStore = NewMCPAdapter(nil)
-	require.NotNil(t, store)
+func TestMCPAdapter_MarkRead_ClassifiesRemoteFailureFromToolResult(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			require.Equal(t, "mark_read", request.Params.Name)
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					mcp.NewTextContent("failed to mark read on GitHub: boom"),
+				},
+			}, nil
+		},
+	})
+
+	result, err := adapter.MarkRead(context.Background(), "123", true)
+	require.NoError(t, err)
+	assert.Equal(t, types.MarkReadRemoteFailure, result.Status)
+	require.Error(t, result.Err)
+	assert.Contains(t, result.Err.Error(), "failed to mark read on GitHub: boom")
+}
+
+func TestMCPAdapter_MarkRead_TreatsLocalToolFailureAsError(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			require.Equal(t, "mark_read", request.Params.Name)
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					mcp.NewTextContent("failed to mark read locally: sqlite busy"),
+				},
+			}, nil
+		},
+	})
+
+	result, err := adapter.MarkRead(context.Background(), "123", true)
+	require.Error(t, err)
+	assert.Equal(t, types.MarkReadResult{}, result)
+	assert.Contains(t, err.Error(), "failed to mark read locally: sqlite busy")
+}
+
+func TestMCPAdapter_ImplementsTUIBackendBoundary(t *testing.T) {
+	var backend types.TUIBackend = NewMCPAdapter(nil)
+	require.NotNil(t, backend)
 }

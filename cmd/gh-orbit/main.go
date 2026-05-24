@@ -409,10 +409,7 @@ func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, ada
 		Config:   cfg,
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
-		DB:       adapter, // NotificationStore
-		Client:   nil,     // Client (unused in MCP mode)
-		Syncer:   adapter, // Syncer
-		Enricher: adapter, // Enricher
+		Backend:  adapter,
 		Traffic:  nil,     // Traffic (Engine handles it)
 		Alerter:  adapter, // Alerter (Mock/Engine bridge)
 		Options: []tui.Option{
@@ -441,15 +438,17 @@ func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.Core
 		}
 	}()
 
+	backend, err := api.NewTUIBackendClient(userID, eng.DB, eng.Sync, eng.Enrich, eng.Client)
+	if err != nil {
+		return err
+	}
+
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   eng.Config,
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
-		DB:       eng.DB,
-		Client:   eng.Client,
-		Syncer:   eng.Sync,
-		Enricher: eng.Enrich,
+		Backend:  backend,
 		Traffic:  eng.Traffic,
 		Alerter:  eng.Alert,
 		Options: []tui.Option{

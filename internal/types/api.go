@@ -126,6 +126,35 @@ type CommandExecutor interface {
 // ErrMsg is a common error message wrapper for Bubble Tea updates.
 type ErrMsg struct{ Err error }
 
+// MarkReadStatus describes the outcome of a backend-owned mark-read mutation.
+type MarkReadStatus uint8
+
+const (
+	MarkReadSuccess MarkReadStatus = iota
+	MarkReadRemoteFailure
+)
+
+// MarkReadResult captures the backend-visible outcome of a mark-read mutation.
+type MarkReadResult struct {
+	Status MarkReadStatus
+	Err    error
+}
+
+// TUIBackend defines the application-facing backend seam used by the TUI.
+// It is intentionally shaped around TUI use cases rather than persistence or
+// transport categories.
+type TUIBackend interface {
+	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
+	Sync(ctx context.Context, force bool) (models.RateLimitInfo, error)
+	MarkRead(ctx context.Context, id string, read bool) (MarkReadResult, error)
+	SetPriority(ctx context.Context, id string, priority int) error
+	FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error)
+	PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error
+	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult
+	BridgeStatus() BridgeStatus
+	Shutdown(ctx context.Context)
+}
+
 // NotificationStore defines the persistence surface the TUI needs in both
 // standalone and connected mode.
 type NotificationStore interface {
