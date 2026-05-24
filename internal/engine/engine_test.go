@@ -33,6 +33,7 @@ func TestCoreEngine_Initialization(t *testing.T) {
 
 	assert.NotNil(t, eng.Sync)
 	assert.NotNil(t, eng.Enrich)
+	assert.NotNil(t, eng.Backend)
 	assert.NotNil(t, eng.Traffic)
 	assert.NotNil(t, eng.Alert)
 	assert.NotNil(t, eng.DB)

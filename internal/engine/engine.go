@@ -19,6 +19,7 @@ type CoreEngine struct {
 	Bus     *EventBus
 	DB      types.Repository
 	Client  github.Client
+	Backend types.TUIBackend
 	Sync    types.Syncer
 	Enrich  types.Enricher
 	Traffic types.TrafficController
@@ -121,12 +122,34 @@ func NewCoreEngine(
 	}
 	syncer.OnMutation = func() { bus.Publish(EventNotificationsChanged) }
 
+	backend, err := api.NewBackend(
+		"",
+		database,
+		syncer,
+		enricher,
+		client,
+		func(ctx context.Context) (string, error) {
+			user, err := client.CurrentUser(ctx)
+			if err != nil {
+				return "", err
+			}
+			return user.Login, nil
+		},
+		func() { bus.Publish(EventNotificationsChanged) },
+		func() { bus.Publish(EventEnrichmentUpdated) },
+	)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+
 	return &CoreEngine{
 		Config:  cfg,
 		Logger:  logger,
 		Bus:     bus,
 		DB:      database,
 		Client:  client,
+		Backend: backend,
 		Sync:    syncer,
 		Enrich:  enricher,
 		Traffic: traffic,

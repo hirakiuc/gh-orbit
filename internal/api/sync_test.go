@@ -84,9 +84,12 @@ func TestSyncEngine_Sync(t *testing.T) {
 			Logger:  logger,
 		})
 		assert.NoError(t, err)
+		published := 0
+		engine.OnMutation = func() { published++ }
 		_, err = engine.Sync(ctx, userID, false)
 
 		require.NoError(t, err)
+		assert.Equal(t, 1, published)
 	})
 
 	t.Run("Skips Sync When Interval Not Reached", func(t *testing.T) {

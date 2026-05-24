@@ -438,17 +438,12 @@ func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.Core
 		}
 	}()
 
-	backend, err := api.NewTUIBackendClient(userID, eng.DB, eng.Sync, eng.Enrich, eng.Client)
-	if err != nil {
-		return err
-	}
-
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   userID,
 		Config:   eng.Config,
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
-		Backend:  backend,
+		Backend:  eng.Backend,
 		Traffic:  eng.Traffic,
 		Alerter:  eng.Alert,
 		Options: []tui.Option{
