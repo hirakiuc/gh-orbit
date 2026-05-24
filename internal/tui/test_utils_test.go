@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
@@ -45,15 +46,17 @@ func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
+	backend, err := api.NewTUIBackendClient(userID, mockRepo, mockSyncer, mockEnricher, mockClient)
+	if err != nil {
+		panic(err)
+	}
+
 	m, _ := NewModel(ModelParams{
 		UserID:   userID,
 		Config:   cfg,
 		Logger:   logger,
 		TaskRoot: taskRoot,
-		DB:       mockRepo,
-		Client:   mockClient,
-		Syncer:   mockSyncer,
-		Enricher: mockEnricher,
+		Backend:  backend,
 		Traffic:  mockTraffic,
 		Alerter:  mockAlerter,
 		Options: []Option{
@@ -87,6 +90,26 @@ func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 
 	m.ui.SetSize(80, 24)
 	return m
+}
+
+func testBackend(m *Model) *api.TUIBackendClient {
+	return m.backend.(*api.TUIBackendClient)
+}
+
+func testRepo(m *Model) *mocks.MockRepository {
+	return testBackend(m).Store.(*mocks.MockRepository)
+}
+
+func testClient(m *Model) *mocks.MockClient {
+	return testBackend(m).Client.(*mocks.MockClient)
+}
+
+func testSyncer(m *Model) *mocks.MockSyncer {
+	return testBackend(m).Syncer.(*mocks.MockSyncer)
+}
+
+func testEnricher(m *Model) *mocks.MockEnricher {
+	return testBackend(m).Enricher.(*mocks.MockEnricher)
 }
 
 func daysAgo(days int) time.Time {

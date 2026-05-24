@@ -44,15 +44,15 @@ func newRunProgramTestModel(t *testing.T, taskRoot context.Context, opts ...tui.
 
 	syncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	alerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+	backend, err := api.NewTUIBackendClient("user", repo, syncer, enricher, nil)
+	assert.NoError(t, err)
 
 	m, err := tui.NewModel(tui.ModelParams{
 		UserID:   "user",
 		Config:   cfg,
 		Logger:   logger,
 		TaskRoot: taskRoot,
-		DB:       repo,
-		Syncer:   syncer,
-		Enricher: enricher,
+		Backend:  backend,
 		Alerter:  alerter,
 		Options:  opts,
 	})

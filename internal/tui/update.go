@@ -14,7 +14,7 @@ import (
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Global bridge status refresh (Imperative Shell side-effect)
-	m.bridgeStatus = m.sync.BridgeStatus()
+	m.bridgeStatus = m.backend.BridgeStatus()
 
 	// 1. Transition State (Functional Core)
 	oldIndex := m.listView.list.Index()

@@ -15,7 +15,6 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
-	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
@@ -58,10 +57,7 @@ type Model struct {
 	detailView DetailModel
 
 	// Shared State & Services (Interfaces)
-	db               types.NotificationStore
-	client           github.Client
-	sync             types.Syncer
-	enrich           types.Enricher
+	backend          types.TUIBackend
 	traffic          types.TrafficController
 	alerter          api.Alerter
 	ui               UIController
@@ -166,10 +162,7 @@ type ModelParams struct {
 	Config   *config.Config
 	Logger   *slog.Logger
 	TaskRoot context.Context
-	DB       types.NotificationStore
-	Client   github.Client
-	Syncer   types.Syncer
-	Enricher types.Enricher
+	Backend  types.TUIBackend
 	Traffic  types.TrafficController
 	Alerter  api.Alerter
 	Options  []Option
@@ -189,14 +182,8 @@ func NewModel(p ModelParams) (*Model, error) {
 	if p.TaskRoot == nil {
 		return nil, fmt.Errorf("task root context is required for TUI")
 	}
-	if p.DB == nil {
-		return nil, fmt.Errorf("database is required for TUI")
-	}
-	if p.Syncer == nil {
-		return nil, fmt.Errorf("syncer is required for TUI")
-	}
-	if p.Enricher == nil {
-		return nil, fmt.Errorf("enricher is required for TUI")
+	if p.Backend == nil {
+		return nil, fmt.Errorf("backend is required for TUI")
 	}
 	if p.Alerter == nil {
 		return nil, fmt.Errorf("alerter is required for TUI")
@@ -229,10 +216,7 @@ func NewModel(p ModelParams) (*Model, error) {
 		detailView: DetailModel{
 			viewport: vp,
 		},
-		db:           p.DB,
-		client:       p.Client,
-		sync:         p.Syncer,
-		enrich:       p.Enricher,
+		backend:      p.Backend,
 		traffic:      p.Traffic,
 		alerter:      p.Alerter,
 		config:       p.Config,
@@ -307,11 +291,8 @@ func (m *Model) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if m.sync != nil {
-		m.sync.Shutdown(ctx)
-	}
-	if m.enrich != nil {
-		m.enrich.Shutdown(ctx)
+	if m.backend != nil {
+		m.backend.Shutdown(ctx)
 	}
 	if m.traffic != nil {
 		m.traffic.Shutdown(ctx)
@@ -394,7 +375,7 @@ func (m *Model) cancelScopedTasks() {
 // loadNotifications loads the full list of notifications from local database.
 func (m *Model) loadNotifications(isInitial bool, isForced bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:load", 0, api.PrioritySync, func(ctx context.Context) any {
-		notifs, err := m.db.ListNotifications(ctx)
+		notifs, err := m.backend.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
@@ -405,7 +386,7 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool, isManual bool) 
 
 func (m *Model) syncNotificationsWithForce(force bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:sync", types.ConnectedSyncTimeout, api.PrioritySync, func(ctx context.Context) any {
-		rl, err := m.sync.Sync(ctx, m.userID, force)
+		rl, err := m.backend.Sync(ctx, force)
 		if err != nil && !errors.Is(err, types.ErrSyncIntervalNotReached) {
 			return types.ErrMsg{Err: err}
 		}

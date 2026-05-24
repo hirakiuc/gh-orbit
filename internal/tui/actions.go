@@ -41,10 +41,10 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 
 	// 2. Persistent Local & Remote Update via Traffic Controller
 	return m.submitTask("read:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
-		err := m.db.MarkReadLocally(ctx, id, read)
+		result, err := m.backend.MarkRead(ctx, id, read)
 		if err != nil {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
-			notifs, reloadErr := m.db.ListNotifications(ctx)
+			notifs, reloadErr := m.backend.ListNotifications(ctx)
 			if reloadErr != nil {
 				if found {
 					for idx, n := range m.allNotifications {
@@ -70,17 +70,14 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 		status := markReadReconcileSuccess
 		var resultErr error
 		toast := ""
-		if read && m.client != nil {
-			err = m.client.MarkThreadAsRead(ctx, id)
-			if err != nil {
-				m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)
-				status = markReadReconcileRemoteFailure
-				resultErr = err
-				toast = "Marked read locally; GitHub sync failed"
-			}
+		if result.Status == types.MarkReadRemoteFailure {
+			m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", result.Err)
+			status = markReadReconcileRemoteFailure
+			resultErr = result.Err
+			toast = "Marked read locally; GitHub sync failed"
 		}
 
-		notifs, err := m.db.ListNotifications(ctx)
+		notifs, err := m.backend.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
@@ -97,13 +94,13 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 // setPriorityByID updates the priority of a notification using only its ID.
 func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 	return m.submitTask("priority:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
-		err := m.db.SetPriority(ctx, id, priority)
+		err := m.backend.SetPriority(ctx, id, priority)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
 		// Reload to reflect state
-		notifs, err := m.db.ListNotifications(ctx)
+		notifs, err := m.backend.ListNotifications(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
@@ -155,11 +152,11 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 	for _, n := range discovery {
 		id, url, st := n.GitHubID, n.SubjectURL, n.SubjectType
 		cmds = append(cmds, m.submitTask("enrich:detail:"+id, 0, api.PriorityEnrich, func(ctx context.Context) any {
-			res, err := m.enrich.FetchDetail(ctx, url, string(st), force)
+			res, err := m.backend.FetchDetail(ctx, url, string(st), force)
 			if err != nil {
 				return types.ErrMsg{Err: err}
 			}
-			if err := m.enrich.PersistFetchedDetail(ctx, id, url, res); err != nil {
+			if err := m.backend.PersistFetchedDetail(ctx, id, url, res); err != nil {
 				return types.ErrMsg{Err: err}
 			}
 			return detailLoadedMsg{
@@ -183,7 +180,7 @@ func (m *Model) enrichItems(toEnrich []triage.NotificationWithState, force bool)
 		chunk := batch[i:end]
 
 		cmds = append(cmds, m.submitTask(enrichmentBatchScope(chunk), 0, api.PriorityEnrich, func(ctx context.Context) any {
-			results := m.enrich.FetchHybridBatch(ctx, chunk, force)
+			results := m.backend.FetchHybridBatch(ctx, chunk, force)
 			return enrichmentBatchCompleteMsg{Results: results}
 		}))
 	}
@@ -201,12 +198,12 @@ func (m *Model) ToggleRead(i item) tea.Cmd {
 
 func (m *Model) FetchDetailCmd(id, u string, subjectType triage.SubjectType, force bool) tea.Cmd {
 	return m.submitTask("detail:view", 0, api.PriorityUser, func(ctx context.Context) any {
-		res, err := m.enrich.FetchDetail(ctx, u, string(subjectType), force)
+		res, err := m.backend.FetchDetail(ctx, u, string(subjectType), force)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
-		if err := m.enrich.PersistFetchedDetail(ctx, id, u, res); err != nil {
+		if err := m.backend.PersistFetchedDetail(ctx, id, u, res); err != nil {
 			return types.ErrMsg{Err: err}
 		}
 

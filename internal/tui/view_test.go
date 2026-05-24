@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
@@ -129,15 +130,15 @@ func TestRenderHeader_States(t *testing.T) {
 		mockAlerter := mocks.NewMockAlerter(t)
 		mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 		mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
+		backend, err := api.NewTUIBackendClient("user", mocks.NewMockRepository(t), mockSyncer, mocks.NewMockEnricher(t), nil)
+		assert.NoError(t, err)
 
 		m, err := NewModel(ModelParams{
 			UserID:   "user",
 			Config:   cfg,
 			Logger:   logger,
 			TaskRoot: context.Background(),
-			DB:       mocks.NewMockRepository(t),
-			Syncer:   mockSyncer,
-			Enricher: mocks.NewMockEnricher(t),
+			Backend:  backend,
 			Alerter:  mockAlerter,
 			Traffic:  nil, // Intentional nil
 		})
