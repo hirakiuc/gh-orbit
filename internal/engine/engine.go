@@ -82,6 +82,7 @@ func NewCoreEngine(
 	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
 		Client: client,
 		DB:     database,
+		Config: cfg,
 		Logger: logger,
 	})
 	if err != nil {

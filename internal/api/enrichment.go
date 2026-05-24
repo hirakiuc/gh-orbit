@@ -47,11 +47,13 @@ func NewEnrichmentEngine(ctx context.Context, p EnrichParams) (*EnrichmentEngine
 	if p.DB == nil {
 		return nil, fmt.Errorf("database is required for EnrichmentEngine")
 	}
+	if p.Config == nil {
+		return nil, fmt.Errorf("config is required for EnrichmentEngine")
+	}
 	if p.Logger == nil {
 		return nil, fmt.Errorf("logger is required for EnrichmentEngine")
 	}
 
-	cfg, _ := config.Load()
 	e := &EnrichmentEngine{
 		client:     p.Client,
 		db:         p.DB,
@@ -59,7 +61,7 @@ func NewEnrichmentEngine(ctx context.Context, p EnrichParams) (*EnrichmentEngine
 		cache:      make(map[string]models.EnrichmentResult),
 		nodeToURLs: make(map[string]map[string]struct{}),
 		done:       make(chan struct{}),
-		config:     cfg,
+		config:     p.Config,
 		OnMutation: func() {}, // Default no-op
 	}
 

@@ -54,6 +54,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 
 		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 			Client: mockClient,
+			Config: config.DefaultConfig(),
 			DB:     mockRepo,
 			Logger: slog.Default(),
 		})
@@ -88,6 +89,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 
 		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 			Client: mockClient,
+			Config: config.DefaultConfig(),
 			DB:     mockRepo,
 			Logger: slog.Default(),
 		})
@@ -104,6 +106,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 	t.Run("Cache Hit", func(t *testing.T) {
 		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 			Client: mockClient,
+			Config: config.DefaultConfig(),
 			DB:     mockRepo,
 			Logger: slog.Default(),
 		})
@@ -136,6 +139,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 
 		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 			Client: mockClient,
+			Config: config.DefaultConfig(),
 			DB:     mockRepo,
 			Logger: slog.Default(),
 		})
@@ -163,7 +167,7 @@ func TestEnrichmentEngine_FetchDetail(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				mockREST.EXPECT().DoWithContext(mock.Anything, "GET", "url", nil, mock.Anything).Return(tt.apiErr).Once()
-				engine, _ := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo, Logger: slog.Default()})
+				engine, _ := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, Config: config.DefaultConfig(), DB: mockRepo, Logger: slog.Default()})
 				_, err := engine.FetchDetail(ctx, "url", "Issue", false)
 				assert.ErrorIs(t, err, tt.expected)
 			})
@@ -221,6 +225,7 @@ func TestEnrichmentEngine_FetchHybridBatch(t *testing.T) {
 
 		engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 			Client: mockClient,
+			Config: config.DefaultConfig(),
 			DB:     mockRepo,
 			Logger: slog.Default(),
 		})
@@ -246,6 +251,7 @@ func TestEnrichmentEngine_Pruning(t *testing.T) {
 	ctx := context.Background()
 	engine, _ := NewEnrichmentEngine(ctx, EnrichParams{
 		Client: mocks.NewMockClient(t),
+		Config: config.DefaultConfig(),
 		DB:     mocks.NewMockEnrichmentRepository(t),
 		Logger: slog.Default(),
 	})
@@ -305,6 +311,7 @@ func TestEnrichmentEngine_PersistFetchedDetailPreservesCache(t *testing.T) {
 
 	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 		Client: mockClient,
+		Config: config.DefaultConfig(),
 		DB:     mockRepo,
 		Logger: slog.Default(),
 	})
@@ -343,6 +350,7 @@ func TestEnrichmentEngine_PersistIndependentDetailInvalidatesCacheByNodeID(t *te
 
 	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 		Client: mockClient,
+		Config: config.DefaultConfig(),
 		DB:     mockRepo,
 		Logger: slog.Default(),
 	})
@@ -401,6 +409,7 @@ func TestEnrichmentEngine_PersistIndependentDetailInvalidatesCacheByHTMLURL(t *t
 
 	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 		Client: mockClient,
+		Config: config.DefaultConfig(),
 		DB:     mockRepo,
 		Logger: slog.Default(),
 	})
@@ -456,6 +465,7 @@ func TestEnrichmentEngine_UpdateNodeStateInvalidatesCacheByNodeID(t *testing.T) 
 
 	engine, err := NewEnrichmentEngine(ctx, EnrichParams{
 		Client: mockClient,
+		Config: config.DefaultConfig(),
 		DB:     mockRepo,
 		Logger: slog.Default(),
 	})
@@ -490,19 +500,25 @@ func TestNewEnrichmentEngine_Guards(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("Missing Client", func(t *testing.T) {
-		_, err := NewEnrichmentEngine(ctx, EnrichParams{DB: mockRepo, Logger: logger})
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{DB: mockRepo, Config: config.DefaultConfig(), Logger: logger})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "github client is required")
 	})
 
 	t.Run("Missing DB", func(t *testing.T) {
-		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, Logger: logger})
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, Config: config.DefaultConfig(), Logger: logger})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "database is required")
 	})
 
+	t.Run("Missing Config", func(t *testing.T) {
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo, Logger: logger})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "config is required")
+	})
+
 	t.Run("Missing Logger", func(t *testing.T) {
-		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo})
+		_, err := NewEnrichmentEngine(ctx, EnrichParams{Client: mockClient, DB: mockRepo, Config: config.DefaultConfig()})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "logger is required")
 	})
