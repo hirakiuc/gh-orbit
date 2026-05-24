@@ -78,6 +78,28 @@ func TestAPITrafficController_ReportRateLimit_UpdatesStateSynchronously(t *testi
 	})
 }
 
+func TestAPITrafficController_PollingSupervisorDispatchesQueuedWorkAfterCapacityRestores(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		atomic.StoreInt32(&tc.workerLimit, 0)
+		synctest.Wait()
+
+		resChan, err := tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
+			return "drained"
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(tc.med), "task should remain queued while capacity is zero")
+
+		atomic.StoreInt32(&tc.workerLimit, 1)
+		synctest.Wait()
+
+		assert.Equal(t, "drained", <-resChan, "supervisor should drain queued work after capacity returns without explicit wakeup")
+	})
+}
+
 func TestAPITrafficController_LockoutClearsAfterHealthyRecovery(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
