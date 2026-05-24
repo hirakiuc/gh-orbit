@@ -409,7 +409,7 @@ func launchTUIMCP(ctx context.Context, env *environment, adapter *engine.MCPAdap
 		Config:   config.DefaultConfig(), // Placeholder or from engine
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
-		DB:       adapter, // Repository
+		DB:       adapter, // NotificationStore
 		Client:   nil,     // Client (unused in MCP mode)
 		Syncer:   adapter, // Syncer
 		Enricher: adapter, // Enricher

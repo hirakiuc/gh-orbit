@@ -126,6 +126,15 @@ type CommandExecutor interface {
 // ErrMsg is a common error message wrapper for Bubble Tea updates.
 type ErrMsg struct{ Err error }
 
+// NotificationStore defines the persistence surface the TUI needs in both
+// standalone and connected mode.
+type NotificationStore interface {
+	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
+	MarkReadLocally(ctx context.Context, id string, isRead bool) error
+	SetPriority(ctx context.Context, id string, priority int) error
+	EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error
+}
+
 // SyncRepository defines the database interactions required by the SyncEngine.
 type SyncRepository interface {
 	GetSyncMeta(ctx context.Context, userID, key string) (*models.SyncMeta, error)
@@ -148,14 +157,13 @@ type AlertRepository interface {
 	UpdateBridgeHealth(ctx context.Context, h models.BridgeHealth) error
 }
 
-// Repository defines the full database capabilities required by the TUI and Services.
+// Repository defines the full database capabilities required by the engine and services.
 type Repository interface {
 	SyncRepository
 	EnrichmentRepository
 	AlertRepository
 
-	// Triage specific
-	MarkReadLocally(ctx context.Context, id string, isRead bool) error
+	NotificationStore
 	ArchiveThread(ctx context.Context, id string) error
 	UnarchiveThread(ctx context.Context, id string) error
 	MuteThread(ctx context.Context, id string) error
