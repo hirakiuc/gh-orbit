@@ -9,6 +9,8 @@ This document records the approved architecture direction from issue `#354`:
 
 This is a target architecture and migration document, not a big-bang rewrite plan.
 
+For the approved implementation sequencing and issue breakdown, see [ARCHITECTURE_V2_ROADMAP.md](ARCHITECTURE_V2_ROADMAP.md).
+
 ## 1. Why a v2 architecture
 
 The current system is functional, but recent work has repeatedly tightened boundaries that were previously ambiguous:
