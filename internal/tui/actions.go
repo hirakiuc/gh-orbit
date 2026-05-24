@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -25,9 +26,13 @@ func enrichmentBatchScope(chunk []triage.NotificationWithState) string {
 // MarkReadByID marks a notification as read using only its ID.
 func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	// 1. Update master copy
+	originalRead := read
+	found := false
 	for idx, n := range m.allNotifications {
 		if n.GitHubID == id {
+			originalRead = m.allNotifications[idx].IsReadLocally
 			m.allNotifications[idx].IsReadLocally = read
+			found = true
 			break
 		}
 	}
@@ -39,17 +44,53 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 		err := m.db.MarkReadLocally(ctx, id, read)
 		if err != nil {
 			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
+			notifs, reloadErr := m.db.ListNotifications(ctx)
+			if reloadErr != nil {
+				if found {
+					for idx, n := range m.allNotifications {
+						if n.GitHubID == id {
+							m.allNotifications[idx].IsReadLocally = originalRead
+							break
+						}
+					}
+					m.applyFilters()
+				}
+				return types.ErrMsg{Err: fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, err)}
+			}
+			return markReadReconciledMsg{
+				notifications: notifs,
+				status:        markReadReconcileLocalFailure,
+				err:           err,
+				toast:         "Failed to update read state",
+			}
 		}
 
 		// Connected mode delegates the remote read mutation to the engine-backed
 		// repository path, so the direct GitHub client is optional here.
+		status := markReadReconcileSuccess
+		var resultErr error
+		toast := ""
 		if read && m.client != nil {
 			err = m.client.MarkThreadAsRead(ctx, id)
 			if err != nil {
 				m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", err)
+				status = markReadReconcileRemoteFailure
+				resultErr = err
+				toast = "Marked read locally; GitHub sync failed"
 			}
 		}
-		return actionCompleteMsg{}
+
+		notifs, err := m.db.ListNotifications(ctx)
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+
+		return markReadReconciledMsg{
+			notifications: notifs,
+			status:        status,
+			err:           resultErr,
+			toast:         toast,
+		}
 	})
 }
 
