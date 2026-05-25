@@ -13,6 +13,8 @@ For the approved implementation sequencing and issue breakdown, see [ARCHITECTUR
 
 For the post-cleanup transport decision taken after the backend-boundary cleanup, see [TRANSPORT_DECISION.md](TRANSPORT_DECISION.md).
 
+For the next internal-quality planning track after the v2 roadmap is complete, see [POST_V2_INTERNAL_REFACTORING_PLAN.md](POST_V2_INTERNAL_REFACTORING_PLAN.md).
+
 ## 1. Why a v2 architecture
 
 The current system is functional, but recent work has repeatedly tightened boundaries that were previously ambiguous:
