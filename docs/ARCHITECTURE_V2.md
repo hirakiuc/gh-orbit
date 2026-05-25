@@ -11,6 +11,8 @@ This is a target architecture and migration document, not a big-bang rewrite pla
 
 For the approved implementation sequencing and issue breakdown, see [ARCHITECTURE_V2_ROADMAP.md](ARCHITECTURE_V2_ROADMAP.md).
 
+For the post-cleanup transport decision taken after the backend-boundary cleanup, see [TRANSPORT_DECISION.md](TRANSPORT_DECISION.md).
+
 ## 1. Why a v2 architecture
 
 The current system is functional, but recent work has repeatedly tightened boundaries that were previously ambiguous:
