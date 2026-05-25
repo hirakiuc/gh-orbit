@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
+	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/tui"
 	"github.com/hirakiuc/gh-orbit/internal/types"
@@ -184,4 +185,18 @@ func TestRunProgram_StandaloneOwnershipLeavesSubsystemShutdownToOuterLayer(t *te
 	deps.syncer.Shutdown(cleanupCtx)
 	deps.enricher.Shutdown(cleanupCtx)
 	deps.alerter.Shutdown(cleanupCtx)
+}
+
+func TestConnectedModeAlerter_SatisfiesConnectedTUIAlertBridge(t *testing.T) {
+	var alerter api.Alerter = connectedModeAlerter{}
+
+	tier, status := alerter.ActiveTierInfo()
+	assert.Equal(t, "Connected", tier)
+	assert.Equal(t, types.StatusHealthy, status)
+	assert.Equal(t, types.StatusHealthy, alerter.BridgeStatus())
+	assert.NoError(t, alerter.Notify(context.Background(), github.Notification{}))
+	assert.NoError(t, alerter.TestNotify(context.Background(), "title", "subtitle", "body"))
+
+	alerter.SyncStart(context.Background())
+	alerter.Shutdown(context.Background())
 }

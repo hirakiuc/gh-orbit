@@ -421,7 +421,7 @@ func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, ada
 		// Connected mode intentionally treats traffic control as backend-hosted;
 		// the TUI only renders connection state and no longer owns quota control.
 		Traffic: nil,
-		Alerter: adapter,
+		Alerter: connectedModeAlerter{},
 		Options: []tui.Option{
 			tui.WithConnectionMode("Connected"),
 			tui.WithOwnedSubsystemShutdown(),

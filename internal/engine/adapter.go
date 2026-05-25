@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
-	"github.com/hirakiuc/gh-orbit/internal/github"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
@@ -499,21 +498,8 @@ func (a *MCPAdapter) FetchHybridBatch(ctx context.Context, notifications []triag
 	return results
 }
 
-// --- api.Alerter Implementation ---
-
-func (a *MCPAdapter) Notify(ctx context.Context, n github.Notification) error { return nil }
-func (a *MCPAdapter) SyncStart(ctx context.Context)                           {}
-func (a *MCPAdapter) ActiveTierInfo() (string, types.BridgeStatus) {
-	return "Connected", types.StatusHealthy
-}
-
-func (a *MCPAdapter) TestNotify(ctx context.Context, title, subtitle, body string) error {
-	return nil
-}
-
 // Ensure MCPAdapter implements required interfaces
 var (
 	_ types.TUIBackend = (*MCPAdapter)(nil)
 	_ types.Enricher   = (*MCPAdapter)(nil)
-	_ api.Alerter      = (*MCPAdapter)(nil)
 )
