@@ -9,6 +9,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -20,9 +21,12 @@ func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
 	mockClient := mocks.NewMockClient(t)
+	snapshot := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true}}}
 
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-1"}}}, nil).Once()
 	mockRepo.EXPECT().MarkReadLocally(mock.Anything, "notif-1", true).Return(nil).Once()
 	mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif-1").Return(nil).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
 	backend, err := NewBackend(
@@ -41,14 +45,18 @@ func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, published)
 	assert.Equal(t, types.MarkReadSuccess, result.Status)
+	assert.Equal(t, snapshot, result.Notifications)
 }
 
 func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
+	snapshot := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-2"}, State: triage.State{Priority: 3}}}
 
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-2"}}}, nil).Once()
 	mockRepo.EXPECT().SetPriority(mock.Anything, "notif-2", 3).Return(nil).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
 	backend, err := NewBackend(
@@ -63,8 +71,12 @@ func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, backend.SetPriority(context.Background(), "notif-2", 3))
+	result, err := backend.SetPriority(context.Background(), "notif-2", 3)
+	require.NoError(t, err)
 	assert.Equal(t, 1, published)
+	assert.Equal(t, types.PriorityUpdateSuccess, result.Status)
+	assert.Equal(t, snapshot, result.Notifications)
+	assert.Equal(t, "Priority set to High", result.Toast)
 }
 
 func TestBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T) {

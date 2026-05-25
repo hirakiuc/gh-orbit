@@ -269,9 +269,10 @@ func TestMCPAdapter_MarkRead_TreatsLocalToolFailureAsError(t *testing.T) {
 	})
 
 	result, err := adapter.MarkRead(context.Background(), "123", true)
-	require.Error(t, err)
-	assert.Equal(t, types.MarkReadResult{}, result)
-	assert.Contains(t, err.Error(), "failed to mark read locally: sqlite busy")
+	require.NoError(t, err)
+	assert.Equal(t, types.MarkReadLocalFailure, result.Status)
+	require.Error(t, result.Err)
+	assert.Contains(t, result.Err.Error(), "failed to mark read locally: sqlite busy")
 }
 
 func TestMCPAdapter_ImplementsTUIBackendBoundary(t *testing.T) {

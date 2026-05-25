@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -26,13 +25,9 @@ func enrichmentBatchScope(chunk []triage.NotificationWithState) string {
 // MarkReadByID marks a notification as read using only its ID.
 func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	// 1. Update master copy
-	originalRead := read
-	found := false
 	for idx, n := range m.allNotifications {
 		if n.GitHubID == id {
-			originalRead = m.allNotifications[idx].IsReadLocally
 			m.allNotifications[idx].IsReadLocally = read
-			found = true
 			break
 		}
 	}
@@ -43,50 +38,14 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	return m.submitTask("read:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
 		result, err := m.backend.MarkRead(ctx, id, read)
 		if err != nil {
-			m.logger.ErrorContext(ctx, "failed to update local read state", "error", err)
-			notifs, reloadErr := m.backend.ListNotifications(ctx)
-			if reloadErr != nil {
-				if found {
-					for idx, n := range m.allNotifications {
-						if n.GitHubID == id {
-							m.allNotifications[idx].IsReadLocally = originalRead
-							break
-						}
-					}
-					m.applyFilters()
-				}
-				return types.ErrMsg{Err: fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, err)}
-			}
-			return markReadReconciledMsg{
-				notifications: notifs,
-				status:        markReadReconcileLocalFailure,
-				err:           err,
-				toast:         "Failed to update read state",
-			}
-		}
-
-		// Connected mode delegates the remote read mutation to the engine-backed
-		// repository path, so the direct GitHub client is optional here.
-		status := markReadReconcileSuccess
-		var resultErr error
-		toast := ""
-		if result.Status == types.MarkReadRemoteFailure {
-			m.logger.ErrorContext(ctx, "failed to mark thread as read on GitHub", "error", result.Err)
-			status = markReadReconcileRemoteFailure
-			resultErr = result.Err
-			toast = "Marked read locally; GitHub sync failed"
-		}
-
-		notifs, err := m.backend.ListNotifications(ctx)
-		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
 
 		return markReadReconciledMsg{
-			notifications: notifs,
-			status:        status,
-			err:           resultErr,
-			toast:         toast,
+			notifications: result.Notifications,
+			status:        markReadReconcileStatus(result.Status),
+			err:           result.Err,
+			toast:         result.Toast,
 		}
 	})
 }
@@ -94,28 +53,11 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 // setPriorityByID updates the priority of a notification using only its ID.
 func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 	return m.submitTask("priority:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
-		err := m.backend.SetPriority(ctx, id, priority)
+		result, err := m.backend.SetPriority(ctx, id, priority)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
-
-		// Reload to reflect state
-		notifs, err := m.backend.ListNotifications(ctx)
-		if err != nil {
-			return types.ErrMsg{Err: err}
-		}
-
-		toast := "Priority cleared"
-		switch priority {
-		case 1:
-			toast = "Priority set to Low"
-		case 2:
-			toast = "Priority set to Medium"
-		case 3:
-			toast = "Priority set to High"
-		}
-
-		return priorityUpdatedMsg{notifications: notifs, toast: toast}
+		return priorityUpdatedMsg{notifications: result.Notifications, toast: result.Toast, err: result.Err}
 	})
 }
 

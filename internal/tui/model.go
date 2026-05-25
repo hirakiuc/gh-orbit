@@ -422,6 +422,7 @@ type notificationsLoadedMsg struct {
 type priorityUpdatedMsg struct {
 	notifications []triage.NotificationWithState
 	toast         string
+	err           error
 }
 
 type markReadReconcileStatus uint8
