@@ -359,7 +359,14 @@ func runTUI() error {
 				env.logger.Info("connected to headless engine", "server", initResp.ServerInfo.Name)
 				adapter := engine.NewMCPAdapter(mcpClient)
 
-				user := "mcp-user" // Placeholder until tool added
+				user, err := adapter.ResolveUserID(connectCtx)
+				if err != nil {
+					if requireEngine {
+						return fmt.Errorf("cockpit-managed launch requires connected engine user identity: %w", err)
+					}
+					env.logger.Warn("failed to resolve connected engine user identity, falling back to standalone", "error", err)
+					goto standalone
+				}
 				return launchTUIMCP(ctx, env, cfg, adapter, user)
 			}
 			if requireEngine {
@@ -376,6 +383,7 @@ func runTUI() error {
 		return fmt.Errorf("cockpit-managed launch requires a running MCP engine at %s", socketPath)
 	}
 
+standalone:
 	// 2. Standalone Mode (Library access)
 	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
 	if err != nil {
@@ -410,8 +418,10 @@ func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, ada
 		Logger:   env.logger,
 		TaskRoot: lifecycle.Context(),
 		Backend:  adapter,
-		Traffic:  nil,     // Traffic (Engine handles it)
-		Alerter:  adapter, // Alerter (Mock/Engine bridge)
+		// Connected mode intentionally treats traffic control as backend-hosted;
+		// the TUI only renders connection state and no longer owns quota control.
+		Traffic: nil,
+		Alerter: adapter,
 		Options: []tui.Option{
 			tui.WithConnectionMode("Connected"),
 			tui.WithOwnedSubsystemShutdown(),

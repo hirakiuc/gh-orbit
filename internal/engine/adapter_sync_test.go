@@ -14,7 +14,8 @@ import (
 )
 
 type blockingMCPClient struct {
-	callTool func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	callTool     func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	readResource func(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)
 }
 
 var _ client.MCPClient = (*blockingMCPClient)(nil)
@@ -42,6 +43,9 @@ func (c *blockingMCPClient) ListResourceTemplates(ctx context.Context, request m
 }
 
 func (c *blockingMCPClient) ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	if c.readResource != nil {
+		return c.readResource(ctx, request)
+	}
 	return nil, nil
 }
 
@@ -273,6 +277,47 @@ func TestMCPAdapter_MarkRead_TreatsLocalToolFailureAsError(t *testing.T) {
 	assert.Equal(t, types.MarkReadLocalFailure, result.Status)
 	require.Error(t, result.Err)
 	assert.Contains(t, result.Err.Error(), "failed to mark read locally: sqlite busy")
+}
+
+func TestMCPAdapter_ResolveUserID_ReadsEffectiveSessionIdentity(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		readResource: func(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			require.Equal(t, "gh-orbit://session/user", request.Params.URI)
+			return &mcp.ReadResourceResult{
+				Contents: []mcp.ResourceContents{
+					mcp.TextResourceContents{
+						URI:      "gh-orbit://session/user",
+						MIMEType: "application/json",
+						Text:     `{"login":"hirakiuc"}`,
+					},
+				},
+			}, nil
+		},
+	})
+
+	userID, err := adapter.ResolveUserID(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "hirakiuc", userID)
+}
+
+func TestMCPAdapter_ResolveUserID_RejectsEmptyIdentity(t *testing.T) {
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		readResource: func(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			return &mcp.ReadResourceResult{
+				Contents: []mcp.ResourceContents{
+					mcp.TextResourceContents{
+						URI:      "gh-orbit://session/user",
+						MIMEType: "application/json",
+						Text:     `{"login":""}`,
+					},
+				},
+			}, nil
+		},
+	})
+
+	_, err := adapter.ResolveUserID(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "current user login is empty")
 }
 
 func TestMCPAdapter_ImplementsTUIBackendBoundary(t *testing.T) {

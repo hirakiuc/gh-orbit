@@ -591,6 +591,34 @@ func (s *MCPServer) registerTools() {
 }
 
 func (s *MCPServer) registerResources() {
+	s.server.AddResource(
+		mcp.NewResource(
+			"gh-orbit://session/user",
+			"Current User",
+			mcp.WithResourceDescription("Effective GitHub login for the connected engine session"),
+			mcp.WithMIMEType("application/json"),
+		),
+		func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+			user, err := s.engine.Client.CurrentUser(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			data, err := json.Marshal(map[string]string{"login": user.Login})
+			if err != nil {
+				return nil, err
+			}
+
+			return []mcp.ResourceContents{
+				mcp.TextResourceContents{
+					URI:      "gh-orbit://session/user",
+					MIMEType: "application/json",
+					Text:     string(data),
+				},
+			}, nil
+		},
+	)
+
 	// Notifications Resource Template
 	tpl := mcp.NewResourceTemplate(
 		"gh-orbit://notifications/{category}", "Notifications List",
