@@ -120,6 +120,36 @@ func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.Notificati
 	return notifs, err
 }
 
+func (a *MCPAdapter) ResolveUserID(ctx context.Context) (string, error) {
+	resp, err := a.client.ReadResource(ctx, mcp.ReadResourceRequest{
+		Params: mcp.ReadResourceParams{
+			URI: "gh-orbit://session/user",
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || len(resp.Contents) == 0 {
+		return "", errors.New("current user resource returned no content")
+	}
+
+	content, ok := resp.Contents[0].(mcp.TextResourceContents)
+	if !ok {
+		return "", fmt.Errorf("unexpected current user resource content type")
+	}
+
+	var payload struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal([]byte(content.Text), &payload); err != nil {
+		return "", err
+	}
+	if payload.Login == "" {
+		return "", errors.New("current user login is empty")
+	}
+	return payload.Login, nil
+}
+
 func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (types.MarkReadResult, error) {
 	before, _ := a.ListNotifications(ctx)
 
