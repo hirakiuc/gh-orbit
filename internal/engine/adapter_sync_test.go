@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/mark3labs/mcp-go/client"
@@ -323,4 +324,9 @@ func TestMCPAdapter_ResolveUserID_RejectsEmptyIdentity(t *testing.T) {
 func TestMCPAdapter_ImplementsTUIBackendBoundary(t *testing.T) {
 	var backend types.TUIBackend = NewMCPAdapter(nil)
 	require.NotNil(t, backend)
+}
+
+func TestMCPAdapter_NoLongerImplementsAlerterBoundary(t *testing.T) {
+	_, ok := any(NewMCPAdapter(nil)).(api.Alerter)
+	assert.False(t, ok)
 }
