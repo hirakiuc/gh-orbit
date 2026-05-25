@@ -103,8 +103,7 @@ func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.Notificati
 	if err != nil {
 		return nil, err
 	}
-
-	if len(resp.Contents) == 0 {
+	if resp == nil || len(resp.Contents) == 0 {
 		return nil, nil
 	}
 
@@ -122,6 +121,8 @@ func (a *MCPAdapter) ListNotifications(ctx context.Context) ([]triage.Notificati
 }
 
 func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (types.MarkReadResult, error) {
+	before, _ := a.ListNotifications(ctx)
+
 	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "mark_read",
@@ -140,11 +141,48 @@ func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (type
 	if resp.IsError {
 		toolErr := decodeToolResultError("mark_read", resp)
 		if api.IsRemoteMarkReadFailure(toolErr) {
-			return types.MarkReadResult{Status: types.MarkReadRemoteFailure, Err: toolErr}, nil
+			notifications, reloadErr := a.ListNotifications(ctx)
+			if reloadErr != nil {
+				notifications = applyReadState(before, id, isRead)
+			}
+			return types.MarkReadResult{
+				Status:        types.MarkReadRemoteFailure,
+				Notifications: notifications,
+				Toast:         "Marked read locally; GitHub sync failed",
+				Err:           toolErr,
+			}, nil
 		}
-		return types.MarkReadResult{}, toolErr
+		notifications, reloadErr := a.ListNotifications(ctx)
+		if reloadErr != nil {
+			if before != nil {
+				return types.MarkReadResult{
+					Status:        types.MarkReadLocalFailure,
+					Notifications: before,
+					Toast:         "Failed to update read state",
+					Err:           toolErr,
+				}, nil
+			}
+			return types.MarkReadResult{}, fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, toolErr)
+		}
+		return types.MarkReadResult{
+			Status:        types.MarkReadLocalFailure,
+			Notifications: notifications,
+			Toast:         "Failed to update read state",
+			Err:           toolErr,
+		}, nil
 	}
-	return types.MarkReadResult{Status: types.MarkReadSuccess}, nil
+	notifications, err := a.ListNotifications(ctx)
+	if err != nil {
+		if before != nil {
+			notifications = applyReadState(before, id, isRead)
+		} else {
+			return types.MarkReadResult{}, err
+		}
+	}
+	return types.MarkReadResult{
+		Status:        types.MarkReadSuccess,
+		Notifications: notifications,
+	}, nil
 }
 
 func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
@@ -152,8 +190,10 @@ func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool
 	return err
 }
 
-func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) error {
-	_, err := a.client.CallTool(ctx, mcp.CallToolRequest{
+func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) (types.PriorityUpdateResult, error) {
+	before, _ := a.ListNotifications(ctx)
+
+	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "set_priority",
 			Arguments: map[string]any{
@@ -162,7 +202,41 @@ func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) e
 			},
 		},
 	})
-	return err
+	if err != nil {
+		return types.PriorityUpdateResult{}, err
+	}
+	if resp != nil && resp.IsError {
+		toolErr := decodeToolResultError("set_priority", resp)
+		notifications, reloadErr := a.ListNotifications(ctx)
+		if reloadErr != nil {
+			if before != nil {
+				return types.PriorityUpdateResult{
+					Status:        types.PriorityUpdateFailure,
+					Notifications: before,
+					Err:           toolErr,
+				}, nil
+			}
+			return types.PriorityUpdateResult{}, fmt.Errorf("reload notifications after priority update failure: %w (original error: %v)", reloadErr, toolErr)
+		}
+		return types.PriorityUpdateResult{
+			Status:        types.PriorityUpdateFailure,
+			Notifications: notifications,
+			Err:           toolErr,
+		}, nil
+	}
+	notifications, err := a.ListNotifications(ctx)
+	if err != nil {
+		if before != nil {
+			notifications = applyPriority(before, id, priority)
+		} else {
+			return types.PriorityUpdateResult{}, err
+		}
+	}
+	return types.PriorityUpdateResult{
+		Status:        types.PriorityUpdateSuccess,
+		Notifications: notifications,
+		Toast:         priorityToast(priority),
+	}, nil
 }
 
 func (a *MCPAdapter) PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error {
@@ -285,6 +359,41 @@ func decodeToolResultError(toolName string, resp *mcp.CallToolResult) error {
 		return errors.New(text.Text)
 	}
 	return fmt.Errorf("%s error: unexpected tool failure payload", toolName)
+}
+
+func applyReadState(notifications []triage.NotificationWithState, id string, read bool) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	for idx := range cloned {
+		if cloned[idx].GitHubID == id {
+			cloned[idx].IsReadLocally = read
+			break
+		}
+	}
+	return cloned
+}
+
+func applyPriority(notifications []triage.NotificationWithState, id string, priority int) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	for idx := range cloned {
+		if cloned[idx].GitHubID == id {
+			cloned[idx].Priority = priority
+			break
+		}
+	}
+	return cloned
+}
+
+func priorityToast(priority int) string {
+	switch priority {
+	case 1:
+		return "Priority set to Low"
+	case 2:
+		return "Priority set to Medium"
+	case 3:
+		return "Priority set to High"
+	default:
+		return "Priority cleared"
+	}
 }
 
 func (a *MCPAdapter) Shutdown(ctx context.Context) {

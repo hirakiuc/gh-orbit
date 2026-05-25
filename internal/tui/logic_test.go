@@ -221,6 +221,9 @@ func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
+	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
@@ -247,6 +250,9 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 	m.allNotifications = []triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
+	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
@@ -276,6 +282,9 @@ func TestModel_MarkReadByID_LocalFailureReconcilesToPersistedState(t *testing.T)
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	localErr := assert.AnError
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
+	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
 		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
@@ -305,6 +314,9 @@ func TestModel_MarkReadByID_LocalFailureReloadFailureRollsBackOptimisticState(t 
 	}
 	localErr := assert.AnError
 	reloadErr := sql.ErrConnDone
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
+	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(localErr).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return(nil, reloadErr).Once()
 
@@ -312,11 +324,14 @@ func TestModel_MarkReadByID_LocalFailureReloadFailureRollsBackOptimisticState(t 
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	errMsg, ok := msg.(types.ErrMsg)
+	reconciled, ok := msg.(markReadReconciledMsg)
 	require.True(t, ok)
-	assert.ErrorIs(t, errMsg.Err, reloadErr)
-	assert.Contains(t, errMsg.Err.Error(), "original error")
+	assert.Equal(t, markReadReconcileLocalFailure, reconciled.status)
+	assert.ErrorIs(t, reconciled.err, localErr)
+	actions := m.Transition(reconciled, 0)
 	assert.False(t, m.allNotifications[0].IsReadLocally)
+	assert.ErrorIs(t, m.err, localErr)
+	assert.Contains(t, actions, ActionShowToast{Message: "Failed to update read state"})
 }
 
 func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) {
@@ -326,6 +341,9 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 		{Notification: triage.Notification{GitHubID: "1"}},
 	}
 	remoteErr := assert.AnError
+	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: false}},
+	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(remoteErr).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{

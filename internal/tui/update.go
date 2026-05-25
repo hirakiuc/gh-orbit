@@ -450,6 +450,10 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 func (m *Model) handlePriorityUpdated(msg priorityUpdatedMsg) []Action {
 	m.allNotifications = msg.notifications
 	m.applyFilters()
+	m.err = msg.err
+	if msg.toast == "" {
+		return nil
+	}
 	return []Action{ActionShowToast{Message: msg.toast}}
 }
 
