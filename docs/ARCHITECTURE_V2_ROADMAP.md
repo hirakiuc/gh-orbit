@@ -164,6 +164,10 @@ Recommended starting point: start here first.
 - Minimum validation:
   - `make go/lint-docs`
 
+Completed decision record:
+
+- [TRANSPORT_DECISION.md](TRANSPORT_DECISION.md)
+
 ## 4. First-wave issue breakdown
 
 These should become the first follow-up issues.
