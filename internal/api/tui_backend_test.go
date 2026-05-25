@@ -16,6 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBackend_Shutdown_DoesNotOwnSharedServices(t *testing.T) {
+	mockRepo := mocks.NewMockRepository(t)
+	mockSyncer := mocks.NewMockSyncer(t)
+	mockEnricher := mocks.NewMockEnricher(t)
+
+	backend, err := NewBackend(
+		"user-1",
+		mockRepo,
+		mockSyncer,
+		mockEnricher,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	backend.Shutdown(context.Background())
+
+	mockSyncer.AssertNotCalled(t, "Shutdown", mock.Anything)
+	mockEnricher.AssertNotCalled(t, "Shutdown", mock.Anything)
+}
+
 func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)

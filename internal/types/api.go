@@ -169,6 +169,9 @@ type TUIBackend interface {
 	PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error
 	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult
 	BridgeStatus() BridgeStatus
+	// Shutdown is reserved for transport- or host-local cleanup. It must not own
+	// teardown of shared runtime services such as sync, enrichment, traffic, or
+	// alerting in standalone engine mode.
 	Shutdown(ctx context.Context)
 }
 

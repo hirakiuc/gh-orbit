@@ -91,11 +91,11 @@ func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {
 		_, hasDeadline := ctx.Deadline()
 		return err == nil && hasDeadline
 	})
-	testSyncer(m).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	testEnricher(m).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 	m.alerter.(*mocks.MockAlerter).EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	m.Shutdown()
+	testSyncer(m).AssertNotCalled(t, "Shutdown", mock.Anything)
+	testEnricher(m).AssertNotCalled(t, "Shutdown", mock.Anything)
 }
 
 func TestModel_Shutdown_StandaloneModeDoesNotShutdownEngineOwnedSubsystems(t *testing.T) {
