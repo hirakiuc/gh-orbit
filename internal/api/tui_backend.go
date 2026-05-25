@@ -212,13 +212,14 @@ func (b *Backend) BridgeStatus() types.BridgeStatus {
 	return b.Syncer.BridgeStatus()
 }
 
+// Shutdown is intentionally non-owning for the in-process Backend.
+//
+// Shared-service teardown in standalone mode belongs to CoreEngine, which owns
+// the syncer, enricher, traffic controller, and alerter it constructs.
+// Backend keeps this method only to satisfy the transport-agnostic TUIBackend
+// seam while connected-mode adapters may still need local cleanup hooks.
 func (b *Backend) Shutdown(ctx context.Context) {
-	if b.Syncer != nil {
-		b.Syncer.Shutdown(ctx)
-	}
-	if b.Enricher != nil {
-		b.Enricher.Shutdown(ctx)
-	}
+	_ = ctx
 }
 
 func (b *Backend) boundUserID(ctx context.Context) (string, error) {

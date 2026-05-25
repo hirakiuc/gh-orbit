@@ -424,6 +424,9 @@ func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, ada
 		Alerter: connectedModeAlerter{},
 		Options: []tui.Option{
 			tui.WithConnectionMode("Connected"),
+			// Connected mode may still own host-local cleanup hooks, but the
+			// injected backend must not act as a second owner for shared engine
+			// services such as sync or enrichment.
 			tui.WithOwnedSubsystemShutdown(),
 			tui.WithVersion(buildinfo.Version),
 		},

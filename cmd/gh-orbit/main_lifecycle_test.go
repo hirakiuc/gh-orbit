@@ -78,8 +78,6 @@ func TestRunProgram_ShutsDownModelOnSuccess(t *testing.T) {
 		_, hasDeadline := ctx.Deadline()
 		return err == nil && hasDeadline
 	})
-	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
@@ -92,6 +90,8 @@ func TestRunProgram_ShutsDownModelOnSuccess(t *testing.T) {
 
 	err := runProgram(lifecycle, deps.model)
 	assert.NoError(t, err)
+	deps.syncer.AssertNotCalled(t, "Shutdown", mock.Anything)
+	deps.enricher.AssertNotCalled(t, "Shutdown", mock.Anything)
 }
 
 func TestRunProgram_ShutsDownModelAfterLifecycleCancellation(t *testing.T) {
@@ -108,8 +108,6 @@ func TestRunProgram_ShutsDownModelAfterLifecycleCancellation(t *testing.T) {
 		_, hasDeadline := ctx.Deadline()
 		return err == nil && hasDeadline
 	})
-	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
@@ -123,6 +121,8 @@ func TestRunProgram_ShutsDownModelAfterLifecycleCancellation(t *testing.T) {
 
 	err := runProgram(lifecycle, deps.model)
 	assert.NoError(t, err)
+	deps.syncer.AssertNotCalled(t, "Shutdown", mock.Anything)
+	deps.enricher.AssertNotCalled(t, "Shutdown", mock.Anything)
 }
 
 func TestRunProgram_ShutsDownModelOnProgramError(t *testing.T) {
@@ -136,8 +136,6 @@ func TestRunProgram_ShutsDownModelOnProgramError(t *testing.T) {
 		_, hasDeadline := ctx.Deadline()
 		return err == nil && hasDeadline
 	})
-	deps.syncer.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
-	deps.enricher.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 	deps.alerter.EXPECT().Shutdown(usableCleanupCtx).Return().Once()
 
 	newTeaProgram = func(m tea.Model, opts ...tea.ProgramOption) teaProgram {
@@ -151,6 +149,8 @@ func TestRunProgram_ShutsDownModelOnProgramError(t *testing.T) {
 	err := runProgram(lifecycle, deps.model)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "TUI error: boom")
+	deps.syncer.AssertNotCalled(t, "Shutdown", mock.Anything)
+	deps.enricher.AssertNotCalled(t, "Shutdown", mock.Anything)
 }
 
 func TestRunProgram_StandaloneOwnershipLeavesSubsystemShutdownToOuterLayer(t *testing.T) {

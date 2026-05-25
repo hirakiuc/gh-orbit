@@ -148,8 +148,9 @@ func WithConnectionMode(mode string) Option {
 	}
 }
 
-// WithOwnedSubsystemShutdown makes Model.Shutdown responsible for shutting down
-// the injected sync/enrich/traffic/alerter services.
+// WithOwnedSubsystemShutdown makes Model.Shutdown responsible only for
+// host-local injected cleanup surfaces. Shared standalone runtime services must
+// still be owned by the outer runtime, not by the TUI model.
 func WithOwnedSubsystemShutdown() Option {
 	return func(m *Model) {
 		m.ownsSubsystems = true
