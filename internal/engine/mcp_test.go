@@ -20,6 +20,8 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
+	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
@@ -275,13 +277,29 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		mockRepo := mocks.NewMockRepository(t)
 		mockGH := mocks.NewMockClient(t)
 		mockSync := mocks.NewMockSyncer(t)
+		mockEnrich := mocks.NewMockEnricher(t)
+		bus := NewEventBus()
+
+		backend, err := api.NewBackend(
+			"user-123",
+			mockRepo,
+			mockSync,
+			mockEnrich,
+			mockGH,
+			nil,
+			func() { bus.Publish(EventNotificationsChanged) },
+			func() { bus.Publish(EventEnrichmentUpdated) },
+		)
+		require.NoError(t, err)
 
 		eng := &CoreEngine{
-			Logger: slog.Default(),
-			Bus:    NewEventBus(),
-			DB:     mockRepo,
-			Client: mockGH,
-			Sync:   mockSync,
+			Logger:  slog.Default(),
+			Bus:     bus,
+			DB:      mockRepo,
+			Client:  mockGH,
+			Sync:    mockSync,
+			Enrich:  mockEnrich,
+			Backend: backend,
 		}
 
 		return NewMCPServer(eng, filepath.Join(t.TempDir(), "mcp-mutation.sock"), true, false), mockRepo, mockGH
@@ -362,6 +380,10 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 			SetPriority(mock.Anything, "1", 2).
 			Return(nil).
 			Once()
+		mockRepo.EXPECT().
+			ListNotifications(mock.Anything).
+			Return(nil, nil).
+			Twice()
 
 		response := callTool(t, srv, sessionCtx, 2, "set_priority", map[string]any{
 			"id":    "1",
@@ -386,6 +408,10 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 			MarkThreadAsRead(mock.Anything, "2").
 			Return(errors.New("boom")).
 			Once()
+		mockRepo.EXPECT().
+			ListNotifications(mock.Anything).
+			Return(nil, nil).
+			Twice()
 
 		response := callTool(t, srv, sessionCtx, 2, "mark_read", map[string]any{
 			"id":   "2",
@@ -408,6 +434,10 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 			MarkReadLocally(mock.Anything, "3", true).
 			Return(errors.New("write failed")).
 			Once()
+		mockRepo.EXPECT().
+			ListNotifications(mock.Anything).
+			Return(nil, nil).
+			Twice()
 
 		response := callTool(t, srv, sessionCtx, 2, "mark_read", map[string]any{
 			"id":   "3",
@@ -423,6 +453,55 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		require.ErrorAs(t, err, &netErr)
 		assert.True(t, netErr.Timeout(), "expected no notification after pre-commit failure")
 		require.NoError(t, clientConn.SetReadDeadline(time.Time{}))
+	})
+
+	t.Run("sync interval not reached keeps structured MCP status after backend delegation", func(t *testing.T) {
+		srv, _, _ := newTestServer(t)
+		sessionCtx, _, _, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		mockSync := srv.engine.Sync.(*mocks.MockSyncer)
+		mockSync.EXPECT().
+			Sync(mock.Anything, "user-123", false).
+			Return(models.RateLimitInfo{Remaining: 123, Limit: 5000}, types.ErrSyncIntervalNotReached).
+			Once()
+
+		response := callTool(t, srv, sessionCtx, 2, "sync", map[string]any{})
+
+		result, ok := response["result"].(map[string]any)
+		require.True(t, ok)
+		assert.NotEqual(t, true, result["isError"])
+
+		structured, ok := result["structuredContent"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, string(syncToolStatusIntervalNotReached), structured["status"])
+		assert.Equal(t, "sync interval not reached", result["content"].([]any)[0].(map[string]any)["text"])
+	})
+
+	t.Run("persist_fetched_detail still notifies after backend delegation", func(t *testing.T) {
+		srv, _, _ := newTestServer(t)
+		sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		mockEnrich := srv.engine.Enrich.(*mocks.MockEnricher)
+		mockEnrich.EXPECT().
+			PersistFetchedDetail(mock.Anything, "4", "https://api.github.com/repos/o/r/pulls/4", mock.Anything).
+			Return(nil).
+			Once()
+
+		response := callTool(t, srv, sessionCtx, 2, "persist_fetched_detail", map[string]any{
+			"id":             "4",
+			"source_url":     "https://api.github.com/repos/o/r/pulls/4",
+			"node_id":        "node-4",
+			"body":           "detail body",
+			"author":         "hirakiuc",
+			"html_url":       "https://github.com/o/r/pull/4",
+			"resource_state": "OPEN",
+		})
+		notification := readNotification(t, clientConn, reader, time.Second)
+
+		require.Contains(t, response, "result")
+		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
 	})
 }
 

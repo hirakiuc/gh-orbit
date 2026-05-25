@@ -164,13 +164,6 @@ func (s *MCPServer) eventLoop(ctx context.Context) {
 	}
 }
 
-func (s *MCPServer) publishNotificationsChanged() {
-	if s.engine == nil || s.engine.Bus == nil {
-		return
-	}
-	s.engine.Bus.Publish(EventNotificationsChanged)
-}
-
 func (s *MCPServer) handleStaleSocket() error {
 	if _, err := os.Stat(s.socket); os.IsNotExist(err) {
 		return nil
@@ -332,12 +325,7 @@ func (s *MCPServer) registerTools() {
 			force = f
 		}
 
-		user, err := s.engine.Client.CurrentUser(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get current user: %v", err)), nil
-		}
-
-		rl, err := s.engine.Sync.Sync(ctx, user.Login, force)
+		rl, err := s.engine.Backend.Sync(ctx, force)
 		if err != nil {
 			if errors.Is(err, types.ErrSyncIntervalNotReached) {
 				payload := syncToolResult{
@@ -387,13 +375,18 @@ func (s *MCPServer) registerTools() {
 			read = r
 		}
 
-		if err := s.engine.DB.MarkReadLocally(ctx, id, read); err != nil {
+		result, err := s.engine.Backend.MarkRead(ctx, id, read)
+		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", err)), nil
 		}
-		s.publishNotificationsChanged()
-		if read {
-			if err := s.engine.Client.MarkThreadAsRead(ctx, id); err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", err)), nil
+		if result.Err != nil {
+			switch result.Status {
+			case types.MarkReadRemoteFailure:
+				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", result.Err)), nil
+			case types.MarkReadLocalFailure:
+				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", result.Err)), nil
+			default:
+				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read: %v", result.Err)), nil
 			}
 		}
 		return mcp.NewToolResultText("Notification read state updated"), nil
@@ -417,14 +410,19 @@ func (s *MCPServer) registerTools() {
 		levelVal, _ := args["level"].(float64)
 		level := int(levelVal)
 
-		if err := s.engine.DB.SetPriority(ctx, id, level); err != nil {
+		result, err := s.engine.Backend.SetPriority(ctx, id, level)
+		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", err)), nil
 		}
-		s.publishNotificationsChanged()
+		if result.Err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", result.Err)), nil
+		}
 		return mcp.NewToolResultText("Priority updated"), nil
 	})
 
 	// 4. Fetch Detail Tool
+	// Temporary explicit exception: already transport-thin and no matching
+	// backend seam expansion is needed for this slice.
 	fetchDetailTool := mcp.NewTool(
 		"fetch_detail",
 		mcp.WithDescription("Fetch enriched detail for a single notification subject"),
@@ -460,6 +458,8 @@ func (s *MCPServer) registerTools() {
 	})
 
 	// 5. Batch Enrichment Tool
+	// Temporary explicit exception: already transport-thin and no matching
+	// backend seam expansion is needed for this slice.
 	batchEnrichTool := mcp.NewTool(
 		"fetch_hybrid_batch",
 		mcp.WithDescription("Fetch enrichment state for a batch of notifications"),
@@ -537,7 +537,7 @@ func (s *MCPServer) registerTools() {
 		resourceState, _ := args["resource_state"].(string)
 		resourceSubState, _ := args["resource_sub_state"].(string)
 
-		if err := s.engine.Enrich.PersistFetchedDetail(ctx, id, sourceURL, models.EnrichmentResult{
+		if err := s.engine.Backend.PersistFetchedDetail(ctx, id, sourceURL, models.EnrichmentResult{
 			SubjectNodeID:    nodeID,
 			Body:             body,
 			Author:           author,
@@ -552,6 +552,8 @@ func (s *MCPServer) registerTools() {
 		return mcp.NewToolResultText("Fetched detail persisted"), nil
 	})
 
+	// Temporary explicit exception: there is not yet a matching backend seam
+	// operation for independent enrichment persistence.
 	enrichNotificationTool := mcp.NewTool(
 		"enrich_notification",
 		mcp.WithDescription("Persist enriched notification fields through the engine-backed repository"),
