@@ -303,6 +303,49 @@ func (s *MCPServer) sendJSONRPCMessage(session *udsSession, data []byte) {
 	_, _ = fmt.Fprintf(session.writer, "%s\n", data)
 }
 
+func mutationToolSuccessResult(message string) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText(message), nil
+}
+
+func mutationToolFailureResult(format string, err error) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultError(fmt.Sprintf(format, err)), nil
+}
+
+func markReadToolResult(result types.MarkReadResult, err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mutationToolFailureResult("failed to mark read locally: %v", err)
+	}
+	if result.Err == nil {
+		return mutationToolSuccessResult("Notification read state updated")
+	}
+
+	switch result.Status {
+	case types.MarkReadRemoteFailure:
+		return mutationToolFailureResult("failed to mark read on GitHub: %v", result.Err)
+	case types.MarkReadLocalFailure:
+		return mutationToolFailureResult("failed to mark read locally: %v", result.Err)
+	default:
+		return mutationToolFailureResult("failed to mark read: %v", result.Err)
+	}
+}
+
+func priorityToolResult(result types.PriorityUpdateResult, err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mutationToolFailureResult("failed to set priority: %v", err)
+	}
+	if result.Err != nil {
+		return mutationToolFailureResult("failed to set priority: %v", result.Err)
+	}
+	return mutationToolSuccessResult("Priority updated")
+}
+
+func persistFetchedDetailToolResult(err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mutationToolFailureResult("failed to persist fetched detail: %v", err)
+	}
+	return mutationToolSuccessResult("Fetched detail persisted")
+}
+
 func (s *MCPServer) registerTools() {
 	// 1. Sync Tool
 	syncTool := mcp.NewTool(
@@ -376,20 +419,7 @@ func (s *MCPServer) registerTools() {
 		}
 
 		result, err := s.engine.Backend.MarkRead(ctx, id, read)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", err)), nil
-		}
-		if result.Err != nil {
-			switch result.Status {
-			case types.MarkReadRemoteFailure:
-				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read on GitHub: %v", result.Err)), nil
-			case types.MarkReadLocalFailure:
-				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read locally: %v", result.Err)), nil
-			default:
-				return mcp.NewToolResultError(fmt.Sprintf("failed to mark read: %v", result.Err)), nil
-			}
-		}
-		return mcp.NewToolResultText("Notification read state updated"), nil
+		return markReadToolResult(result, err)
 	})
 
 	// 3. Set Priority Tool
@@ -411,13 +441,7 @@ func (s *MCPServer) registerTools() {
 		level := int(levelVal)
 
 		result, err := s.engine.Backend.SetPriority(ctx, id, level)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", err)), nil
-		}
-		if result.Err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to set priority: %v", result.Err)), nil
-		}
-		return mcp.NewToolResultText("Priority updated"), nil
+		return priorityToolResult(result, err)
 	})
 
 	// 4. Fetch Detail Tool
@@ -537,7 +561,7 @@ func (s *MCPServer) registerTools() {
 		resourceState, _ := args["resource_state"].(string)
 		resourceSubState, _ := args["resource_sub_state"].(string)
 
-		if err := s.engine.Backend.PersistFetchedDetail(ctx, id, sourceURL, models.EnrichmentResult{
+		err := s.engine.Backend.PersistFetchedDetail(ctx, id, sourceURL, models.EnrichmentResult{
 			SubjectNodeID:    nodeID,
 			Body:             body,
 			Author:           author,
@@ -545,11 +569,8 @@ func (s *MCPServer) registerTools() {
 			ResourceState:    resourceState,
 			ResourceSubState: resourceSubState,
 			FetchedAt:        time.Now(),
-		}); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to persist fetched detail: %v", err)), nil
-		}
-
-		return mcp.NewToolResultText("Fetched detail persisted"), nil
+		})
+		return persistFetchedDetailToolResult(err)
 	})
 
 	// Temporary explicit exception: there is not yet a matching backend seam
