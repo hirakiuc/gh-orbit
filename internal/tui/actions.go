@@ -41,9 +41,8 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 			return types.ErrMsg{Err: err}
 		}
 
-		return markReadReconciledMsg{
+		return mutationAppliedMsg{
 			notifications: result.Notifications,
-			status:        markReadReconcileStatus(result.Status),
 			err:           result.Err,
 			toast:         result.Toast,
 		}
@@ -57,7 +56,7 @@ func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
-		return priorityUpdatedMsg{notifications: result.Notifications, toast: result.Toast, err: result.Err}
+		return mutationAppliedMsg{notifications: result.Notifications, toast: result.Toast, err: result.Err}
 	})
 }
 

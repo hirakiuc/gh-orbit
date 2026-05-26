@@ -65,10 +65,8 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		m.handleBackgroundColor(msg)
 	case notificationsLoadedMsg:
 		return m.handleNotificationsLoaded(msg)
-	case priorityUpdatedMsg:
-		return m.handlePriorityUpdated(msg)
-	case markReadReconciledMsg:
-		return m.handleMarkReadReconciled(msg)
+	case mutationAppliedMsg:
+		return m.handleMutationApplied(msg)
 	case syncCompleteMsg:
 		return m.handleSyncComplete(msg)
 	case enrichmentBatchCompleteMsg:
@@ -447,25 +445,13 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	return actions
 }
 
-func (m *Model) handlePriorityUpdated(msg priorityUpdatedMsg) []Action {
+func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {
 	m.allNotifications = msg.notifications
 	m.applyFilters()
 	m.err = msg.err
 	if msg.toast == "" {
 		return nil
 	}
-	return []Action{ActionShowToast{Message: msg.toast}}
-}
-
-func (m *Model) handleMarkReadReconciled(msg markReadReconciledMsg) []Action {
-	m.allNotifications = msg.notifications
-	m.applyFilters()
-	m.err = msg.err
-
-	if msg.toast == "" {
-		return nil
-	}
-
 	return []Action{ActionShowToast{Message: msg.toast}}
 }
 
