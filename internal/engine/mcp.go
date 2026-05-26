@@ -147,8 +147,8 @@ func (s *MCPServer) Serve(ctx context.Context) error {
 }
 
 func (s *MCPServer) eventLoop(ctx context.Context) {
-	notifCh, unsubscribeNotif := s.engine.Bus.Subscribe(EventNotificationsChanged)
-	enrichCh, unsubscribeEnrich := s.engine.Bus.Subscribe(EventEnrichmentUpdated)
+	notifCh, unsubscribeNotif := s.engine.Bus.Subscribe(EventNotificationListChanged)
+	enrichCh, unsubscribeEnrich := s.engine.Bus.Subscribe(EventNotificationEnrichmentChanged)
 	defer unsubscribeNotif()
 	defer unsubscribeEnrich()
 

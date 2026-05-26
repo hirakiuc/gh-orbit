@@ -90,7 +90,7 @@ func NewCoreEngine(
 		_ = database.Close()
 		return nil, err
 	}
-	enricher.OnMutation = func() { bus.Publish(EventEnrichmentUpdated) }
+	enricher.OnMutation = func() { bus.Publish(EventNotificationEnrichmentChanged) }
 
 	alerter, err := api.NewAlertService(ctx, api.AlertParams{
 		Config:   cfg,
@@ -120,7 +120,7 @@ func NewCoreEngine(
 		_ = database.Close()
 		return nil, err
 	}
-	syncer.OnMutation = func() { bus.Publish(EventNotificationsChanged) }
+	syncer.OnMutation = func() { bus.Publish(EventNotificationListChanged) }
 
 	appBackend, err := api.NewAppBackend(
 		"",
@@ -135,8 +135,8 @@ func NewCoreEngine(
 			}
 			return user.Login, nil
 		},
-		func() { bus.Publish(EventNotificationsChanged) },
-		func() { bus.Publish(EventEnrichmentUpdated) },
+		func() { bus.Publish(EventNotificationListChanged) },
+		func() { bus.Publish(EventNotificationEnrichmentChanged) },
 	)
 	if err != nil {
 		_ = database.Close()

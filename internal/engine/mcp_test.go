@@ -287,8 +287,8 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 			mockEnrich,
 			mockGH,
 			nil,
-			func() { bus.Publish(EventNotificationsChanged) },
-			func() { bus.Publish(EventEnrichmentUpdated) },
+			func() { bus.Publish(EventNotificationListChanged) },
+			func() { bus.Publish(EventNotificationEnrichmentChanged) },
 		)
 		require.NoError(t, err)
 
@@ -329,8 +329,8 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		require.Eventually(t, func() bool {
 			srv.engine.Bus.mu.RLock()
 			defer srv.engine.Bus.mu.RUnlock()
-			return len(srv.engine.Bus.subscribers[EventNotificationsChanged]) == 1 &&
-				len(srv.engine.Bus.subscribers[EventEnrichmentUpdated]) == 1
+			return len(srv.engine.Bus.subscribers[EventNotificationListChanged]) == 1 &&
+				len(srv.engine.Bus.subscribers[EventNotificationEnrichmentChanged]) == 1
 		}, time.Second, 10*time.Millisecond)
 
 		return sessionCtx, clientConn, bufio.NewReader(clientConn), func() {
@@ -629,8 +629,8 @@ func TestMCPServer_EventLoopUnsubscribesOnShutdown(t *testing.T) {
 		require.Eventually(t, func() bool {
 			bus.mu.RLock()
 			defer bus.mu.RUnlock()
-			return len(bus.subscribers[EventNotificationsChanged]) == 1 &&
-				len(bus.subscribers[EventEnrichmentUpdated]) == 1
+			return len(bus.subscribers[EventNotificationListChanged]) == 1 &&
+				len(bus.subscribers[EventNotificationEnrichmentChanged]) == 1
 		}, time.Second, 10*time.Millisecond)
 
 		cancel()
@@ -644,8 +644,8 @@ func TestMCPServer_EventLoopUnsubscribesOnShutdown(t *testing.T) {
 		}, time.Second, 10*time.Millisecond)
 
 		bus.mu.RLock()
-		_, notifOK := bus.subscribers[EventNotificationsChanged]
-		_, enrichOK := bus.subscribers[EventEnrichmentUpdated]
+		_, notifOK := bus.subscribers[EventNotificationListChanged]
+		_, enrichOK := bus.subscribers[EventNotificationEnrichmentChanged]
 		bus.mu.RUnlock()
 
 		assert.False(t, notifOK, "notification subscribers should return to baseline after shutdown")

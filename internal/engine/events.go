@@ -8,8 +8,8 @@ import (
 type EngineEvent string
 
 const (
-	EventNotificationsChanged EngineEvent = "notifications_changed"
-	EventEnrichmentUpdated    EngineEvent = "enrichment_updated"
+	EventNotificationListChanged       EngineEvent = "notifications_changed"
+	EventNotificationEnrichmentChanged EngineEvent = "enrichment_updated"
 )
 
 // EventBus handles internal pub/sub for engine events.
