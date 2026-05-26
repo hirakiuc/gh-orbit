@@ -280,7 +280,7 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		mockEnrich := mocks.NewMockEnricher(t)
 		bus := NewEventBus()
 
-		backend, err := api.NewBackend(
+		appBackend, err := api.NewAppBackend(
 			"user-123",
 			mockRepo,
 			mockSync,
@@ -299,7 +299,7 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 			Client:  mockGH,
 			Sync:    mockSync,
 			Enrich:  mockEnrich,
-			Backend: backend,
+			Backend: appBackend,
 		}
 
 		return NewMCPServer(eng, filepath.Join(t.TempDir(), "mcp-mutation.sock"), true, false), mockRepo, mockGH

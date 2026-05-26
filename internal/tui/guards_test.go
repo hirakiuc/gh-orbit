@@ -25,29 +25,29 @@ func TestNewModel_Guards(t *testing.T) {
 	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
-	backend, err := api.NewBackend("u", mockRepo, mockSyncer, mockEnricher, nil, nil, nil, nil)
+	appBackend, err := api.NewAppBackend("u", mockRepo, mockSyncer, mockEnricher, nil, nil, nil, nil)
 	assert.NoError(t, err)
 
 	t.Run("Missing UserID", func(t *testing.T) {
-		_, err := NewModel(ModelParams{Config: cfg, Logger: logger, TaskRoot: context.Background(), Backend: backend, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{Config: cfg, Logger: logger, TaskRoot: context.Background(), Backend: appBackend, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "user ID is required")
 	})
 
 	t.Run("Missing Config", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Logger: logger, TaskRoot: context.Background(), Backend: backend, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Logger: logger, TaskRoot: context.Background(), Backend: appBackend, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "config is required")
 	})
 
 	t.Run("Missing Logger", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, TaskRoot: context.Background(), Backend: backend, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, TaskRoot: context.Background(), Backend: appBackend, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "logger is required")
 	})
 
 	t.Run("Missing TaskRoot", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, Backend: backend, Alerter: mockAlerter})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, Backend: appBackend, Alerter: mockAlerter})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "task root context is required")
 	})
@@ -59,7 +59,7 @@ func TestNewModel_Guards(t *testing.T) {
 	})
 
 	t.Run("Missing Alerter", func(t *testing.T) {
-		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), Backend: backend})
+		_, err := NewModel(ModelParams{UserID: "u", Config: cfg, Logger: logger, TaskRoot: context.Background(), Backend: appBackend})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "alerter is required")
 	})
