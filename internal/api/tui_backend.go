@@ -12,10 +12,10 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
-// Backend is the in-process application-facing backend owner for TUI operations.
-// It composes narrower services but owns direct mutation semantics and their
-// corresponding event publication.
-type Backend struct {
+// AppBackend is the in-process application-facing backend owner for TUI
+// operations. It composes narrower services but owns direct mutation semantics
+// and their corresponding event publication.
+type AppBackend struct {
 	UserID   string
 	Store    types.NotificationStore
 	Client   github.Client
@@ -29,7 +29,7 @@ type Backend struct {
 	publishEnrichmentUpdated    func()
 }
 
-func NewBackend(
+func NewAppBackend(
 	userID string,
 	store types.NotificationStore,
 	syncer types.Syncer,
@@ -38,18 +38,18 @@ func NewBackend(
 	resolveUserID func(context.Context) (string, error),
 	publishNotificationsChanged func(),
 	publishEnrichmentUpdated func(),
-) (*Backend, error) {
+) (*AppBackend, error) {
 	if store == nil {
-		return nil, fmt.Errorf("notification store is required for Backend")
+		return nil, fmt.Errorf("notification store is required for AppBackend")
 	}
 	if syncer == nil {
-		return nil, fmt.Errorf("syncer is required for Backend")
+		return nil, fmt.Errorf("syncer is required for AppBackend")
 	}
 	if enricher == nil {
-		return nil, fmt.Errorf("enricher is required for Backend")
+		return nil, fmt.Errorf("enricher is required for AppBackend")
 	}
 	if userID == "" && resolveUserID == nil {
-		return nil, fmt.Errorf("user ID or resolver is required for Backend")
+		return nil, fmt.Errorf("user ID or resolver is required for AppBackend")
 	}
 	if publishNotificationsChanged == nil {
 		publishNotificationsChanged = func() {}
@@ -58,7 +58,7 @@ func NewBackend(
 		publishEnrichmentUpdated = func() {}
 	}
 
-	return &Backend{
+	return &AppBackend{
 		UserID:                      userID,
 		Store:                       store,
 		Client:                      client,
@@ -72,22 +72,22 @@ func NewBackend(
 
 // NewTUIBackendClient is a temporary constructor alias kept only for
 // compatibility while the architecture-v2 migration lands. It must not own any
-// behavior beyond constructing the real Backend type.
+// behavior beyond constructing the real AppBackend type.
 func NewTUIBackendClient(
 	userID string,
 	store types.NotificationStore,
 	syncer types.Syncer,
 	enricher types.Enricher,
 	client github.Client,
-) (*Backend, error) {
-	return NewBackend(userID, store, syncer, enricher, client, nil, nil, nil)
+) (*AppBackend, error) {
+	return NewAppBackend(userID, store, syncer, enricher, client, nil, nil, nil)
 }
 
-func (b *Backend) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
+func (b *AppBackend) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
 	return b.Store.ListNotifications(ctx)
 }
 
-func (b *Backend) Sync(ctx context.Context, force bool) (models.RateLimitInfo, error) {
+func (b *AppBackend) Sync(ctx context.Context, force bool) (models.RateLimitInfo, error) {
 	userID, err := b.boundUserID(ctx)
 	if err != nil {
 		return models.RateLimitInfo{}, err
@@ -95,7 +95,7 @@ func (b *Backend) Sync(ctx context.Context, force bool) (models.RateLimitInfo, e
 	return b.Syncer.Sync(ctx, userID, force)
 }
 
-func (b *Backend) MarkRead(ctx context.Context, id string, read bool) (types.MarkReadResult, error) {
+func (b *AppBackend) MarkRead(ctx context.Context, id string, read bool) (types.MarkReadResult, error) {
 	before, _ := b.Store.ListNotifications(ctx)
 
 	if err := b.Store.MarkReadLocally(ctx, id, read); err != nil {
@@ -151,7 +151,7 @@ func (b *Backend) MarkRead(ctx context.Context, id string, read bool) (types.Mar
 	}, nil
 }
 
-func (b *Backend) SetPriority(ctx context.Context, id string, priority int) (types.PriorityUpdateResult, error) {
+func (b *AppBackend) SetPriority(ctx context.Context, id string, priority int) (types.PriorityUpdateResult, error) {
 	before, _ := b.Store.ListNotifications(ctx)
 
 	if err := b.Store.SetPriority(ctx, id, priority); err != nil {
@@ -191,11 +191,11 @@ func (b *Backend) SetPriority(ctx context.Context, id string, priority int) (typ
 	}, nil
 }
 
-func (b *Backend) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
+func (b *AppBackend) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
 	return b.Enricher.FetchDetail(ctx, u, subjectType, force)
 }
 
-func (b *Backend) PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error {
+func (b *AppBackend) PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error {
 	if err := b.Enricher.PersistFetchedDetail(ctx, id, sourceURL, res); err != nil {
 		return err
 	}
@@ -204,25 +204,25 @@ func (b *Backend) PersistFetchedDetail(ctx context.Context, id, sourceURL string
 	return nil
 }
 
-func (b *Backend) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult {
+func (b *AppBackend) FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult {
 	return b.Enricher.FetchHybridBatch(ctx, notifications, force)
 }
 
-func (b *Backend) BridgeStatus() types.BridgeStatus {
+func (b *AppBackend) BridgeStatus() types.BridgeStatus {
 	return b.Syncer.BridgeStatus()
 }
 
-// Shutdown is intentionally non-owning for the in-process Backend.
+// Shutdown is intentionally non-owning for the in-process AppBackend.
 //
 // Shared-service teardown in standalone mode belongs to CoreEngine, which owns
 // the syncer, enricher, traffic controller, and alerter it constructs.
-// Backend keeps this method only to satisfy the transport-agnostic TUIBackend
+// AppBackend keeps this method only to satisfy the transport-agnostic TUIBackend
 // seam while connected-mode adapters may still need local cleanup hooks.
-func (b *Backend) Shutdown(ctx context.Context) {
+func (b *AppBackend) Shutdown(ctx context.Context) {
 	_ = ctx
 }
 
-func (b *Backend) boundUserID(ctx context.Context) (string, error) {
+func (b *AppBackend) boundUserID(ctx context.Context) (string, error) {
 	b.userMu.RLock()
 	if b.UserID != "" {
 		defer b.userMu.RUnlock()

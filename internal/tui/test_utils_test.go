@@ -46,7 +46,7 @@ func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 	mockSyncer.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 	mockAlerter.EXPECT().BridgeStatus().Return(types.StatusHealthy).Maybe()
 
-	backend, err := api.NewBackend(userID, mockRepo, mockSyncer, mockEnricher, mockClient, nil, nil, nil)
+	appBackend, err := api.NewAppBackend(userID, mockRepo, mockSyncer, mockEnricher, mockClient, nil, nil, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -56,7 +56,7 @@ func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 		Config:   cfg,
 		Logger:   logger,
 		TaskRoot: taskRoot,
-		Backend:  backend,
+		Backend:  appBackend,
 		Traffic:  mockTraffic,
 		Alerter:  mockAlerter,
 		Options: []Option{
@@ -92,8 +92,8 @@ func newTestModelWithTaskRoot(t TestingT, taskRoot context.Context) *Model {
 	return m
 }
 
-func testBackend(m *Model) *api.Backend {
-	return m.backend.(*api.Backend)
+func testBackend(m *Model) *api.AppBackend {
+	return m.backend.(*api.AppBackend)
 }
 
 func testRepo(m *Model) *mocks.MockRepository {

@@ -122,7 +122,7 @@ func NewCoreEngine(
 	}
 	syncer.OnMutation = func() { bus.Publish(EventNotificationsChanged) }
 
-	backend, err := api.NewBackend(
+	appBackend, err := api.NewAppBackend(
 		"",
 		database,
 		syncer,
@@ -149,7 +149,7 @@ func NewCoreEngine(
 		Bus:     bus,
 		DB:      database,
 		Client:  client,
-		Backend: backend,
+		Backend: appBackend,
 		Sync:    syncer,
 		Enrich:  enricher,
 		Traffic: traffic,

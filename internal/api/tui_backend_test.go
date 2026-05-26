@@ -16,12 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBackend_Shutdown_DoesNotOwnSharedServices(t *testing.T) {
+func TestAppBackend_Shutdown_DoesNotOwnSharedServices(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
 
-	backend, err := NewBackend(
+	appBackend, err := NewAppBackend(
 		"user-1",
 		mockRepo,
 		mockSyncer,
@@ -33,13 +33,13 @@ func TestBackend_Shutdown_DoesNotOwnSharedServices(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	backend.Shutdown(context.Background())
+	appBackend.Shutdown(context.Background())
 
 	mockSyncer.AssertNotCalled(t, "Shutdown", mock.Anything)
 	mockEnricher.AssertNotCalled(t, "Shutdown", mock.Anything)
 }
 
-func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
+func TestAppBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
@@ -52,7 +52,7 @@ func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
-	backend, err := NewBackend(
+	appBackend, err := NewAppBackend(
 		"user-1",
 		mockRepo,
 		mockSyncer,
@@ -64,14 +64,14 @@ func TestBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	result, err := backend.MarkRead(context.Background(), "notif-1", true)
+	result, err := appBackend.MarkRead(context.Background(), "notif-1", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, published)
 	assert.Equal(t, types.MarkReadSuccess, result.Status)
 	assert.Equal(t, snapshot, result.Notifications)
 }
 
-func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
+func TestAppBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
@@ -82,7 +82,7 @@ func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
-	backend, err := NewBackend(
+	appBackend, err := NewAppBackend(
 		"user-1",
 		mockRepo,
 		mockSyncer,
@@ -94,7 +94,7 @@ func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	result, err := backend.SetPriority(context.Background(), "notif-2", 3)
+	result, err := appBackend.SetPriority(context.Background(), "notif-2", 3)
 	require.NoError(t, err)
 	assert.Equal(t, 1, published)
 	assert.Equal(t, types.PriorityUpdateSuccess, result.Status)
@@ -102,7 +102,7 @@ func TestBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	assert.Equal(t, "Priority set to High", result.Toast)
 }
 
-func TestBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T) {
+func TestAppBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
@@ -119,7 +119,7 @@ func TestBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T) {
 		Once()
 
 	published := 0
-	backend, err := NewBackend(
+	appBackend, err := NewAppBackend(
 		"user-1",
 		mockRepo,
 		mockSyncer,
@@ -131,11 +131,11 @@ func TestBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, backend.PersistFetchedDetail(context.Background(), "notif-3", "https://api.github.com/repos/o/r/pulls/1", res))
+	require.NoError(t, appBackend.PersistFetchedDetail(context.Background(), "notif-3", "https://api.github.com/repos/o/r/pulls/1", res))
 	assert.Equal(t, 1, published)
 }
 
-func TestBackend_PersistFetchedDetailDoesNotDoublePublishViaEnricherHook(t *testing.T) {
+func TestAppBackend_PersistFetchedDetailDoesNotDoublePublishViaEnricherHook(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockClient := mocks.NewMockClient(t)
