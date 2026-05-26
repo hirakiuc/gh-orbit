@@ -282,30 +282,57 @@ func (c *APITrafficController) runTask(t *apiTask) {
 	defer atomic.AddInt32(&c.activeWorkersCount, -1)
 	defer t.cleanup()
 
-	if t.ctx.Err() != nil {
+	if c.taskCanceledBeforeExecution(t) {
+		t.resp <- nil
+		return
+	}
+	if c.shouldSkipTaskDuringLockout(t) {
+		t.resp <- nil
+		return
+	}
+	if c.shouldSkipEnrichmentDueToLowQuota(t) {
 		t.resp <- nil
 		return
 	}
 
-	// Check lockout
-	if until := c.lockoutUntil.Load(); until != nil && time.Now().Before(*until) {
-		if t.priority != PriorityUser {
-			c.logger.WarnContext(t.ctx, "traffic controller: lockout active, skipping background task", "task_id", t.id)
-			t.resp <- nil
-			return
-		}
+	c.executeTask(t)
+}
+
+func (c *APITrafficController) taskCanceledBeforeExecution(t *apiTask) bool {
+	return t.ctx.Err() != nil
+}
+
+func (c *APITrafficController) shouldSkipTaskDuringLockout(t *apiTask) bool {
+	until := c.lockoutUntil.Load()
+	if until == nil || !time.Now().Before(*until) || c.requiresSerializedUserExecution(t) {
+		return false
 	}
 
-	// Dynamic Throttling: Skip low-priority enrichment if quota is critical
-	if t.priority == PriorityEnrich && c.Remaining() < 500 {
-		c.logger.WarnContext(t.ctx, "traffic controller: skipping enrichment due to low quota",
-			"task_id", t.id, "remaining", c.Remaining(), "threshold", 500)
-		t.resp <- nil
-		return
+	c.logger.WarnContext(t.ctx, "traffic controller: lockout active, skipping background task", "task_id", t.id)
+	return true
+}
+
+func (c *APITrafficController) shouldSkipEnrichmentDueToLowQuota(t *apiTask) bool {
+	if t.priority != PriorityEnrich {
+		return false
 	}
 
-	// Execution
-	if t.priority == PriorityUser {
+	remaining := c.Remaining()
+	if remaining >= 500 {
+		return false
+	}
+
+	c.logger.WarnContext(t.ctx, "traffic controller: skipping enrichment due to low quota",
+		"task_id", t.id, "remaining", remaining, "threshold", 500)
+	return true
+}
+
+func (c *APITrafficController) requiresSerializedUserExecution(t *apiTask) bool {
+	return t.priority == PriorityUser
+}
+
+func (c *APITrafficController) executeTask(t *apiTask) {
+	if c.requiresSerializedUserExecution(t) {
 		c.userMu.Lock()
 		defer c.userMu.Unlock()
 	}

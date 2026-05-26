@@ -129,6 +129,24 @@ func TestAPITrafficController_LockoutClearsAfterHealthyRecovery(t *testing.T) {
 	})
 }
 
+func TestAPITrafficController_LockoutDeadlineEqualityAllowsBackgroundTask(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		tc := NewAPITrafficController(ctx, slog.Default())
+		defer tc.Shutdown(ctx)
+
+		reset := time.Now()
+		tc.UpdateRateLimit(ctx, models.RateLimitInfo{Remaining: 0, Reset: reset})
+
+		res, err := tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
+			return "allowed"
+		})
+		assert.NoError(t, err)
+		synctest.Wait()
+		assert.Equal(t, "allowed", <-res, "background task should run once lockout reaches its exact deadline")
+	})
+}
+
 func TestAPITrafficController_Shutdown_Channels(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
