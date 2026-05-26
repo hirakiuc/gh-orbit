@@ -26,7 +26,7 @@ func TestEventBus_Stress(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				ch, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+				ch, unsubscribe := bus.Subscribe(EventNotificationListChanged)
 				defer unsubscribe()
 
 				for {
@@ -50,10 +50,10 @@ func TestEventBus_Stress(t *testing.T) {
 			go func(id int) {
 				defer pubWG.Done()
 				for j := 0; j < numEvents; j++ {
-					bus.Publish(EventNotificationsChanged)
+					bus.Publish(EventNotificationListChanged)
 					if j%10 == 0 {
 						// Mix in some random subs during active publishing
-						_, unsubscribe := bus.Subscribe(EventEnrichmentUpdated)
+						_, unsubscribe := bus.Subscribe(EventNotificationEnrichmentChanged)
 						unsubscribe()
 					}
 				}
@@ -86,7 +86,7 @@ func TestEventBus_DeadlockDetection(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
-				_, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+				_, unsubscribe := bus.Subscribe(EventNotificationListChanged)
 				unsubscribe()
 			}
 		}()
@@ -94,7 +94,7 @@ func TestEventBus_DeadlockDetection(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
-				bus.Publish(EventNotificationsChanged)
+				bus.Publish(EventNotificationListChanged)
 			}
 		}()
 
@@ -105,12 +105,12 @@ func TestEventBus_DeadlockDetection(t *testing.T) {
 func TestEventBus_BufferSaturation(t *testing.T) {
 	bus := NewEventBus()
 	// Channel is buffered at size 1
-	ch, unsubscribe := bus.Subscribe(EventNotificationsChanged)
+	ch, unsubscribe := bus.Subscribe(EventNotificationListChanged)
 	defer unsubscribe()
 
 	// Publish twice without reading
-	bus.Publish(EventNotificationsChanged)
-	bus.Publish(EventNotificationsChanged)
+	bus.Publish(EventNotificationListChanged)
+	bus.Publish(EventNotificationListChanged)
 
 	// Should not block and should have one item in buffer
 	select {
@@ -132,26 +132,26 @@ func TestEventBus_BufferSaturation(t *testing.T) {
 func BenchmarkEventBus_Publish(b *testing.B) {
 	bus := NewEventBus()
 	for i := 0; i < 10; i++ {
-		_, _ = bus.Subscribe(EventNotificationsChanged)
+		_, _ = bus.Subscribe(EventNotificationListChanged)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		bus.Publish(EventNotificationsChanged)
+		bus.Publish(EventNotificationListChanged)
 	}
 }
 
 func TestEventBus_UnsubscribeRemovesSubscriber(t *testing.T) {
 	bus := NewEventBus()
 
-	ch1, unsubscribe1 := bus.Subscribe(EventNotificationsChanged)
-	_, unsubscribe2 := bus.Subscribe(EventNotificationsChanged)
+	ch1, unsubscribe1 := bus.Subscribe(EventNotificationListChanged)
+	_, unsubscribe2 := bus.Subscribe(EventNotificationListChanged)
 
-	assert.Len(t, bus.subscribers[EventNotificationsChanged], 2)
+	assert.Len(t, bus.subscribers[EventNotificationListChanged], 2)
 
 	unsubscribe1()
 
-	assert.Len(t, bus.subscribers[EventNotificationsChanged], 1)
+	assert.Len(t, bus.subscribers[EventNotificationListChanged], 1)
 
 	select {
 	case <-ch1:
@@ -159,7 +159,7 @@ func TestEventBus_UnsubscribeRemovesSubscriber(t *testing.T) {
 	default:
 	}
 
-	bus.Publish(EventNotificationsChanged)
+	bus.Publish(EventNotificationListChanged)
 
 	select {
 	case <-ch1:
@@ -168,9 +168,9 @@ func TestEventBus_UnsubscribeRemovesSubscriber(t *testing.T) {
 	}
 
 	unsubscribe1()
-	assert.Len(t, bus.subscribers[EventNotificationsChanged], 1)
+	assert.Len(t, bus.subscribers[EventNotificationListChanged], 1)
 
 	unsubscribe2()
-	_, ok := bus.subscribers[EventNotificationsChanged]
+	_, ok := bus.subscribers[EventNotificationListChanged]
 	assert.False(t, ok, "event subscriber entry should be removed when empty")
 }
