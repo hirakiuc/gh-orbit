@@ -233,9 +233,8 @@ func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	reconciled, ok := msg.(markReadReconciledMsg)
+	reconciled, ok := msg.(mutationAppliedMsg)
 	require.True(t, ok)
-	assert.Equal(t, markReadReconcileSuccess, reconciled.status)
 	assert.NoError(t, reconciled.err)
 
 	actions := m.Transition(reconciled, 0)
@@ -263,9 +262,8 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	reconciled, ok := msg.(markReadReconciledMsg)
+	reconciled, ok := msg.(mutationAppliedMsg)
 	require.True(t, ok)
-	assert.Equal(t, markReadReconcileSuccess, reconciled.status)
 	assert.NoError(t, reconciled.err)
 
 	actions := m.Transition(reconciled, 0)
@@ -294,9 +292,8 @@ func TestModel_MarkReadByID_LocalFailureReconcilesToPersistedState(t *testing.T)
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	reconciled, ok := msg.(markReadReconciledMsg)
+	reconciled, ok := msg.(mutationAppliedMsg)
 	require.True(t, ok)
-	assert.Equal(t, markReadReconcileLocalFailure, reconciled.status)
 	assert.ErrorIs(t, reconciled.err, localErr)
 
 	actions := m.Transition(reconciled, 0)
@@ -324,9 +321,8 @@ func TestModel_MarkReadByID_LocalFailureReloadFailureRollsBackOptimisticState(t 
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	reconciled, ok := msg.(markReadReconciledMsg)
+	reconciled, ok := msg.(mutationAppliedMsg)
 	require.True(t, ok)
-	assert.Equal(t, markReadReconcileLocalFailure, reconciled.status)
 	assert.ErrorIs(t, reconciled.err, localErr)
 	actions := m.Transition(reconciled, 0)
 	assert.False(t, m.allNotifications[0].IsReadLocally)
@@ -354,9 +350,8 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 	require.NotNil(t, cmd)
 
 	msg := executeCmd(cmd)
-	reconciled, ok := msg.(markReadReconciledMsg)
+	reconciled, ok := msg.(mutationAppliedMsg)
 	require.True(t, ok)
-	assert.Equal(t, markReadReconcileRemoteFailure, reconciled.status)
 	assert.ErrorIs(t, reconciled.err, remoteErr)
 
 	actions := m.Transition(reconciled, 0)
@@ -376,7 +371,7 @@ func TestModel_Transition_EdgeCases(t *testing.T) {
 	assert.Equal(t, 0, len(actions))
 
 	// 2. Priority Updated
-	actions = m.Transition(priorityUpdatedMsg{toast: "updated"}, 0)
+	actions = m.Transition(mutationAppliedMsg{toast: "updated"}, 0)
 	assert.Contains(t, actions, ActionShowToast{Message: "updated"})
 
 	// 3. Sync Complete

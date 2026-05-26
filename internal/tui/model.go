@@ -420,25 +420,10 @@ type notificationsLoadedMsg struct {
 	IsManual      bool
 }
 
-type priorityUpdatedMsg struct {
+type mutationAppliedMsg struct {
 	notifications []triage.NotificationWithState
 	toast         string
 	err           error
-}
-
-type markReadReconcileStatus uint8
-
-const (
-	markReadReconcileSuccess markReadReconcileStatus = iota
-	markReadReconcileLocalFailure
-	markReadReconcileRemoteFailure
-)
-
-type markReadReconciledMsg struct {
-	notifications []triage.NotificationWithState
-	status        markReadReconcileStatus
-	err           error
-	toast         string
 }
 
 type syncCompleteMsg struct {
