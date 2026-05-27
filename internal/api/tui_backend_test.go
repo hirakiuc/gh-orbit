@@ -21,16 +21,12 @@ func TestAppBackend_Shutdown_DoesNotOwnSharedServices(t *testing.T) {
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
 
-	appBackend, err := NewAppBackend(
-		"user-1",
-		mockRepo,
-		mockSyncer,
-		mockEnricher,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
+	appBackend, err := NewAppBackend(AppBackendParams{
+		UserID:   "user-1",
+		Store:    mockRepo,
+		Syncer:   mockSyncer,
+		Enricher: mockEnricher,
+	})
 	require.NoError(t, err)
 
 	appBackend.Shutdown(context.Background())
@@ -52,16 +48,14 @@ func TestAppBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
-	appBackend, err := NewAppBackend(
-		"user-1",
-		mockRepo,
-		mockSyncer,
-		mockEnricher,
-		mockClient,
-		nil,
-		func() { published++ },
-		nil,
-	)
+	appBackend, err := NewAppBackend(AppBackendParams{
+		UserID:                      "user-1",
+		Store:                       mockRepo,
+		Client:                      mockClient,
+		Syncer:                      mockSyncer,
+		Enricher:                    mockEnricher,
+		PublishNotificationsChanged: func() { published++ },
+	})
 	require.NoError(t, err)
 
 	result, err := appBackend.MarkRead(context.Background(), "notif-1", true)
@@ -82,16 +76,13 @@ func TestAppBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(snapshot, nil).Once()
 
 	published := 0
-	appBackend, err := NewAppBackend(
-		"user-1",
-		mockRepo,
-		mockSyncer,
-		mockEnricher,
-		nil,
-		nil,
-		func() { published++ },
-		nil,
-	)
+	appBackend, err := NewAppBackend(AppBackendParams{
+		UserID:                      "user-1",
+		Store:                       mockRepo,
+		Syncer:                      mockSyncer,
+		Enricher:                    mockEnricher,
+		PublishNotificationsChanged: func() { published++ },
+	})
 	require.NoError(t, err)
 
 	result, err := appBackend.SetPriority(context.Background(), "notif-2", 3)
@@ -119,16 +110,13 @@ func TestAppBackend_PersistFetchedDetailPublishesEnrichmentUpdated(t *testing.T)
 		Once()
 
 	published := 0
-	appBackend, err := NewAppBackend(
-		"user-1",
-		mockRepo,
-		mockSyncer,
-		mockEnricher,
-		nil,
-		nil,
-		nil,
-		func() { published++ },
-	)
+	appBackend, err := NewAppBackend(AppBackendParams{
+		UserID:                   "user-1",
+		Store:                    mockRepo,
+		Syncer:                   mockSyncer,
+		Enricher:                 mockEnricher,
+		PublishEnrichmentUpdated: func() { published++ },
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, appBackend.PersistFetchedDetail(context.Background(), "notif-3", "https://api.github.com/repos/o/r/pulls/1", res))

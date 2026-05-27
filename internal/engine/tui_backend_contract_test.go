@@ -41,7 +41,13 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 				mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif-1").Return(nil).Once()
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
 
-				backend, err := api.NewAppBackend("user-1", mockRepo, mockSyncer, mockEnricher, mockClient, nil, nil, nil)
+				backend, err := api.NewAppBackend(api.AppBackendParams{
+					UserID:   "user-1",
+					Store:    mockRepo,
+					Client:   mockClient,
+					Syncer:   mockSyncer,
+					Enricher: mockEnricher,
+				})
 				require.NoError(t, err)
 				return backend
 			},
@@ -121,7 +127,13 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 				mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif-2").Return(remoteErr).Once()
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
 
-				backend, err := api.NewAppBackend("user-1", mockRepo, mockSyncer, mockEnricher, mockClient, nil, nil, nil)
+				backend, err := api.NewAppBackend(api.AppBackendParams{
+					UserID:   "user-1",
+					Store:    mockRepo,
+					Client:   mockClient,
+					Syncer:   mockSyncer,
+					Enricher: mockEnricher,
+				})
 				require.NoError(t, err)
 				return backend
 			},
@@ -203,7 +215,12 @@ func TestTUIBackendContract_SetPrioritySuccess(t *testing.T) {
 				mockRepo.EXPECT().SetPriority(mock.Anything, "notif-3", 3).Return(nil).Once()
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
 
-				backend, err := api.NewAppBackend("user-1", mockRepo, mockSyncer, mockEnricher, nil, nil, nil, nil)
+				backend, err := api.NewAppBackend(api.AppBackendParams{
+					UserID:   "user-1",
+					Store:    mockRepo,
+					Syncer:   mockSyncer,
+					Enricher: mockEnricher,
+				})
 				require.NoError(t, err)
 				return backend
 			},

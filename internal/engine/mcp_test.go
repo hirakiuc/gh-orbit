@@ -280,16 +280,15 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		mockEnrich := mocks.NewMockEnricher(t)
 		bus := NewEventBus()
 
-		appBackend, err := api.NewAppBackend(
-			"user-123",
-			mockRepo,
-			mockSync,
-			mockEnrich,
-			mockGH,
-			nil,
-			func() { bus.Publish(EventNotificationListChanged) },
-			func() { bus.Publish(EventNotificationEnrichmentChanged) },
-		)
+		appBackend, err := api.NewAppBackend(api.AppBackendParams{
+			UserID:                      "user-123",
+			Store:                       mockRepo,
+			Client:                      mockGH,
+			Syncer:                      mockSync,
+			Enricher:                    mockEnrich,
+			PublishNotificationsChanged: func() { bus.Publish(EventNotificationListChanged) },
+			PublishEnrichmentUpdated:    func() { bus.Publish(EventNotificationEnrichmentChanged) },
+		})
 		require.NoError(t, err)
 
 		eng := &CoreEngine{
