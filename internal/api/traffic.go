@@ -31,6 +31,15 @@ type apiTask struct {
 	cleanup  func()
 }
 
+type taskPolicyDecision int
+
+const (
+	taskPolicyProceed taskPolicyDecision = iota
+	taskPolicyCanceled
+	taskPolicySkipLockout
+	taskPolicySkipLowQuota
+)
+
 // APITrafficController ensures prioritized access to the GitHub API.
 type APITrafficController struct {
 	ctx     context.Context // Controller lifetime context
@@ -282,24 +291,30 @@ func (c *APITrafficController) runTask(t *apiTask) {
 	defer atomic.AddInt32(&c.activeWorkersCount, -1)
 	defer t.cleanup()
 
-	if c.taskCanceledBeforeExecution(t) {
+	switch c.evaluateTaskPolicy(t) {
+	case taskPolicyProceed:
+		c.executeTask(t)
+	default:
 		t.resp <- nil
 		return
 	}
-	if c.shouldSkipTaskDuringLockout(t) {
-		t.resp <- nil
-		return
-	}
-	if c.shouldSkipEnrichmentDueToLowQuota(t) {
-		t.resp <- nil
-		return
-	}
-
-	c.executeTask(t)
 }
 
 func (c *APITrafficController) taskCanceledBeforeExecution(t *apiTask) bool {
 	return t.ctx.Err() != nil
+}
+
+func (c *APITrafficController) evaluateTaskPolicy(t *apiTask) taskPolicyDecision {
+	if c.taskCanceledBeforeExecution(t) {
+		return taskPolicyCanceled
+	}
+	if c.shouldSkipTaskDuringLockout(t) {
+		return taskPolicySkipLockout
+	}
+	if c.shouldSkipEnrichmentDueToLowQuota(t) {
+		return taskPolicySkipLowQuota
+	}
+	return taskPolicyProceed
 }
 
 func (c *APITrafficController) shouldSkipTaskDuringLockout(t *apiTask) bool {
