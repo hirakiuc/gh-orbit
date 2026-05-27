@@ -6,6 +6,8 @@ It defines the next internal improvement track after `ARCHITECTURE_V2` and its f
 
 This is a planning document, not an implementation change.
 
+For the subsequent planning track after the first post-v2 issue sequence (`#376` through `#381`) is complete, see [INTERNAL_OVERALL_DESIGN_REFINEMENT.md](INTERNAL_OVERALL_DESIGN_REFINEMENT.md).
+
 ## 1. Planning objective
 
 The goal of this plan is to improve extensibility and maintainability before the project takes on more complex native-app features.
