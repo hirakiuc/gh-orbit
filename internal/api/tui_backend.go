@@ -29,44 +29,51 @@ type AppBackend struct {
 	publishEnrichmentUpdated    func()
 }
 
-func NewAppBackend(
-	userID string,
-	store types.NotificationStore,
-	syncer types.Syncer,
-	enricher types.Enricher,
-	client github.Client,
-	resolveUserID func(context.Context) (string, error),
-	publishNotificationsChanged func(),
-	publishEnrichmentUpdated func(),
-) (*AppBackend, error) {
-	if store == nil {
+// AppBackendParams groups the concrete dependencies and local wiring hooks for
+// the in-process AppBackend owner without introducing a broader builder
+// abstraction.
+type AppBackendParams struct {
+	UserID   string
+	Store    types.NotificationStore
+	Client   github.Client
+	Syncer   types.Syncer
+	Enricher types.Enricher
+
+	ResolveUserID func(context.Context) (string, error)
+
+	PublishNotificationsChanged func()
+	PublishEnrichmentUpdated    func()
+}
+
+func NewAppBackend(params AppBackendParams) (*AppBackend, error) {
+	if params.Store == nil {
 		return nil, fmt.Errorf("notification store is required for AppBackend")
 	}
-	if syncer == nil {
+	if params.Syncer == nil {
 		return nil, fmt.Errorf("syncer is required for AppBackend")
 	}
-	if enricher == nil {
+	if params.Enricher == nil {
 		return nil, fmt.Errorf("enricher is required for AppBackend")
 	}
-	if userID == "" && resolveUserID == nil {
+	if params.UserID == "" && params.ResolveUserID == nil {
 		return nil, fmt.Errorf("user ID or resolver is required for AppBackend")
 	}
-	if publishNotificationsChanged == nil {
-		publishNotificationsChanged = func() {}
+	if params.PublishNotificationsChanged == nil {
+		params.PublishNotificationsChanged = func() {}
 	}
-	if publishEnrichmentUpdated == nil {
-		publishEnrichmentUpdated = func() {}
+	if params.PublishEnrichmentUpdated == nil {
+		params.PublishEnrichmentUpdated = func() {}
 	}
 
 	return &AppBackend{
-		UserID:                      userID,
-		Store:                       store,
-		Client:                      client,
-		Syncer:                      syncer,
-		Enricher:                    enricher,
-		resolveUserID:               resolveUserID,
-		publishNotificationsChanged: publishNotificationsChanged,
-		publishEnrichmentUpdated:    publishEnrichmentUpdated,
+		UserID:                      params.UserID,
+		Store:                       params.Store,
+		Client:                      params.Client,
+		Syncer:                      params.Syncer,
+		Enricher:                    params.Enricher,
+		resolveUserID:               params.ResolveUserID,
+		publishNotificationsChanged: params.PublishNotificationsChanged,
+		publishEnrichmentUpdated:    params.PublishEnrichmentUpdated,
 	}, nil
 }
 
@@ -80,7 +87,13 @@ func NewTUIBackendClient(
 	enricher types.Enricher,
 	client github.Client,
 ) (*AppBackend, error) {
-	return NewAppBackend(userID, store, syncer, enricher, client, nil, nil, nil)
+	return NewAppBackend(AppBackendParams{
+		UserID:   userID,
+		Store:    store,
+		Client:   client,
+		Syncer:   syncer,
+		Enricher: enricher,
+	})
 }
 
 func (b *AppBackend) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {

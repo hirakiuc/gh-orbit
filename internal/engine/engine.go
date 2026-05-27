@@ -30,6 +30,11 @@ type options struct {
 	silentAlerts bool
 }
 
+type backendPublishHooks struct {
+	notificationsChanged func()
+	enrichmentChanged    func()
+}
+
 // Option defines a functional option for Engine configuration.
 type Option func(*options)
 
@@ -38,6 +43,35 @@ func WithSilentAlerts() Option {
 	return func(o *options) {
 		o.silentAlerts = true
 	}
+}
+
+func currentUserResolver(client github.Client) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		user, err := client.CurrentUser(ctx)
+		if err != nil {
+			return "", err
+		}
+		return user.Login, nil
+	}
+}
+
+func newBackendPublishHooks(bus *EventBus) backendPublishHooks {
+	return backendPublishHooks{
+		notificationsChanged: func() { bus.Publish(EventNotificationListChanged) },
+		enrichmentChanged:    func() { bus.Publish(EventNotificationEnrichmentChanged) },
+	}
+}
+
+func newAppBackend(database types.Repository, client github.Client, syncer types.Syncer, enricher types.Enricher, hooks backendPublishHooks) (*api.AppBackend, error) {
+	return api.NewAppBackend(api.AppBackendParams{
+		Store:                       database,
+		Client:                      client,
+		Syncer:                      syncer,
+		Enricher:                    enricher,
+		ResolveUserID:               currentUserResolver(client),
+		PublishNotificationsChanged: hooks.notificationsChanged,
+		PublishEnrichmentUpdated:    hooks.enrichmentChanged,
+	})
 }
 
 // NewCoreEngine initializes the engine with all its dependencies.
@@ -78,6 +112,7 @@ func NewCoreEngine(
 
 	// 3. Initialize Services
 	bus := NewEventBus()
+	hooks := newBackendPublishHooks(bus)
 	traffic := api.NewAPITrafficController(ctx, logger)
 
 	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
@@ -90,7 +125,7 @@ func NewCoreEngine(
 		_ = database.Close()
 		return nil, err
 	}
-	enricher.OnMutation = func() { bus.Publish(EventNotificationEnrichmentChanged) }
+	enricher.OnMutation = hooks.enrichmentChanged
 
 	alerter, err := api.NewAlertService(ctx, api.AlertParams{
 		Config:   cfg,
@@ -120,24 +155,9 @@ func NewCoreEngine(
 		_ = database.Close()
 		return nil, err
 	}
-	syncer.OnMutation = func() { bus.Publish(EventNotificationListChanged) }
+	syncer.OnMutation = hooks.notificationsChanged
 
-	appBackend, err := api.NewAppBackend(
-		"",
-		database,
-		syncer,
-		enricher,
-		client,
-		func(ctx context.Context) (string, error) {
-			user, err := client.CurrentUser(ctx)
-			if err != nil {
-				return "", err
-			}
-			return user.Login, nil
-		},
-		func() { bus.Publish(EventNotificationListChanged) },
-		func() { bus.Publish(EventNotificationEnrichmentChanged) },
-	)
+	appBackend, err := newAppBackend(database, client, syncer, enricher, hooks)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
