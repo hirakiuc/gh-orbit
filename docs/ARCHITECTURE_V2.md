@@ -15,6 +15,8 @@ For the post-cleanup transport decision taken after the backend-boundary cleanup
 
 For the next internal-quality planning track after the v2 roadmap is complete, see [POST_V2_INTERNAL_REFACTORING_PLAN.md](POST_V2_INTERNAL_REFACTORING_PLAN.md).
 
+For the next post-`#381` planning track focused on internal overall design refinement rather than architecture changes, see [INTERNAL_OVERALL_DESIGN_REFINEMENT.md](INTERNAL_OVERALL_DESIGN_REFINEMENT.md).
+
 ## 1. Why a v2 architecture
 
 The current system is functional, but recent work has repeatedly tightened boundaries that were previously ambiguous:
