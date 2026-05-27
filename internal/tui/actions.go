@@ -35,28 +35,38 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	m.applyFilters()
 
 	// 2. Persistent Local & Remote Update via Traffic Controller
-	return m.submitTask("read:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
+	return m.submitMutationTask("read:"+id, func(ctx context.Context) (mutationAppliedMsg, error) {
 		result, err := m.backend.MarkRead(ctx, id, read)
 		if err != nil {
-			return types.ErrMsg{Err: err}
+			return mutationAppliedMsg{}, err
 		}
 
 		return mutationAppliedMsg{
 			notifications: result.Notifications,
 			err:           result.Err,
 			toast:         result.Toast,
-		}
+		}, nil
 	})
 }
 
 // setPriorityByID updates the priority of a notification using only its ID.
 func (m *Model) setPriorityByID(id string, priority int) tea.Cmd {
-	return m.submitTask("priority:"+id, 0, api.PriorityUser, func(ctx context.Context) any {
+	return m.submitMutationTask("priority:"+id, func(ctx context.Context) (mutationAppliedMsg, error) {
 		result, err := m.backend.SetPriority(ctx, id, priority)
+		if err != nil {
+			return mutationAppliedMsg{}, err
+		}
+		return mutationAppliedMsg{notifications: result.Notifications, toast: result.Toast, err: result.Err}, nil
+	})
+}
+
+func (m *Model) submitMutationTask(scope string, run func(context.Context) (mutationAppliedMsg, error)) tea.Cmd {
+	return m.submitTask(scope, 0, api.PriorityUser, func(ctx context.Context) any {
+		msg, err := run(ctx)
 		if err != nil {
 			return types.ErrMsg{Err: err}
 		}
-		return mutationAppliedMsg{notifications: result.Notifications, toast: result.Toast, err: result.Err}
+		return msg
 	})
 }
 

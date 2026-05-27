@@ -21,39 +21,67 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	actions := m.Transition(msg, oldIndex)
 
 	// 2. Execute Actions (Imperative Shell)
-	var cmds []tea.Cmd
+	cmds := m.executeTransitionActions(actions)
+
+	// 3. Handle sub-model updates that still use traditional TEA.
+	cmds = append(cmds, m.updateUIMsg(msg)...)
+	cmds = append(cmds, m.updateStateMsg(msg, oldIndex)...)
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) executeTransitionActions(actions []Action) []tea.Cmd {
+	cmds := make([]tea.Cmd, 0, len(actions))
 	for _, action := range actions {
 		cmds = append(cmds, m.interpreter.Execute(action))
 	}
+	return cmds
+}
 
-	// 3. Handle sub-model updates that still use traditional TEA
-	// Some sub-models (list, viewport) handle their own state internally.
+func (m *Model) updateUIMsg(msg tea.Msg) []tea.Cmd {
+	// Some UI sub-models still use traditional TEA-style local updates.
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		m.ui, cmd = m.ui.Update(msg)
-		cmds = append(cmds, cmd)
+		return []tea.Cmd{cmd}
 	case clearStatusMsg:
 		m.ui, cmd = m.ui.Update(msg)
-		cmds = append(cmds, cmd)
+		return []tea.Cmd{cmd}
+	default:
+		return nil
 	}
+}
 
+func (m *Model) updateStateMsg(msg tea.Msg, oldIndex int) []tea.Cmd {
 	switch m.state {
 	case StateDetail:
-		m.detailView.viewport, cmd = m.detailView.viewport.Update(msg)
-		cmds = append(cmds, cmd)
+		return m.updateDetailStateMsg(msg)
 	case StateList:
-		oldPage := m.listView.list.Paginator.Page
-		m.listView.list, cmd = m.listView.list.Update(msg)
-		cmds = append(cmds, cmd)
+		return m.updateListStateMsg(msg, oldIndex)
+	default:
+		return nil
+	}
+}
 
-		// Debounced enrichment logic (after sub-model update ensures index/page is fresh)
-		if m.listView.list.Index() != oldIndex || m.listView.list.Paginator.Page != oldPage {
-			cmds = append(cmds, m.interpreter.Execute(ActionScheduleTick{TickType: TickEnrich}))
-		}
+func (m *Model) updateDetailStateMsg(msg tea.Msg) []tea.Cmd {
+	var cmd tea.Cmd
+	m.detailView.viewport, cmd = m.detailView.viewport.Update(msg)
+	return []tea.Cmd{cmd}
+}
+
+func (m *Model) updateListStateMsg(msg tea.Msg, oldIndex int) []tea.Cmd {
+	oldPage := m.listView.list.Paginator.Page
+	var cmd tea.Cmd
+	m.listView.list, cmd = m.listView.list.Update(msg)
+	cmds := []tea.Cmd{cmd}
+
+	// Debounced enrichment logic (after sub-model update ensures index/page is fresh)
+	if m.listView.list.Index() != oldIndex || m.listView.list.Paginator.Page != oldPage {
+		cmds = append(cmds, m.interpreter.Execute(ActionScheduleTick{TickType: TickEnrich}))
 	}
 
-	return m, tea.Batch(cmds...)
+	return cmds
 }
 
 func (m *Model) transitionGlobal(msg tea.Msg) []Action {
