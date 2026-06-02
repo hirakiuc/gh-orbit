@@ -129,6 +129,40 @@ func TestEventBus_BufferSaturation(t *testing.T) {
 	}
 }
 
+func TestEventBus_InternalEventCategoriesStayIsolated(t *testing.T) {
+	bus := NewEventBus()
+	listChanged, unsubscribeList := bus.Subscribe(EventNotificationListChanged)
+	defer unsubscribeList()
+	enrichmentChanged, unsubscribeEnrichment := bus.Subscribe(EventNotificationEnrichmentChanged)
+	defer unsubscribeEnrichment()
+
+	bus.Publish(EventNotificationListChanged)
+
+	select {
+	case <-listChanged:
+	default:
+		t.Fatal("list-change subscriber should receive list-change event")
+	}
+	select {
+	case <-enrichmentChanged:
+		t.Fatal("enrichment subscriber should not receive list-change event")
+	default:
+	}
+
+	bus.Publish(EventNotificationEnrichmentChanged)
+
+	select {
+	case <-enrichmentChanged:
+	default:
+		t.Fatal("enrichment subscriber should receive enrichment event")
+	}
+	select {
+	case <-listChanged:
+		t.Fatal("list-change subscriber should not receive enrichment event")
+	default:
+	}
+}
+
 func BenchmarkEventBus_Publish(b *testing.B) {
 	bus := NewEventBus()
 	for i := 0; i < 10; i++ {
