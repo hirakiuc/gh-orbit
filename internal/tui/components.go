@@ -23,6 +23,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 	const (
 		indicatorCellWidth = 6
 		badgeWidth         = 12
+		reviewBadgeWidth   = 7
 		dividerWidth       = 3
 		priorityWidth      = 6
 	)
@@ -43,7 +44,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 	}
 
 	// 2. Calculate flexible space (30/70 ratio for Repo vs Title)
-	fixedSpace := indicatorCellWidth + badgeWidth + dividerWidth + priorityWidth + idWidth + timeWidth
+	fixedSpace := indicatorCellWidth + badgeWidth + reviewBadgeWidth + dividerWidth + priorityWidth + idWidth + timeWidth
 	flexibleSpace := ctx.Width - fixedSpace
 	if flexibleSpace < 20 {
 		flexibleSpace = 20
@@ -62,6 +63,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 	indicatorCell := renderCell(indicator+icon+unread, indicatorCellWidth, false)
 
 	badge := renderCell(renderResourceStateBadge(ctx, n.ResourceState), badgeWidth, false)
+	reviewBadge := renderCell(renderReviewDecisionBadge(ctx, n), reviewBadgeWidth, false)
 	repo := renderCell(renderRepoColumn(ctx.Styles, n.RepositoryFullName, repoWidth), repoWidth, false)
 	divider := renderCell(ctx.Styles.Separator.Render(" │ "), dividerWidth, false)
 	title := renderCell(renderNotificationTitle(ctx, n, titleWidth), titleWidth, false)
@@ -83,6 +85,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 		lipgloss.Bottom,
 		indicatorCell,
 		badge,
+		reviewBadge,
 		repo,
 		divider,
 		title,
@@ -90,6 +93,37 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 		timeCell,
 		priority,
 	)
+}
+
+func renderReviewDecisionBadge(ctx RenderContext, n triage.NotificationWithState) string {
+	if n.SubjectType != triage.SubjectPullRequest || n.ResourceSubState == "" {
+		return ""
+	}
+
+	label, style := reviewDecisionBadgeLabelAndStyle(ctx.Styles, n.ResourceSubState)
+	return style.Render(label)
+}
+
+func reviewDecisionBadgeLabelAndStyle(styles Styles, subState string) (string, lipgloss.Style) {
+	switch strings.ToUpper(subState) {
+	case "APPROVED", "COMPLETED", "RESOLVED":
+		return " ✓ APPR", styles.Assign
+	case "CHANGES_REQUESTED", "NOT_PLANNED", "DUPLICATE":
+		return " ! CHG", styles.ActionRequired
+	case "REVIEW_REQUIRED":
+		return " ? REV", styles.ReviewRequested
+	case "OUTDATED":
+		return " ? OLD", styles.Subscribed
+	default:
+		clean := strings.ReplaceAll(strings.ToUpper(subState), "_", "")
+		if clean == "" {
+			return "", styles.Subscribed
+		}
+		if len([]rune(clean)) > 4 {
+			clean = string([]rune(clean)[:4])
+		}
+		return " " + clean, styles.Subscribed
+	}
 }
 
 func renderCell(content string, width int, styleDefault bool) string {
