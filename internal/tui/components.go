@@ -18,12 +18,13 @@ type RenderContext struct {
 }
 
 // RenderNotificationRow provides a consistent, high-density Repo-First row layout.
-// Layout: [Indicator+Icon+Unread] [Badge] [Repo] │ [Title] [#ID] [Time] [Priority]
+// Layout: [Indicator+Icon+Unread] [Badge] [Review] [Repo] │ [Title] [#ID] [Time] [Priority]
 func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) string {
 	const (
 		indicatorCellWidth = 6
 		badgeWidth         = 12
-		reviewBadgeWidth   = 7
+		reviewBadgeWidth   = 8
+		reviewSpacerWidth  = 2
 		dividerWidth       = 3
 		priorityWidth      = 6
 	)
@@ -44,7 +45,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 	}
 
 	// 2. Calculate flexible space (30/70 ratio for Repo vs Title)
-	fixedSpace := indicatorCellWidth + badgeWidth + reviewBadgeWidth + dividerWidth + priorityWidth + idWidth + timeWidth
+	fixedSpace := indicatorCellWidth + badgeWidth + reviewBadgeWidth + reviewSpacerWidth + dividerWidth + priorityWidth + idWidth + timeWidth
 	flexibleSpace := ctx.Width - fixedSpace
 	if flexibleSpace < 20 {
 		flexibleSpace = 20
@@ -64,6 +65,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 
 	badge := renderCell(renderResourceStateBadge(ctx, n.ResourceState), badgeWidth, false)
 	reviewBadge := renderCell(renderReviewDecisionBadge(ctx, n), reviewBadgeWidth, false)
+	reviewSpacer := renderCell("", reviewSpacerWidth, false)
 	repo := renderCell(renderRepoColumn(ctx.Styles, n.RepositoryFullName, repoWidth), repoWidth, false)
 	divider := renderCell(ctx.Styles.Separator.Render(" │ "), dividerWidth, false)
 	title := renderCell(renderNotificationTitle(ctx, n, titleWidth), titleWidth, false)
@@ -86,6 +88,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 		indicatorCell,
 		badge,
 		reviewBadge,
+		reviewSpacer,
 		repo,
 		divider,
 		title,
@@ -111,7 +114,7 @@ func reviewDecisionBadgeLabelAndStyle(styles Styles, subState string) (string, l
 	case "CHANGES_REQUESTED", "NOT_PLANNED", "DUPLICATE":
 		return " ! CHG", styles.ActionRequired
 	case "REVIEW_REQUIRED":
-		return " ? REV", styles.ReviewRequested
+		return " REVIEW", styles.ReviewRequested
 	case "OUTDATED":
 		return " ? OLD", styles.Subscribed
 	default:

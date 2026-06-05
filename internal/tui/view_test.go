@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -108,42 +109,50 @@ func TestRenderNotificationRow_EmptyState(t *testing.T) {
 }
 
 func TestRenderNotificationRow_PRReviewDecisionBadges(t *testing.T) {
-	ctx := RenderContext{
-		Styles: DefaultStyles(true),
-		Width:  100,
-	}
-
 	tests := []struct {
 		name     string
 		subState string
 		want     string
+		notWant  string
 	}{
 		{name: "Approved", subState: "APPROVED", want: "APPR"},
-		{name: "Review required", subState: "REVIEW_REQUIRED", want: "REV"},
+		{name: "Review required", subState: "REVIEW_REQUIRED", want: "REVIEW", notWant: "? REV"},
 		{name: "Changes requested", subState: "CHANGES_REQUESTED", want: "CHG"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			notif := triage.NotificationWithState{
-				Notification: triage.Notification{
-					SubjectType:        triage.SubjectPullRequest,
-					SubjectTitle:       "Title",
-					SubjectURL:         "https://github.com/o/r/pull/123",
-					RepositoryFullName: "owner/repo",
-					ResourceState:      "OPEN",
-					ResourceSubState:   tt.subState,
-				},
+			for _, width := range []int{100, 80} {
+				t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+					ctx := RenderContext{
+						Styles: DefaultStyles(true),
+						Width:  width,
+					}
+					notif := triage.NotificationWithState{
+						Notification: triage.Notification{
+							SubjectType:        triage.SubjectPullRequest,
+							SubjectTitle:       "Title",
+							SubjectURL:         "https://github.com/o/r/pull/123",
+							RepositoryFullName: "owner/repo",
+							ResourceState:      "OPEN",
+							ResourceSubState:   tt.subState,
+						},
+					}
+
+					out := RenderNotificationRow(ctx, notif)
+					plain := stripANSI(out)
+
+					assert.Contains(t, plain, "OPEN")
+					assert.Contains(t, plain, tt.want)
+					if tt.notWant != "" {
+						assert.NotContains(t, plain, tt.notWant)
+					}
+					assert.Regexp(t, tt.want+`\s{2,}owner/repo`, plain, "Review badge must be visually separated from repo")
+					assert.NotContains(t, out, "\n", "Row must not contain newlines")
+					assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
+					assert.LessOrEqual(t, lipgloss.Width(plain), ctx.Width, "Row must not exceed available width")
+				})
 			}
-
-			out := RenderNotificationRow(ctx, notif)
-			plain := stripANSI(out)
-
-			assert.Contains(t, plain, "OPEN")
-			assert.Contains(t, plain, tt.want)
-			assert.NotContains(t, out, "\n", "Row must not contain newlines")
-			assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
-			assert.LessOrEqual(t, lipgloss.Width(plain), ctx.Width, "Row must not exceed available width")
 		})
 	}
 }
@@ -311,7 +320,7 @@ func TestRenderNotificationRow_LongRepo(t *testing.T) {
 	assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
 
 	// Verify truncation of repo name
-	assert.Contains(t, plain, "a-very-long-rep...", "Repo name must be truncated with ellipsis")
+	assert.Contains(t, plain, "a-very-long-re...", "Repo name must be truncated with ellipsis")
 }
 
 func TestRenderMarkdown(t *testing.T) {
