@@ -32,6 +32,8 @@ type Notification struct {
 	SubjectURL         string       `json:"subject_url"`
 	SubjectType        SubjectType  `json:"subject_type"`
 	Reason             string       `json:"reason"`
+	ReadStateKnown     bool         `json:"read_state_known"`
+	Unread             bool         `json:"unread"`
 	RepositoryFullName string       `json:"repository_full_name"`
 	HTMLURL            string       `json:"html_url"`
 	Body               string       `json:"body"`

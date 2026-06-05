@@ -146,6 +146,16 @@ func (db *DB) UpsertNotifications(ctx context.Context, notifications []triage.No
 		if _, err := stmtState.ExecContext(ctx, n.GitHubID); err != nil {
 			return fmt.Errorf("failed to ensure orbit state for %s: %w", n.GitHubID, err)
 		}
+
+		if n.ReadStateKnown {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE orbit_state
+				SET is_read_locally = ?
+				WHERE notification_id = ?
+			`, !n.Unread, n.GitHubID); err != nil {
+				return fmt.Errorf("failed to reconcile read state for %s: %w", n.GitHubID, err)
+			}
+		}
 	}
 
 	return tx.Commit()

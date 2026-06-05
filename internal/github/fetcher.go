@@ -153,6 +153,7 @@ func (f *NotificationFetcher) parsePage(resp *http.Response) ([]Notification, er
 	var rawPage []struct {
 		ID         string    `json:"id"`
 		Reason     string    `json:"reason"`
+		Unread     bool      `json:"unread"`
 		UpdatedAt  time.Time `json:"updated_at"`
 		Repository struct {
 			FullName string `json:"full_name"`
@@ -174,6 +175,7 @@ func (f *NotificationFetcher) parsePage(resp *http.Response) ([]Notification, er
 		notifications[i] = Notification{
 			ID:        p.ID,
 			Reason:    p.Reason,
+			Unread:    p.Unread,
 			UpdatedAt: p.UpdatedAt,
 			Repository: struct {
 				FullName string `json:"full_name"`
