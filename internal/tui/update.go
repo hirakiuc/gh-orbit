@@ -144,6 +144,7 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 			m.state = StateList
 		case key.Matches(msg, m.keys.Sync):
 			if n, ok := m.selectedNotification(); ok {
+				actions = append(actions, m.handleSyncKey()...)
 				actions = append(actions, ActionSetFetching{Enabled: true}, ActionFetchDetail{
 					ID:          n.GitHubID,
 					URL:         n.SubjectURL,
@@ -205,13 +206,21 @@ func (m *Model) getPriorityToast(p int) string {
 }
 
 func (m *Model) getVisibleNotifications(force bool) []triage.NotificationWithState {
+	return m.getReloadEnrichmentCandidates(force, false)
+}
+
+func (m *Model) getReloadEnrichmentCandidates(force bool, includeSelected bool) []triage.NotificationWithState {
 	start, end := m.listView.list.Paginator.GetSliceBounds(len(m.listView.list.Items()))
 	if start < 0 || end > len(m.listView.list.Items()) || start >= end {
-		return nil
+		if !includeSelected {
+			return nil
+		}
+		start, end = 0, 0
 	}
 	visible := m.listView.list.Items()[start:end]
 
 	var items []triage.NotificationWithState
+	seen := make(map[string]struct{})
 	now := time.Now()
 
 	statusTTL := 2 * time.Minute
@@ -222,10 +231,20 @@ func (m *Model) getVisibleNotifications(force bool) []triage.NotificationWithSta
 	for _, li := range visible {
 		if i, ok := li.(item); ok {
 			if m.isEnrichmentNeeded(i, statusTTL, force, now) {
+				seen[i.notification.GitHubID] = struct{}{}
 				items = append(items, i.notification)
 			}
 		}
 	}
+
+	if includeSelected {
+		if n, ok := m.selectedNotification(); ok {
+			if _, exists := seen[n.GitHubID]; !exists && m.isEnrichmentNeeded(item{notification: n}, statusTTL, force, now) {
+				items = append(items, n)
+			}
+		}
+	}
+
 	return items
 }
 
@@ -474,8 +493,16 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		m.refreshDetailView()
 	}
 
+	candidates := m.getReloadEnrichmentCandidates(msg.IsForced, msg.IsManual)
+	if msg.IsManual {
+		candidates = m.filterSelectedDetailRefreshCandidate(candidates)
+	}
+
 	actions := []Action{
-		ActionEnrichItems{Notifications: m.getVisibleNotifications(msg.IsForced), Force: msg.IsForced},
+		ActionEnrichItems{
+			Notifications: candidates,
+			Force:         msg.IsForced,
+		},
 	}
 
 	if msg.IsManual {
@@ -494,6 +521,25 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	}
 
 	return actions
+}
+
+func (m *Model) filterSelectedDetailRefreshCandidate(notifications []triage.NotificationWithState) []triage.NotificationWithState {
+	if m.state != StateDetail {
+		return notifications
+	}
+
+	selected, ok := m.selectedNotification()
+	if !ok {
+		return notifications
+	}
+
+	filtered := notifications[:0]
+	for _, n := range notifications {
+		if n.GitHubID != selected.GitHubID {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
 }
 
 func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {

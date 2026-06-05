@@ -441,6 +441,95 @@ func TestModel_HandleNotificationsLoaded_ManualUpdatedShowsToast(t *testing.T) {
 	assert.Empty(t, m.manualSyncSnapshot)
 }
 
+func TestModel_HandleNotificationsLoaded_ManualForceEnrichesVisiblePage(t *testing.T) {
+	m := newTestModel(t)
+	fresh := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "fresh",
+			SubjectType: triage.SubjectPullRequest,
+			IsEnriched:  true,
+			EnrichedAt:  sql.NullTime{Time: time.Now(), Valid: true},
+			UpdatedAt:   time.Now(),
+		},
+	}
+
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{
+		notifications: []triage.NotificationWithState{fresh},
+		IsForced:      true,
+		IsManual:      true,
+	})
+
+	require.Len(t, actions, 2)
+	enrich, ok := actions[0].(ActionEnrichItems)
+	require.True(t, ok)
+	assert.True(t, enrich.Force)
+	assert.Equal(t, []triage.NotificationWithState{fresh}, enrich.Notifications)
+}
+
+func TestModel_HandleNotificationsLoaded_BackgroundKeepsFreshTTLItems(t *testing.T) {
+	m := newTestModel(t)
+	fresh := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:    "fresh",
+			SubjectType: triage.SubjectPullRequest,
+			IsEnriched:  true,
+			EnrichedAt:  sql.NullTime{Time: time.Now(), Valid: true},
+			UpdatedAt:   time.Now(),
+		},
+	}
+
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{
+		notifications: []triage.NotificationWithState{fresh},
+		IsForced:      false,
+		IsManual:      false,
+	})
+
+	require.Len(t, actions, 1)
+	enrich, ok := actions[0].(ActionEnrichItems)
+	require.True(t, ok)
+	assert.False(t, enrich.Force)
+	assert.Empty(t, enrich.Notifications)
+}
+
+func TestModel_ReloadEnrichmentCandidates_ManualDedupesSelectedVisibleItem(t *testing.T) {
+	m := newTestModel(t)
+	notifs := []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "selected", SubjectType: triage.SubjectPullRequest, IsEnriched: true, UpdatedAt: time.Now()}},
+		{Notification: triage.Notification{GitHubID: "visible", SubjectType: triage.SubjectPullRequest, IsEnriched: true, UpdatedAt: time.Now()}},
+	}
+
+	m.allNotifications = notifs
+	m.applyFilters()
+	m.listView.list.Select(0)
+	m.listView.list.Paginator.PerPage = 2
+
+	candidates := m.getReloadEnrichmentCandidates(true, true)
+
+	require.Len(t, candidates, 2)
+	assert.Equal(t, "selected", candidates[0].GitHubID)
+	assert.Equal(t, "visible", candidates[1].GitHubID)
+}
+
+func TestModel_FilterSelectedDetailRefreshCandidate_RemovesSelectedDuplicate(t *testing.T) {
+	m := newTestModel(t)
+	notifs := []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "selected", SubjectType: triage.SubjectPullRequest, IsEnriched: true, UpdatedAt: time.Now()}},
+		{Notification: triage.Notification{GitHubID: "visible", SubjectType: triage.SubjectPullRequest, IsEnriched: true, UpdatedAt: time.Now()}},
+	}
+
+	m.allNotifications = notifs
+	m.applyFilters()
+	m.listView.list.Paginator.PerPage = 2
+	m.listView.list.Select(0)
+	m.state = StateDetail
+
+	candidates := m.getReloadEnrichmentCandidates(true, true)
+	filtered := m.filterSelectedDetailRefreshCandidate(candidates)
+
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "visible", filtered[0].GitHubID)
+}
+
 func TestModel_HandleTransitionError_ManualSyncShowsFailureToast(t *testing.T) {
 	m := newTestModel(t)
 	m.manualSyncPending = true
@@ -527,6 +616,8 @@ func TestModel_Transition_DetailRefreshStartsFetchingViaAction(t *testing.T) {
 	m.state = StateDetail
 
 	actions := m.Transition(keyPress("r"), 0)
+	assert.Contains(t, actions, ActionSetSyncing{Enabled: true})
+	assert.Contains(t, actions, ActionSyncNotifications{Force: true, IsManual: true})
 	assert.Contains(t, actions, ActionSetFetching{Enabled: true})
 	assert.Contains(t, actions, ActionFetchDetail{
 		ID:          notif.GitHubID,
