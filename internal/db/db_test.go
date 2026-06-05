@@ -123,6 +123,58 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	assert.True(t, ns.IsReadLocally)
 }
 
+func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
+	logger := slog.Default()
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	id := "read-state"
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
+		GitHubID:  id,
+		UpdatedAt: time.Now(),
+	}}))
+
+	require.NoError(t, db.UpdateOrbitState(ctx, triage.State{
+		NotificationID: id,
+		Priority:       3,
+		Status:         "archived",
+		IsReadLocally:  true,
+		IsNotified:     true,
+	}))
+
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
+		GitHubID:       id,
+		ReadStateKnown: true,
+		Unread:         true,
+		UpdatedAt:      time.Now(),
+	}}))
+
+	ns, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
+	assert.False(t, ns.IsReadLocally)
+	assert.Equal(t, 3, ns.Priority)
+	assert.Equal(t, "archived", ns.Status)
+	assert.True(t, ns.IsNotified)
+
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
+		GitHubID:       id,
+		ReadStateKnown: true,
+		Unread:         false,
+		UpdatedAt:      time.Now(),
+	}}))
+
+	ns, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ns)
+	assert.True(t, ns.IsReadLocally)
+	assert.Equal(t, 3, ns.Priority)
+	assert.Equal(t, "archived", ns.Status)
+	assert.True(t, ns.IsNotified)
+}
+
 func TestMarkNotifiedBatch(t *testing.T) {
 	logger := slog.Default()
 	ctx := context.Background()

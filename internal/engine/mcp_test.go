@@ -370,6 +370,20 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		return readJSONLine(t, conn, reader, timeout)
 	}
 
+	t.Run("direct notification events send coarse resource invalidation", func(t *testing.T) {
+		srv, _, _ := newTestServer(t)
+		_, clientConn, reader, cleanup := newSession(t, srv)
+		defer cleanup()
+
+		srv.engine.Bus.Publish(EventNotificationListChanged)
+		notification := readNotification(t, clientConn, reader, time.Second)
+		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
+
+		srv.engine.Bus.Publish(EventNotificationEnrichmentChanged)
+		notification = readNotification(t, clientConn, reader, time.Second)
+		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
+	})
+
 	t.Run("set_priority success sends resources/list_changed", func(t *testing.T) {
 		srv, mockRepo, _ := newTestServer(t)
 		sessionCtx, clientConn, reader, cleanup := newSession(t, srv)

@@ -42,6 +42,36 @@ func TestNotificationFetcher_FetchNotifications(t *testing.T) {
 		assert.Equal(t, 5000, rl.Remaining)
 	})
 
+	t.Run("Parses Unread State", func(t *testing.T) {
+		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
+			body := `[
+				{
+					"id": "unread",
+					"unread": true,
+					"updated_at": "2026-06-05T00:00:00Z",
+					"repository": {"full_name": "owner/repo"},
+					"subject": {"title": "Needs review", "url": "https://api.github.com/repos/owner/repo/pulls/1", "type": "PullRequest", "node_id": "PR_kw"}
+				},
+				{
+					"id": "read",
+					"unread": false,
+					"updated_at": "2026-06-05T00:01:00Z",
+					"repository": {"full_name": "owner/repo"},
+					"subject": {"title": "Already handled", "url": "https://api.github.com/repos/owner/repo/pulls/2", "type": "PullRequest", "node_id": "PR_kx"}
+				}
+			]`
+			return newJSONResponse(http.StatusOK, body, nil), nil
+		}), "https://api.test/")
+		fetcher := NewNotificationFetcher(client, slog.Default())
+
+		notifs, _, _, err := fetcher.FetchNotifications(context.Background(), &models.SyncMeta{}, false)
+
+		require.NoError(t, err)
+		require.Len(t, notifs, 2)
+		assert.True(t, notifs[0].Unread)
+		assert.False(t, notifs[1].Unread)
+	})
+
 	t.Run("304 Not Modified", func(t *testing.T) {
 		client := NewTestClient(newHTTPClient(t, func(r *http.Request) (*http.Response, error) {
 			assert.Equal(t, "etag-old", r.Header.Get("If-None-Match"))

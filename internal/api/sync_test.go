@@ -60,13 +60,18 @@ func TestSyncEngine_Sync(t *testing.T) {
 		}
 
 		notifs := []github.Notification{
-			{ID: "1", UpdatedAt: time.Now()},
+			{ID: "1", Unread: true, UpdatedAt: time.Now()},
 		}
 
 		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(meta, nil).Once()
 		mockAlerter.EXPECT().SyncStart(mock.Anything).Return().Once()
 		mockFetcher.EXPECT().FetchNotifications(mock.Anything, meta, false).Return(notifs, meta, models.RateLimitInfo{}, nil).Once()
-		mockRepo.EXPECT().UpsertNotifications(mock.Anything, mock.Anything).Return(nil).Once()
+		mockRepo.EXPECT().UpsertNotifications(mock.Anything, mock.MatchedBy(func(notifications []triage.Notification) bool {
+			return len(notifications) == 1 &&
+				notifications[0].GitHubID == "1" &&
+				notifications[0].ReadStateKnown &&
+				notifications[0].Unread
+		})).Return(nil).Once()
 		mockRepo.EXPECT().GetNotification(mock.Anything, "1").Return(&triage.NotificationWithState{
 			State: triage.State{IsNotified: false},
 		}, nil).Once()
@@ -90,6 +95,43 @@ func TestSyncEngine_Sync(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, published)
+	})
+
+	t.Run("GitHub Read Notifications Do Not Trigger Alerts", func(t *testing.T) {
+		mockFetcher := mocks.NewMockFetcher(t)
+		mockRepo := mocks.NewMockSyncRepository(t)
+		mockAlerter := mocks.NewMockAlerter(t)
+
+		meta := &models.SyncMeta{
+			UserID: userID,
+			Key:    "notifications",
+		}
+
+		notifs := []github.Notification{
+			{ID: "read-on-github", Unread: false, UpdatedAt: time.Now()},
+		}
+
+		mockRepo.EXPECT().GetSyncMeta(mock.Anything, userID, "notifications").Return(meta, nil).Once()
+		mockAlerter.EXPECT().SyncStart(mock.Anything).Return().Once()
+		mockFetcher.EXPECT().FetchNotifications(mock.Anything, meta, false).Return(notifs, meta, models.RateLimitInfo{}, nil).Once()
+		mockRepo.EXPECT().UpsertNotifications(mock.Anything, mock.MatchedBy(func(notifications []triage.Notification) bool {
+			return len(notifications) == 1 &&
+				notifications[0].GitHubID == "read-on-github" &&
+				notifications[0].ReadStateKnown &&
+				!notifications[0].Unread
+		})).Return(nil).Once()
+		mockRepo.EXPECT().UpdateSyncMeta(mock.Anything, mock.Anything).Return(nil).Once()
+
+		engine, err := NewSyncEngine(SyncParams{
+			Fetcher: mockFetcher,
+			DB:      mockRepo,
+			Alerts:  mockAlerter,
+			Logger:  logger,
+		})
+		require.NoError(t, err)
+		_, err = engine.Sync(ctx, userID, false)
+
+		require.NoError(t, err)
 	})
 
 	t.Run("Skips Sync When Interval Not Reached", func(t *testing.T) {
