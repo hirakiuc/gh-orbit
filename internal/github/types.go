@@ -28,6 +28,7 @@ func (u User) LogValue() slog.Value {
 type Notification struct {
 	ID         string    `json:"id"`
 	Reason     string    `json:"reason"`
+	Unread     bool      `json:"unread"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	Repository struct {
 		FullName string `json:"full_name"`
