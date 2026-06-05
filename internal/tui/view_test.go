@@ -107,6 +107,74 @@ func TestRenderNotificationRow_EmptyState(t *testing.T) {
 	assert.Equal(t, lipgloss.Width(plainOpen), lipgloss.Width(plainEmpty), "Row lengths must be equal for consistent alignment")
 }
 
+func TestRenderNotificationRow_PRReviewDecisionBadges(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+
+	tests := []struct {
+		name     string
+		subState string
+		want     string
+	}{
+		{name: "Approved", subState: "APPROVED", want: "APPR"},
+		{name: "Review required", subState: "REVIEW_REQUIRED", want: "REV"},
+		{name: "Changes requested", subState: "CHANGES_REQUESTED", want: "CHG"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notif := triage.NotificationWithState{
+				Notification: triage.Notification{
+					SubjectType:        triage.SubjectPullRequest,
+					SubjectTitle:       "Title",
+					SubjectURL:         "https://github.com/o/r/pull/123",
+					RepositoryFullName: "owner/repo",
+					ResourceState:      "OPEN",
+					ResourceSubState:   tt.subState,
+				},
+			}
+
+			out := RenderNotificationRow(ctx, notif)
+			plain := stripANSI(out)
+
+			assert.Contains(t, plain, "OPEN")
+			assert.Contains(t, plain, tt.want)
+			assert.NotContains(t, out, "\n", "Row must not contain newlines")
+			assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
+			assert.LessOrEqual(t, lipgloss.Width(plain), ctx.Width, "Row must not exceed available width")
+		})
+	}
+}
+
+func TestRenderNotificationRow_NonPRHidesReviewDecisionBadge(t *testing.T) {
+	ctx := RenderContext{
+		Styles: DefaultStyles(true),
+		Width:  100,
+	}
+
+	notif := triage.NotificationWithState{
+		Notification: triage.Notification{
+			SubjectType:        triage.SubjectIssue,
+			SubjectTitle:       "Title",
+			SubjectURL:         "https://github.com/o/r/issues/123",
+			RepositoryFullName: "owner/repo",
+			ResourceState:      "OPEN",
+			ResourceSubState:   "APPROVED",
+		},
+	}
+
+	out := RenderNotificationRow(ctx, notif)
+	plain := stripANSI(out)
+
+	assert.Contains(t, plain, "OPEN")
+	assert.NotContains(t, plain, "APPR")
+	assert.NotContains(t, out, "\n", "Row must not contain newlines")
+	assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
+	assert.LessOrEqual(t, lipgloss.Width(plain), ctx.Width, "Row must not exceed available width")
+}
+
 func TestRenderHeader(t *testing.T) {
 	m := newTestModel(t)
 	m.width = 100
@@ -243,7 +311,7 @@ func TestRenderNotificationRow_LongRepo(t *testing.T) {
 	assert.Equal(t, 1, lipgloss.Height(out), "Row height must be exactly 1")
 
 	// Verify truncation of repo name
-	assert.Contains(t, plain, "a-very-long-repos...", "Repo name must be truncated with ellipsis")
+	assert.Contains(t, plain, "a-very-long-rep...", "Repo name must be truncated with ellipsis")
 }
 
 func TestRenderMarkdown(t *testing.T) {
