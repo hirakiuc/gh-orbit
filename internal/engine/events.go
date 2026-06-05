@@ -8,7 +8,11 @@ import (
 type EngineEvent string
 
 const (
-	EventNotificationListChanged       EngineEvent = "notifications_changed"
+	// EventNotificationListChanged signals that the notification resource list
+	// shape changed, such as rows being added, removed, or locally mutated.
+	EventNotificationListChanged EngineEvent = "notifications_changed"
+	// EventNotificationEnrichmentChanged signals that already-listed
+	// notifications received refreshed detail/enrichment data.
 	EventNotificationEnrichmentChanged EngineEvent = "enrichment_updated"
 )
 

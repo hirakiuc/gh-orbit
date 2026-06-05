@@ -157,11 +157,18 @@ func (s *MCPServer) eventLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-notifCh:
-			s.server.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
+			s.notifyNotificationResourcesChanged()
 		case <-enrichCh:
-			s.server.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
+			s.notifyNotificationResourcesChanged()
 		}
 	}
+}
+
+func (s *MCPServer) notifyNotificationResourcesChanged() {
+	// MCP exposes both notification-list and enrichment mutations as coarse
+	// resource invalidation so clients can refetch without learning engine-only
+	// event categories.
+	s.server.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
 }
 
 func (s *MCPServer) handleStaleSocket() error {

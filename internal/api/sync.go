@@ -202,6 +202,8 @@ func (s *SyncEngine) processSyncResults(ctx context.Context, notifications []git
 			SubjectURL:         n.Subject.URL,
 			SubjectType:        triage.SubjectType(n.Subject.Type),
 			Reason:             n.Reason,
+			ReadStateKnown:     true,
+			Unread:             n.Unread,
 			RepositoryFullName: n.Repository.FullName,
 			SubjectNodeID:      n.Subject.NodeID,
 			HTMLURL:            "", // Will be enriched in later phases if needed
@@ -233,6 +235,10 @@ func (s *SyncEngine) triggerAlerts(ctx context.Context, notifications []github.N
 func (s *SyncEngine) shouldTriggerAlert(ctx context.Context, n github.Notification, lastSyncAt time.Time) bool {
 	// We only trigger alerts for notifications arriving AFTER the established baseline
 	// AND that we haven't notified for yet.
+	if !n.Unread {
+		return false
+	}
+
 	state, err := s.db.GetNotification(ctx, n.ID)
 	if err != nil || state == nil || state.IsNotified {
 		return false
