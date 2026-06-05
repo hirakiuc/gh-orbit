@@ -728,6 +728,91 @@ func TestModel_ApplyFilters_UsesGitHubUpdatedAtInsteadOfRecentLocalActivity(t *t
 	assert.Equal(t, "recent", item.notification.GitHubID)
 }
 
+func TestModel_ApplyFilters_HidesIgnoredRepositoriesAcrossTabs(t *testing.T) {
+	m := newTestModel(t)
+	m.config.Notifications.IgnoreRepos = []string{" hirakiuc/test-repo "}
+	m.config.Notifications.MaxVisibleAgeDays = 0
+
+	ignored := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:           "ignored",
+			SubjectType:        triage.SubjectPullRequest,
+			RepositoryFullName: "hirakiuc/test-repo",
+			UpdatedAt:          time.Now(),
+		},
+		State: triage.State{
+			Priority: 1,
+		},
+	}
+	visible := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:           "visible",
+			SubjectType:        triage.SubjectPullRequest,
+			RepositoryFullName: "hirakiuc/kept-repo",
+			UpdatedAt:          time.Now(),
+		},
+		State: triage.State{
+			Priority: 1,
+		},
+	}
+	m.allNotifications = []triage.NotificationWithState{ignored, visible}
+
+	for _, tab := range []int{TabInbox, TabUnread, TabTriaged, TabAll} {
+		m.listView.activeTab = tab
+		m.applyFilters()
+
+		require.Len(t, m.listView.list.Items(), 1, "tab %d should only show the non-ignored repo", tab)
+		item, ok := m.listView.list.Items()[0].(item)
+		require.True(t, ok)
+		assert.Equal(t, "visible", item.notification.GitHubID)
+	}
+}
+
+func TestModel_HandleNotificationsLoaded_KeepsIgnoredRepositoriesHiddenAfterReload(t *testing.T) {
+	m := newTestModel(t)
+	m.listView.activeTab = TabAll
+	m.listView.list.SetSize(100, 100)
+	m.config.Notifications.IgnoreRepos = []string{"hirakiuc/test-repo"}
+	m.config.Notifications.MaxVisibleAgeDays = 0
+
+	ignored := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:           "ignored",
+			SubjectType:        triage.SubjectPullRequest,
+			RepositoryFullName: "hirakiuc/test-repo",
+			UpdatedAt:          time.Now(),
+		},
+	}
+	visible := triage.NotificationWithState{
+		Notification: triage.Notification{
+			GitHubID:           "visible",
+			SubjectType:        triage.SubjectPullRequest,
+			RepositoryFullName: "hirakiuc/kept-repo",
+			UpdatedAt:          time.Now(),
+		},
+	}
+
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{
+		notifications: []triage.NotificationWithState{ignored, visible},
+		IsManual:      true,
+	})
+
+	require.Len(t, m.listView.list.Items(), 1)
+	item, ok := m.listView.list.Items()[0].(item)
+	require.True(t, ok)
+	assert.Equal(t, "visible", item.notification.GitHubID)
+
+	for _, action := range actions {
+		enrichAction, ok := action.(ActionEnrichItems)
+		if !ok {
+			continue
+		}
+		for _, n := range enrichAction.Notifications {
+			assert.NotEqual(t, "ignored", n.GitHubID, "ignored repo should not be scheduled from visible-list enrichment")
+		}
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	// extractNumberFromURL
 	assert.Equal(t, "123", extractNumberFromURL("https://api.github.com/repos/o/r/pulls/123"))
