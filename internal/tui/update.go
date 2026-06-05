@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -344,11 +345,33 @@ func (m *Model) shouldKeepNotification(n triage.NotificationWithState, now time.
 		}
 	}
 
+	if keep && m.isIgnoredRepository(n.RepositoryFullName) {
+		keep = false
+	}
+
 	if keep && !m.isNotificationWithinVisibleAge(n, now) {
 		keep = false
 	}
 
 	return keep
+}
+
+func (m *Model) isIgnoredRepository(repoFullName string) bool {
+	if m.config == nil {
+		return false
+	}
+
+	repoFullName = strings.TrimSpace(repoFullName)
+	if repoFullName == "" {
+		return false
+	}
+
+	for _, ignored := range m.config.Notifications.IgnoreRepos {
+		if strings.TrimSpace(ignored) == repoFullName {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) restoreFilterState(filter string) {
