@@ -24,63 +24,36 @@ func NewInterpreter(m *Model) *Interpreter {
 }
 
 func (i *Interpreter) Execute(action Action) tea.Cmd {
-	if action == nil {
+	switch a := action.(type) {
+	case nil:
 		return nil
-	}
-
-	if _, ok := action.(ActionQuit); ok {
+	case ActionQuit:
 		return tea.Quit
-	}
-
-	if a, ok := action.(ActionShowToast); ok {
+	case ActionShowToast:
 		return i.model.ui.SetToast(a.Message)
-	}
-
-	if a, ok := action.(ActionSetSyncing); ok {
+	case ActionSetSyncing:
 		return i.model.ui.SetSyncing(a.Enabled)
-	}
-
-	if a, ok := action.(ActionSetFetching); ok {
+	case ActionSetFetching:
 		return i.model.ui.SetFetching(a.Enabled)
-	}
-
-	if a, ok := action.(ActionSyncNotifications); ok {
+	case ActionSyncNotifications:
 		return i.model.syncNotificationsWithForce(a.Force, a.IsManual)
-	}
-
-	if a, ok := action.(ActionMarkRead); ok {
+	case ActionMarkRead:
 		return i.model.MarkReadByID(a.ID, a.Read)
-	}
-
-	if a, ok := action.(ActionSetPriority); ok {
+	case ActionSetPriority:
 		return i.model.setPriorityByID(a.ID, a.Priority)
-	}
-
-	if a, ok := action.(ActionViewWeb); ok {
+	case ActionViewWeb:
 		return i.executeViewWeb(a.Notification)
-	}
-
-	if a, ok := action.(ActionOpenBrowser); ok {
+	case ActionOpenBrowser:
 		return i.executeOpenBrowser(a.URL)
-	}
-
-	if a, ok := action.(ActionCheckoutPR); ok {
+	case ActionCheckoutPR:
 		return i.executeCheckoutPR(a.NotificationID, a.Repository, a.Number)
-	}
-
-	if a, ok := action.(ActionEnrichItems); ok {
+	case ActionEnrichItems:
 		return i.model.enrichItems(a.Notifications, a.Force)
-	}
-
-	if a, ok := action.(ActionFetchDetail); ok {
+	case ActionFetchDetail:
 		return i.model.FetchDetailCmd(a.ID, a.URL, a.SubjectType, a.Force)
-	}
-
-	if a, ok := action.(ActionLoadNotifications); ok {
+	case ActionLoadNotifications:
 		return i.model.loadNotifications(a.IsInitial, a.IsForced, a.IsManual)
-	}
-
-	if a, ok := action.(ActionUpdateRateLimit); ok {
+	case ActionUpdateRateLimit:
 		return func() tea.Msg {
 			i.model.RateLimit = a.Info
 			// Connected mode intentionally delegates traffic control to the external engine.
@@ -89,27 +62,28 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 			}
 			return nil
 		}
-	}
-
-	if _, ok := action.(ActionCheckFocusMode); ok {
+	case ActionCheckFocusMode:
 		return i.model.checkFocusMode()
+	case ActionScheduleTick:
+		return i.executeScheduleTick(a)
+	default:
+		return nil
 	}
+}
 
-	if a, ok := action.(ActionScheduleTick); ok {
-		switch a.TickType {
-		case TickHeartbeat:
-			return i.model.tickHeartbeat()
-		case TickClock:
-			return i.model.tickClock()
-		case TickToast:
-			return tea.Tick(a.Interval, func(_ time.Time) tea.Msg {
-				return clearStatusMsg{}
-			})
-		case TickEnrich:
-			return i.model.tickEnrich()
-		}
+func (i *Interpreter) executeScheduleTick(action ActionScheduleTick) tea.Cmd {
+	switch action.TickType {
+	case TickHeartbeat:
+		return i.model.tickHeartbeat()
+	case TickClock:
+		return i.model.tickClock()
+	case TickToast:
+		return tea.Tick(action.Interval, func(_ time.Time) tea.Msg {
+			return clearStatusMsg{}
+		})
+	case TickEnrich:
+		return i.model.tickEnrich()
 	}
-
 	return nil
 }
 
