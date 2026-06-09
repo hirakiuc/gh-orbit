@@ -14,7 +14,6 @@ type KeyMap struct {
 	Tab1             key.Binding
 	Tab2             key.Binding
 	Tab3             key.Binding
-	Tab4             key.Binding
 	CopyURL          key.Binding
 	ToggleRead       key.Binding
 	NextTab          key.Binding
@@ -56,14 +55,10 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 			key.WithHelp(k.Inbox[0], "inbox"),
 		),
 		Tab2: key.NewBinding(
-			key.WithKeys(k.Unread...),
-			key.WithHelp(k.Unread[0], "unread"),
-		),
-		Tab3: key.NewBinding(
 			key.WithKeys(k.Triaged...),
 			key.WithHelp(k.Triaged[0], "triaged"),
 		),
-		Tab4: key.NewBinding(
+		Tab3: key.NewBinding(
 			key.WithKeys(k.All...),
 			key.WithHelp(k.All[0], "all"),
 		),
@@ -143,7 +138,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
 		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
 		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
-		{k.Tab1, k.Tab2, k.Tab3, k.Tab4},
+		{k.Tab1, k.Tab2, k.Tab3},
 		{k.NextTab, k.PrevTab, k.CheckoutPR, k.Help, k.Quit},
 	}
 }
