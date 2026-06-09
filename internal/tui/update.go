@@ -349,9 +349,7 @@ func (m *Model) shouldKeepNotification(n triage.NotificationWithState, now time.
 	keep := false
 	switch m.listView.activeTab {
 	case TabInbox:
-		keep = !n.IsReadLocally && n.Status != "archived"
-	case TabUnread:
-		keep = !n.IsReadLocally
+		keep = !n.IsReadLocally || n.Priority > 0
 	case TabTriaged:
 		keep = n.Priority > 0
 	case TabAll:
@@ -735,10 +733,8 @@ func (m *Model) handleTabKeys(msg tea.KeyMsg) []Action {
 	case key.Matches(msg, m.keys.Tab1):
 		m.setActiveTab(TabInbox)
 	case key.Matches(msg, m.keys.Tab2):
-		m.setActiveTab(TabUnread)
-	case key.Matches(msg, m.keys.Tab3):
 		m.setActiveTab(TabTriaged)
-	case key.Matches(msg, m.keys.Tab4):
+	case key.Matches(msg, m.keys.Tab3):
 		m.setActiveTab(TabAll)
 	default:
 		return nil
@@ -880,7 +876,7 @@ func (m *Model) selectedNotification() (triage.NotificationWithState, bool) {
 }
 
 func (m *Model) cycleTab(delta int) {
-	m.listView.activeTab = (m.listView.activeTab + delta + 4) % 4
+	m.listView.activeTab = (m.listView.activeTab + delta + tabCount) % tabCount
 	m.applyFilters()
 }
 

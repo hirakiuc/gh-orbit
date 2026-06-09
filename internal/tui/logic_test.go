@@ -42,6 +42,18 @@ func keyPress(s string) tea.KeyPressMsg {
 	}
 }
 
+func assertListNotificationIDs(t *testing.T, m *Model, expected []string) {
+	t.Helper()
+
+	items := m.listView.list.Items()
+	require.Len(t, items, len(expected))
+	for idx, expectedID := range expected {
+		item, ok := items[idx].(item)
+		require.True(t, ok)
+		assert.Equal(t, expectedID, item.notification.GitHubID)
+	}
+}
+
 func TestInterpreter_Execute(t *testing.T) {
 	m := newTestModel(t)
 	interp := NewInterpreter(m)
@@ -641,6 +653,51 @@ func TestModel_Transition_Tabs(t *testing.T) {
 	msg = keyPress("shift+tab")
 	_ = m.Transition(msg, 0)
 	assert.Equal(t, initialTab, m.listView.activeTab)
+
+	m.setActiveTab(TabAll)
+	_ = m.Transition(keyPress("tab"), 0)
+	assert.Equal(t, TabInbox, m.listView.activeTab)
+
+	_ = m.Transition(keyPress("shift+tab"), 0)
+	assert.Equal(t, TabAll, m.listView.activeTab)
+
+	_ = m.Transition(keyPress("1"), 0)
+	assert.Equal(t, TabInbox, m.listView.activeTab)
+	_ = m.Transition(keyPress("2"), 0)
+	assert.Equal(t, TabTriaged, m.listView.activeTab)
+	_ = m.Transition(keyPress("3"), 0)
+	assert.Equal(t, TabAll, m.listView.activeTab)
+}
+
+func TestModel_ApplyFilters_ActiveTriageTabs(t *testing.T) {
+	m := newTestModel(t)
+	m.config.Notifications.MaxVisibleAgeDays = 0
+
+	unread := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "unread", UpdatedAt: time.Now()},
+		State:        triage.State{IsReadLocally: false, Priority: 0},
+	}
+	prioritizedRead := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "prioritized-read", UpdatedAt: time.Now()},
+		State:        triage.State{IsReadLocally: true, Priority: 2},
+	}
+	done := triage.NotificationWithState{
+		Notification: triage.Notification{GitHubID: "done", UpdatedAt: time.Now()},
+		State:        triage.State{IsReadLocally: true, Priority: 0},
+	}
+	m.allNotifications = []triage.NotificationWithState{unread, prioritizedRead, done}
+
+	m.listView.activeTab = TabInbox
+	m.applyFilters()
+	assertListNotificationIDs(t, m, []string{"unread", "prioritized-read"})
+
+	m.listView.activeTab = TabTriaged
+	m.applyFilters()
+	assertListNotificationIDs(t, m, []string{"prioritized-read"})
+
+	m.listView.activeTab = TabAll
+	m.applyFilters()
+	assertListNotificationIDs(t, m, []string{"unread", "prioritized-read", "done"})
 }
 
 func TestModel_Transition_Enrichment(t *testing.T) {
@@ -848,7 +905,7 @@ func TestModel_ApplyFilters_HidesIgnoredRepositoriesAcrossTabs(t *testing.T) {
 	}
 	m.allNotifications = []triage.NotificationWithState{ignored, visible}
 
-	for _, tab := range []int{TabInbox, TabUnread, TabTriaged, TabAll} {
+	for _, tab := range []int{TabInbox, TabTriaged, TabAll} {
 		m.listView.activeTab = tab
 		m.applyFilters()
 

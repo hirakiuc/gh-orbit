@@ -142,6 +142,48 @@ keys:
 		assert.Equal(t, []string{"r"}, DefaultConfig().Keys.Sync) // Default was 'r'
 		assert.Equal(t, []string{"m"}, cfg.Keys.ToggleRead)       // Still 'm'
 	})
+
+	t.Run("Old Default Tab Keys Normalize To Three Tabs", func(t *testing.T) {
+		content := `
+version: 1
+keys:
+  inbox: ["1"]
+  unread: ["2"]
+  triaged: ["3"]
+  all: ["4"]
+`
+		err := os.WriteFile(expectedPath, []byte(content), 0o600)
+		require.NoError(t, err)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+
+		assert.Equal(t, []string{"1"}, cfg.Keys.Inbox)
+		assert.Empty(t, cfg.Keys.Unread)
+		assert.Equal(t, []string{"2"}, cfg.Keys.Triaged)
+		assert.Equal(t, []string{"3"}, cfg.Keys.All)
+	})
+
+	t.Run("Custom Tab Keys Are Preserved", func(t *testing.T) {
+		content := `
+version: 1
+keys:
+  inbox: ["g", "i"]
+  unread: ["u"]
+  triaged: ["t"]
+  all: ["a"]
+`
+		err := os.WriteFile(expectedPath, []byte(content), 0o600)
+		require.NoError(t, err)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+
+		assert.Equal(t, []string{"g", "i"}, cfg.Keys.Inbox)
+		assert.Equal(t, []string{"u"}, cfg.Keys.Unread)
+		assert.Equal(t, []string{"t"}, cfg.Keys.Triaged)
+		assert.Equal(t, []string{"a"}, cfg.Keys.All)
+	})
 }
 
 func TestConfig_Persistence(t *testing.T) {

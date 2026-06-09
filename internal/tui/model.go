@@ -24,9 +24,9 @@ type AppState int
 
 const (
 	TabInbox = iota
-	TabUnread
 	TabTriaged
 	TabAll
+	tabCount
 )
 
 const (

@@ -49,7 +49,7 @@ func (m *Model) View() tea.View {
 
 func (m *Model) renderHeader() string {
 	// 1. Current Tab Bar
-	tabs := []string{" Inbox ", " Unread ", " Triaged ", " All "}
+	tabs := []string{" Inbox ", " Triaged ", " All "}
 	var renderedTabs []string
 
 	for i, t := range tabs {

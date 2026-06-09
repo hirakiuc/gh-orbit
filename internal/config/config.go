@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
@@ -99,9 +100,9 @@ func DefaultConfig() *Config {
 			PriorityDown:     []string{"shift+down", "J"},
 			PriorityNone:     []string{"0"},
 			Inbox:            []string{"1"},
-			Unread:           []string{"2"},
-			Triaged:          []string{"3"},
-			All:              []string{"4"},
+			Unread:           []string{},
+			Triaged:          []string{"2"},
+			All:              []string{"3"},
 			CopyURL:          []string{"y"},
 			ToggleRead:       []string{"m"},
 			NextTab:          []string{"]", "tab"},
@@ -213,12 +214,29 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid config.yml (check for typos): %w", err)
 	}
 
+	normalizeKeyMap(&cfg.Keys)
+
 	// 3. Semantic Validation
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	return cfg, nil
+}
+
+func normalizeKeyMap(keys *KeyMapConfig) {
+	if isOldDefaultTabKeyMap(*keys) {
+		keys.Unread = nil
+		keys.Triaged = []string{"2"}
+		keys.All = []string{"3"}
+	}
+}
+
+func isOldDefaultTabKeyMap(keys KeyMapConfig) bool {
+	return slices.Equal(keys.Inbox, []string{"1"}) &&
+		slices.Equal(keys.Unread, []string{"2"}) &&
+		slices.Equal(keys.Triaged, []string{"3"}) &&
+		slices.Equal(keys.All, []string{"4"})
 }
 
 // Save saves the current configuration to disk.
