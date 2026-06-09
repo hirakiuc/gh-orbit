@@ -6,13 +6,15 @@ import SwiftTerm
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
     private let onLog: ((String, LogLevel) -> Void)?
+    private let onTerminate: ((Int32?) -> Void)?
 
     var view: NSView {
         return terminalView
     }
 
-    init(onLog: ((String, LogLevel) -> Void)? = nil) {
+    init(onLog: ((String, LogLevel) -> Void)? = nil, onTerminate: ((Int32?) -> Void)? = nil) {
         self.onLog = onLog
+        self.onTerminate = onTerminate
         self.terminalView = LocalProcessTerminalView(frame: .zero)
         super.init()
         self.terminalView.processDelegate = self
@@ -108,6 +110,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         let message = "\r\n\r\n[Process terminated with exit code \(code)]\r\n"
         let bytes = [UInt8](message.utf8)
         source.feed(byteArray: bytes[...])
+        onTerminate?(exitCode)
     }
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
@@ -122,5 +125,9 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
             environment: environment,
             execName: nil
         )
+    }
+
+    func terminateProcess() {
+        terminalView.terminate()
     }
 }

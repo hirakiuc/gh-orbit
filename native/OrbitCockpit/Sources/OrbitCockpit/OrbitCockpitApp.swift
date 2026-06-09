@@ -112,7 +112,8 @@ struct TerminalHostView: View {
 
     var body: some View {
         VStack {
-            if let error = terminalManager.launchError {
+            switch terminalManager.state(for: paneName) {
+            case .failed(let error):
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.largeTitle)
@@ -121,15 +122,32 @@ struct TerminalHostView: View {
                         .font(.headline)
                         .multilineTextAlignment(.center)
                     Button("Retry") {
-                        terminalManager.launchError = nil
                         terminalManager.launch(paneName)
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if let engine = terminalManager.engines[paneName] {
-                TerminalContainer(engine: engine, isFocused: true)
-            } else {
+            case .running:
+                if let engine = terminalManager.engine(for: paneName) {
+                    TerminalContainer(engine: engine, isFocused: true)
+                } else {
+                    ProgressView()
+                }
+            case .exited(let exitCode):
+                VStack(spacing: 20) {
+                    Image(systemName: "terminal")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("Session ended with exit code \(exitCode)")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Button("Restart TUI") {
+                        terminalManager.launch(paneName)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            case .launching, .none:
                 VStack(spacing: 12) {
                     ProgressView()
                     Text("Initializing Engine...")
@@ -145,10 +163,35 @@ struct TerminalHostView: View {
 }
 
 @MainActor
+enum TerminalPaneState: Equatable {
+    case launching
+    case running
+    case exited(exitCode: Int32)
+    case failed(message: String)
+}
+
+@MainActor
+protocol TerminalProcessSession: AnyObject {
+    var engine: OrbitTerminalEngine { get }
+    func terminateProcess()
+}
+
+extension SwiftTermAdapter: TerminalProcessSession {
+    var engine: OrbitTerminalEngine {
+        self
+    }
+}
+
+@MainActor
+struct TerminalPaneSession {
+    var state: TerminalPaneState
+    var session: TerminalProcessSession?
+}
+
+@MainActor
 class TerminalManager: ObservableObject {
-    @Published var engines: [String: OrbitTerminalEngine] = [:]
+    @Published private var panes: [String: TerminalPaneSession] = [:]
     @Published var engineManager: NativeEngineManager?
-    @Published var launchError: String?
 
     private var isDark: Bool = true
     private var cancellables = Set<AnyCancellable>()
@@ -176,26 +219,51 @@ class TerminalManager: ObservableObject {
 
     func updateTheme(isDark: Bool) {
         self.isDark = isDark
-        for engine in engines.values {
-            engine.isDarkMode(isDark)
+        for pane in panes.values {
+            pane.session?.engine.isDarkMode(isDark)
         }
     }
 
+    func state(for name: String) -> TerminalPaneState? {
+        panes[name]?.state
+    }
+
+    func engine(for name: String) -> OrbitTerminalEngine? {
+        panes[name]?.session?.engine
+    }
+
+    func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
+        panes[name] = TerminalPaneSession(state: state, session: session)
+    }
+
     func launch(_ name: String) {
-        if engines[name] != nil || launchTasks[name] != nil {
+        if launchTasks[name] != nil {
             return
         }
 
-        let task = Task {
+        if let state = panes[name]?.state, state == .launching || state == .running {
+            return
+        }
+
+        panes[name] = TerminalPaneSession(state: .launching, session: nil)
+
+        let task = Task { @MainActor in
             defer { launchTasks[name] = nil }
-            let adapter = SwiftTermAdapter(onLog: onLog)
+            let adapter = SwiftTermAdapter(
+                onLog: onLog,
+                onTerminate: { [weak self] exitCode in
+                    self?.processTerminated(name: name, exitCode: exitCode)
+                })
             adapter.isDarkMode(isDark)
 
             onLog?("Resolving gh-orbit binary...", .debug)
             // 1. Resolve binary
             guard let executableURL = PathResolver.resolveBinary(onLog: onLog) else {
                 onLog?("gh-orbit binary not found. Launch aborted.", .error)
-                self.launchError = "gh-orbit binary not found. Please ensure it's in your PATH or set GH_ORBIT_BIN."
+                panes[name] = TerminalPaneSession(
+                    state: .failed(
+                        message: "gh-orbit binary not found. Please ensure it's in your PATH or set GH_ORBIT_BIN."),
+                    session: nil)
                 return
             }
             onLog?("Final binary resolved to: \(executableURL.path)", .debug)
@@ -218,7 +286,7 @@ class TerminalManager: ObservableObject {
                     break
                 case .failed(let message):
                     onLog?("Engine verification failed. Aborting pane launch.", .error)
-                    self.launchError = message
+                    panes[name] = TerminalPaneSession(state: .failed(message: message), session: nil)
                     return
                 }
             }
@@ -232,9 +300,13 @@ class TerminalManager: ObservableObject {
             onLog?("Launching TUI process with args: \(args)", .debug)
             adapter.startProcess(
                 executable: executableURL, args: args, environment: env.map { "\($0.key)=\($0.value)" })
-            engines[name] = adapter
+            panes[name] = TerminalPaneSession(state: .running, session: adapter)
         }
         launchTasks[name] = task
+    }
+
+    func processTerminated(name: String, exitCode: Int32?) {
+        panes[name] = TerminalPaneSession(state: .exited(exitCode: exitCode ?? -1), session: nil)
     }
 
     func shutdown() {
@@ -242,6 +314,9 @@ class TerminalManager: ObservableObject {
             task.cancel()
         }
         launchTasks.removeAll()
+        for pane in panes.values where pane.state == .running {
+            pane.session?.terminateProcess()
+        }
         engineManager?.stopEngine()
     }
 }
