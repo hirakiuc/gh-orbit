@@ -47,6 +47,7 @@ func TestUpsertAndGetNotification(t *testing.T) {
 	assert.Equal(t, 0, ns.Priority)
 	assert.Equal(t, "entry", ns.Status)
 	assert.False(t, ns.IsReadLocally)
+	assert.False(t, ns.IsHandledLocally)
 }
 
 func TestUpsertNotificationsBatch(t *testing.T) {
@@ -103,10 +104,11 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 
 	// Manually set some triage state
 	err = db.UpdateOrbitState(ctx, triage.State{
-		NotificationID: id,
-		Priority:       3,
-		Status:         "archived",
-		IsReadLocally:  true,
+		NotificationID:   id,
+		Priority:         3,
+		Status:           "archived",
+		IsReadLocally:    true,
+		IsHandledLocally: true,
 	})
 	require.NoError(t, err)
 
@@ -121,6 +123,7 @@ func TestUpsertPreservesLocalState(t *testing.T) {
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsReadLocally)
+	assert.True(t, ns.IsHandledLocally)
 }
 
 func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
@@ -137,11 +140,12 @@ func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
 	}}))
 
 	require.NoError(t, db.UpdateOrbitState(ctx, triage.State{
-		NotificationID: id,
-		Priority:       3,
-		Status:         "archived",
-		IsReadLocally:  true,
-		IsNotified:     true,
+		NotificationID:   id,
+		Priority:         3,
+		Status:           "archived",
+		IsReadLocally:    true,
+		IsHandledLocally: true,
+		IsNotified:       true,
 	}))
 
 	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{
@@ -155,6 +159,7 @@ func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.False(t, ns.IsReadLocally)
+	assert.True(t, ns.IsHandledLocally)
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsNotified)
@@ -170,6 +175,7 @@ func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.True(t, ns.IsReadLocally)
+	assert.True(t, ns.IsHandledLocally)
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsNotified)
@@ -230,12 +236,14 @@ func TestRepository_Actions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.True(t, ns.IsReadLocally)
+	assert.True(t, ns.IsHandledLocally)
 
 	require.NoError(t, db.MarkReadLocally(ctx, id, false))
 	ns, err = db.GetNotification(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.False(t, ns.IsReadLocally)
+	assert.False(t, ns.IsHandledLocally)
 
 	// 3. Archive/Unarchive
 	require.NoError(t, db.ArchiveThread(ctx, id))

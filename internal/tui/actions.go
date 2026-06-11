@@ -28,6 +28,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	for idx, n := range m.allNotifications {
 		if n.GitHubID == id {
 			m.allNotifications[idx].IsReadLocally = read
+			m.allNotifications[idx].IsHandledLocally = read
 			break
 		}
 	}

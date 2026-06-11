@@ -395,6 +395,7 @@ func applyReadState(notifications []triage.NotificationWithState, id string, rea
 	for idx := range cloned {
 		if cloned[idx].GitHubID == id {
 			cloned[idx].IsReadLocally = read
+			cloned[idx].IsHandledLocally = read
 			break
 		}
 	}
