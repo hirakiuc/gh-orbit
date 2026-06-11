@@ -125,8 +125,8 @@ func (db *DB) UpsertNotifications(ctx context.Context, notifications []triage.No
 	defer func() { _ = stmtNotifications.Close() }()
 
 	stmtState, err := tx.PrepareContext(ctx, `
-		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally)
-		VALUES (?, 0, 'entry', FALSE)
+		INSERT INTO orbit_state (notification_id, priority, status, is_read_locally, is_handled_locally)
+		VALUES (?, 0, 'entry', FALSE, FALSE)
 		ON CONFLICT(notification_id) DO NOTHING
 	`)
 	if err != nil {
@@ -167,7 +167,7 @@ func baseNotificationSelect() string {
 			n.github_id, n.subject_title, n.subject_url, n.subject_type, n.reason, n.repository_full_name, n.html_url,
 			COALESCE(n.body, ''), COALESCE(n.author_login, ''), COALESCE(n.resource_state, ''), COALESCE(n.resource_sub_state, ''), COALESCE(n.subject_node_id, ''),
 			n.is_enriched, n.enriched_at, n.updated_at,
-			s.priority, s.status, s.is_read_locally, s.is_notified
+			s.priority, s.status, s.is_read_locally, s.is_handled_locally, s.is_notified
 		FROM notifications n
 		JOIN orbit_state s ON n.github_id = s.notification_id
 	`
@@ -181,7 +181,7 @@ func (db *DB) GetNotification(ctx context.Context, id string) (*triage.Notificat
 	err := row.Scan(
 		&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 		&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ResourceSubState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
-		&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
+		&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsHandledLocally, &ns.IsNotified,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -207,7 +207,7 @@ func (db *DB) ListNotifications(ctx context.Context) ([]triage.NotificationWithS
 		err := rows.Scan(
 			&ns.GitHubID, &ns.SubjectTitle, &ns.SubjectURL, &ns.SubjectType, &ns.Reason, &ns.RepositoryFullName, &ns.HTMLURL,
 			&ns.Body, &ns.AuthorLogin, &ns.ResourceState, &ns.ResourceSubState, &ns.SubjectNodeID, &ns.IsEnriched, &ns.EnrichedAt, &ns.UpdatedAt,
-			&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsNotified,
+			&ns.Priority, &ns.Status, &ns.IsReadLocally, &ns.IsHandledLocally, &ns.IsNotified,
 		)
 		if err != nil {
 			return nil, err
@@ -221,19 +221,19 @@ func (db *DB) ListNotifications(ctx context.Context) ([]triage.NotificationWithS
 func (db *DB) UpdateOrbitState(ctx context.Context, state triage.State) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
-		SET priority = ?, status = ?, is_read_locally = ?, is_notified = ?
+		SET priority = ?, status = ?, is_read_locally = ?, is_handled_locally = ?, is_notified = ?
 		WHERE notification_id = ?
-	`, state.Priority, state.Status, state.IsReadLocally, state.IsNotified, state.NotificationID)
+	`, state.Priority, state.Status, state.IsReadLocally, state.IsHandledLocally, state.IsNotified, state.NotificationID)
 	return err
 }
 
-// MarkReadLocally updates the local read state of a notification.
+// MarkReadLocally updates the local read state and local handled state of a notification.
 func (db *DB) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE orbit_state
-		SET is_read_locally = ?
+		SET is_read_locally = ?, is_handled_locally = ?
 		WHERE notification_id = ?
-	`, isRead, id)
+	`, isRead, isRead, id)
 	return err
 }
 

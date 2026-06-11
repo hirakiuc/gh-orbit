@@ -40,7 +40,7 @@ func TestAppBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	mockSyncer := mocks.NewMockSyncer(t)
 	mockEnricher := mocks.NewMockEnricher(t)
 	mockClient := mocks.NewMockClient(t)
-	snapshot := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true}}}
+	snapshot := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}}}
 
 	mockRepo.EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif-1"}}}, nil).Once()
 	mockRepo.EXPECT().MarkReadLocally(mock.Anything, "notif-1", true).Return(nil).Once()

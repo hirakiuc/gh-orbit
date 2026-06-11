@@ -349,7 +349,7 @@ func (m *Model) shouldKeepNotification(n triage.NotificationWithState, now time.
 	keep := false
 	switch m.listView.activeTab {
 	case TabInbox:
-		keep = !n.IsReadLocally || n.Priority > 0
+		keep = !n.IsHandledLocally || n.Priority > 0
 	case TabTriaged:
 		keep = n.Priority > 0
 	case TabAll:

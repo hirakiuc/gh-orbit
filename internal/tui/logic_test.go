@@ -238,7 +238,7 @@ func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 	}, nil).Once()
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
 	}, nil).Once()
 
 	cmd := m.MarkReadByID("1", true)
@@ -251,6 +251,7 @@ func TestModel_MarkReadByID_ConnectedModeDoesNotRequireClient(t *testing.T) {
 
 	actions := m.Transition(reconciled, 0)
 	assert.True(t, m.allNotifications[0].IsReadLocally)
+	assert.True(t, m.allNotifications[0].IsHandledLocally)
 	assert.Nil(t, actions)
 	assert.NoError(t, m.err)
 }
@@ -267,7 +268,7 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(nil).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
 	}, nil).Once()
 
 	cmd := m.MarkReadByID("1", true)
@@ -280,6 +281,7 @@ func TestModel_MarkReadByID_StandaloneModeForwardsToGitHub(t *testing.T) {
 
 	actions := m.Transition(reconciled, 0)
 	assert.True(t, m.allNotifications[0].IsReadLocally)
+	assert.True(t, m.allNotifications[0].IsHandledLocally)
 	assert.Nil(t, actions)
 	assert.NoError(t, m.err)
 }
@@ -310,6 +312,7 @@ func TestModel_MarkReadByID_LocalFailureReconcilesToPersistedState(t *testing.T)
 
 	actions := m.Transition(reconciled, 0)
 	assert.False(t, m.allNotifications[0].IsReadLocally)
+	assert.False(t, m.allNotifications[0].IsHandledLocally)
 	assert.ErrorIs(t, m.err, localErr)
 	assert.Contains(t, actions, ActionShowToast{Message: "Failed to update read state"})
 }
@@ -338,6 +341,7 @@ func TestModel_MarkReadByID_LocalFailureReloadFailureRollsBackOptimisticState(t 
 	assert.ErrorIs(t, reconciled.err, localErr)
 	actions := m.Transition(reconciled, 0)
 	assert.False(t, m.allNotifications[0].IsReadLocally)
+	assert.False(t, m.allNotifications[0].IsHandledLocally)
 	assert.ErrorIs(t, m.err, localErr)
 	assert.Contains(t, actions, ActionShowToast{Message: "Failed to update read state"})
 }
@@ -355,7 +359,7 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 	testRepo(m).EXPECT().MarkReadLocally(mock.Anything, "1", true).Return(nil).Once()
 	testClient(m).EXPECT().MarkThreadAsRead(mock.Anything, "1").Return(remoteErr).Once()
 	testRepo(m).EXPECT().ListNotifications(mock.Anything).Return([]triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true}},
+		{Notification: triage.Notification{GitHubID: "1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
 	}, nil).Once()
 
 	cmd := m.MarkReadByID("1", true)
@@ -368,6 +372,7 @@ func TestModel_MarkReadByID_RemoteFailureKeepsCommittedLocalState(t *testing.T) 
 
 	actions := m.Transition(reconciled, 0)
 	assert.True(t, m.allNotifications[0].IsReadLocally)
+	assert.True(t, m.allNotifications[0].IsHandledLocally)
 	assert.ErrorIs(t, m.err, remoteErr)
 	assert.Contains(t, actions, ActionShowToast{Message: "Marked read locally; GitHub sync failed"})
 }
@@ -675,15 +680,15 @@ func TestModel_ApplyFilters_ActiveTriageTabs(t *testing.T) {
 
 	unread := triage.NotificationWithState{
 		Notification: triage.Notification{GitHubID: "unread", UpdatedAt: time.Now()},
-		State:        triage.State{IsReadLocally: false, Priority: 0},
+		State:        triage.State{IsReadLocally: true, IsHandledLocally: false, Priority: 0},
 	}
 	prioritizedRead := triage.NotificationWithState{
 		Notification: triage.Notification{GitHubID: "prioritized-read", UpdatedAt: time.Now()},
-		State:        triage.State{IsReadLocally: true, Priority: 2},
+		State:        triage.State{IsReadLocally: true, IsHandledLocally: true, Priority: 2},
 	}
 	done := triage.NotificationWithState{
 		Notification: triage.Notification{GitHubID: "done", UpdatedAt: time.Now()},
-		State:        triage.State{IsReadLocally: true, Priority: 0},
+		State:        triage.State{IsReadLocally: true, IsHandledLocally: true, Priority: 0},
 	}
 	m.allNotifications = []triage.NotificationWithState{unread, prioritizedRead, done}
 

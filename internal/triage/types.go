@@ -18,11 +18,12 @@ const (
 
 // State represents the local triage state for a notification.
 type State struct {
-	NotificationID string `json:"notification_id"`
-	Priority       int    `json:"priority"`
-	Status         string `json:"status"`
-	IsReadLocally  bool   `json:"is_read_locally"`
-	IsNotified     bool   `json:"is_notified"`
+	NotificationID   string `json:"notification_id"`
+	Priority         int    `json:"priority"`
+	Status           string `json:"status"`
+	IsReadLocally    bool   `json:"is_read_locally"`
+	IsHandledLocally bool   `json:"is_handled_locally"`
+	IsNotified       bool   `json:"is_notified"`
 }
 
 // Notification represents the core notification entity.

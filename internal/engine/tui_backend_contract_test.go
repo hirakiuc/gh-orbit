@@ -21,7 +21,7 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 		{Notification: triage.Notification{GitHubID: "notif-1"}},
 	}
 	after := []triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true}},
+		{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
 	}
 
 	testCases := []struct {
@@ -106,7 +106,7 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 		{Notification: triage.Notification{GitHubID: "notif-2"}},
 	}
 	after := []triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "notif-2"}, State: triage.State{IsReadLocally: true}},
+		{Notification: triage.Notification{GitHubID: "notif-2"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
 	}
 	remoteErr := errors.New("boom")
 

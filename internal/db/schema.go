@@ -63,4 +63,6 @@ var migrations = []string{
 	// Version 11: Generalize review_decision to resource_sub_state
 	`ALTER TABLE notifications ADD COLUMN resource_sub_state TEXT DEFAULT '';
 	 UPDATE notifications SET resource_sub_state = review_decision;`,
+	// Version 12: Separate local handled state from GitHub read state
+	`ALTER TABLE orbit_state ADD COLUMN is_handled_locally BOOLEAN DEFAULT FALSE;`,
 }
