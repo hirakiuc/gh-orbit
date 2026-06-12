@@ -64,5 +64,10 @@ var migrations = []string{
 	`ALTER TABLE notifications ADD COLUMN resource_sub_state TEXT DEFAULT '';
 	 UPDATE notifications SET resource_sub_state = review_decision;`,
 	// Version 12: Separate local handled state from GitHub read state
-	`ALTER TABLE orbit_state ADD COLUMN is_handled_locally BOOLEAN DEFAULT FALSE;`,
+	`ALTER TABLE orbit_state ADD COLUMN is_handled_locally BOOLEAN DEFAULT FALSE;
+	 UPDATE orbit_state SET is_handled_locally = is_read_locally;`,
+	// Version 13: Backfill handled state for databases already migrated through v12
+	`UPDATE orbit_state
+	 SET is_handled_locally = TRUE
+	 WHERE is_read_locally = TRUE AND is_handled_locally = FALSE;`,
 }
