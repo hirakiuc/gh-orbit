@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"os"
@@ -179,6 +180,89 @@ func TestUpsertReconcilesKnownGitHubReadState(t *testing.T) {
 	assert.Equal(t, 3, ns.Priority)
 	assert.Equal(t, "archived", ns.Status)
 	assert.True(t, ns.IsNotified)
+}
+
+func TestMigrationBackfillsHandledStateFromReadState(t *testing.T) {
+	rawDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "orbit.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	_, err = rawDB.Exec(`
+		CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+		CREATE TABLE orbit_state (
+			notification_id TEXT PRIMARY KEY,
+			priority INTEGER DEFAULT 0,
+			status TEXT DEFAULT 'entry',
+			is_read_locally BOOLEAN DEFAULT FALSE,
+			is_notified BOOLEAN DEFAULT FALSE,
+			is_handled_locally BOOLEAN DEFAULT FALSE
+		);
+		INSERT INTO schema_version (version) VALUES (12);
+		INSERT INTO orbit_state (notification_id, is_read_locally, is_handled_locally) VALUES
+			('read-before-v12', TRUE, FALSE),
+			('unread-before-v12', FALSE, FALSE);
+	`)
+	require.NoError(t, err)
+
+	db := &DB{DB: rawDB, logger: slog.Default()}
+	require.NoError(t, db.migrate())
+
+	rows, err := rawDB.Query("SELECT notification_id, is_handled_locally FROM orbit_state ORDER BY notification_id")
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	handled := map[string]bool{}
+	for rows.Next() {
+		var id string
+		var isHandled bool
+		require.NoError(t, rows.Scan(&id, &isHandled))
+		handled[id] = isHandled
+	}
+	require.NoError(t, rows.Err())
+
+	assert.True(t, handled["read-before-v12"])
+	assert.False(t, handled["unread-before-v12"])
+}
+
+func TestMigrationAddsHandledStateFromReadState(t *testing.T) {
+	rawDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "orbit.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	_, err = rawDB.Exec(`
+		CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+		CREATE TABLE orbit_state (
+			notification_id TEXT PRIMARY KEY,
+			priority INTEGER DEFAULT 0,
+			status TEXT DEFAULT 'entry',
+			is_read_locally BOOLEAN DEFAULT FALSE,
+			is_notified BOOLEAN DEFAULT FALSE
+		);
+		INSERT INTO schema_version (version) VALUES (11);
+		INSERT INTO orbit_state (notification_id, is_read_locally) VALUES
+			('read-before-v11', TRUE),
+			('unread-before-v11', FALSE);
+	`)
+	require.NoError(t, err)
+
+	db := &DB{DB: rawDB, logger: slog.Default()}
+	require.NoError(t, db.migrate())
+
+	rows, err := rawDB.Query("SELECT notification_id, is_handled_locally FROM orbit_state ORDER BY notification_id")
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	handled := map[string]bool{}
+	for rows.Next() {
+		var id string
+		var isHandled bool
+		require.NoError(t, rows.Scan(&id, &isHandled))
+		handled[id] = isHandled
+	}
+	require.NoError(t, rows.Err())
+
+	assert.True(t, handled["read-before-v11"])
+	assert.False(t, handled["unread-before-v11"])
 }
 
 func TestMarkNotifiedBatch(t *testing.T) {
