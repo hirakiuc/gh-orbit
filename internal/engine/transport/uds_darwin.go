@@ -97,7 +97,10 @@ func verifyCodeSignature(pid int) error {
 	if err != nil {
 		return err
 	}
+	return verifyCodeSignatureAtPath(path)
+}
 
+func verifyCodeSignatureAtPath(path string) error {
 	req := cockpitPeerRequirement()
 	// #nosec G204: Intentional security check of peer binary identity
 	cmd := exec.Command("codesign", "-v", "-R", "="+req, path)
