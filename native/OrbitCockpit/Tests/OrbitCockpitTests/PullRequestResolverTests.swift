@@ -8,7 +8,10 @@ private final class MockCommandRunner: CommandRunning {
     var results: [String]
     var failureAt: Int? = nil
 
-    init(results: [String]) { self.results = results }
+    init(results: [String], failureAt: Int? = nil) {
+        self.results = results
+        self.failureAt = failureAt
+    }
 
     func run(_ invocation: CommandInvocation) throws -> String {
         invocations.append(invocation)
@@ -26,7 +29,7 @@ struct PullRequestResolverTests {
             "\(clone)\n",
             "git@github.example.com:acme/orbit.git\n",
             """
-            {"number":12,"url":"https://github.example.com/acme/orbit/pull/12","headRefName":"feature","headRefOid":"deadbeef","headRepository":{"host":"github.example.com","name":"fork","url":"https://github.example.com/contributor/fork.git","owner":{"login":"contributor"}}}
+            {"number":12,"url":"https://github.example.com/acme/orbit/pull/12","headRefName":"feature","headRefOid":"deadbeef","headRepository":{"name":"fork","url":"https://github.example.com/contributor/fork.git","owner":{"login":"contributor"}}}
             """,
         ])
         let ghq = URL(fileURLWithPath: "/usr/local/bin/ghq")
@@ -49,7 +52,14 @@ struct PullRequestResolverTests {
                 == .init(
                     executable: git, arguments: ["remote", "get-url", "origin"],
                     workingDirectory: URL(fileURLWithPath: clone)))
-        #expect(runner.invocations[2].arguments.contains("--repo"))
+        #expect(
+            runner.invocations[2]
+                == .init(
+                    executable: gh,
+                    arguments: [
+                        "pr", "view", "12", "--repo", "github.example.com/acme/orbit", "--json",
+                        "number,url,headRefName,headRefOid,headRepository",
+                    ], workingDirectory: URL(fileURLWithPath: clone)))
     }
 
     @Test(arguments: [
@@ -64,6 +74,11 @@ struct PullRequestResolverTests {
     ])
     func normalizesAcceptedRemoteURLs(value: String, expected: RepositoryIdentity) {
         #expect(PullRequestResolver.remoteIdentity(value) == expected)
+    }
+
+    @Test
+    func rejectsUnsupportedRemoteURLScheme() {
+        #expect(PullRequestResolver.remoteIdentity("ssh://github.com/acme/orbit.git") == nil)
     }
 
     @Test
@@ -88,6 +103,33 @@ struct PullRequestResolverTests {
             gh: URL(fileURLWithPath: "/gh"))
 
         #expect(throws: PullRequestResolutionError.inaccessiblePullRequest) {
+            try resolver.resolve(
+                repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
+        }
+    }
+
+    @Test(arguments: ["", "/tmp/a\n/tmp/b\n"])
+    func rejectsMissingOrAmbiguousClone(output: String) {
+        let runner = MockCommandRunner(results: [output])
+        let resolver = PullRequestResolver(
+            runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
+            gh: URL(fileURLWithPath: "/gh"))
+        #expect(throws: PullRequestResolutionError.noLocalClone) {
+            try resolver.resolve(
+                repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
+        }
+    }
+
+    @Test
+    func mapsMissingHeadToUnavailableDiagnostic() {
+        let runner = MockCommandRunner(results: [
+            "/tmp/orbit\n", "https://github.com/acme/orbit.git\n",
+            "{\"number\":1,\"url\":\"https://github.com/acme/orbit/pull/1\",\"headRefName\":null,\"headRefOid\":null,\"headRepository\":null}",
+        ])
+        let resolver = PullRequestResolver(
+            runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
+            gh: URL(fileURLWithPath: "/gh"))
+        #expect(throws: PullRequestResolutionError.unavailableHead) {
             try resolver.resolve(
                 repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
         }

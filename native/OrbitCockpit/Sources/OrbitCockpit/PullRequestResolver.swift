@@ -81,7 +81,7 @@ struct PullRequestResolver {
         } catch { throw PullRequestResolutionError.notGitRepository }
         guard let parsed = Self.remoteIdentity(remote) else { throw PullRequestResolutionError.unsupportedRemote }
         guard parsed == repository else { throw PullRequestResolutionError.cloneIdentityMismatch }
-        let fields = "number,url,headRefName,headRefOid,headRepository,baseRepository"
+        let fields = "number,url,headRefName,headRefOid,headRepository"
         let output: String
         do {
             output = try runner.run(
@@ -98,13 +98,13 @@ struct PullRequestResolver {
         else { throw PullRequestResolutionError.unavailableHead }
         return .init(
             base: repository, localClonePath: clone, localCloneRemoteURL: remote, number: metadata.number, url: url,
-            head: .init(host: headRepository.host, owner: headRepository.owner.login, name: headRepository.name),
+            head: .init(host: repository.host, owner: headRepository.owner.login, name: headRepository.name),
             headCloneURL: headURL, headBranch: headBranch, headSHA: headSHA)
     }
 
     static func remoteIdentity(_ value: String) -> RepositoryIdentity? {
         let normalized = value.hasSuffix(".git") ? String(value.dropLast(4)) : value
-        if let url = URL(string: normalized), let host = url.host {
+        if let url = URL(string: normalized), url.scheme == "https", let host = url.host {
             let parts = url.path.split(separator: "/")
             guard parts.count == 2 else { return nil }
             return .init(host: host, owner: String(parts[0]), name: String(parts[1]))
@@ -122,7 +122,6 @@ struct PullRequestResolver {
         let headRepository: HeadRepository?
     }
     private struct HeadRepository: Decodable {
-        let host: String
         let name: String
         let url: URL?
         let owner: Owner

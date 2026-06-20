@@ -4,6 +4,23 @@ enum CommandRunnerError: Error, Equatable {
     case failed(exitCode: Int32, standardError: String)
 }
 
+private final class CapturedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = Data()
+
+    func set(_ data: Data) {
+        lock.lock()
+        value = data
+        lock.unlock()
+    }
+
+    func get() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 struct ProcessCommandRunner: CommandRunning {
     func run(_ invocation: CommandInvocation) throws -> String {
         let process = Process()
@@ -16,11 +33,26 @@ struct ProcessCommandRunner: CommandRunning {
         process.standardOutput = output
         process.standardError = error
         try process.run()
-        process.waitUntilExit()
 
-        let standardOutput = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let group = DispatchGroup()
+        let outputData = CapturedData()
+        let errorData = CapturedData()
+        group.enter()
+        DispatchQueue.global().async {
+            outputData.set(output.fileHandleForReading.readDataToEndOfFile())
+            group.leave()
+        }
+        group.enter()
+        DispatchQueue.global().async {
+            errorData.set(error.fileHandleForReading.readDataToEndOfFile())
+            group.leave()
+        }
+        process.waitUntilExit()
+        group.wait()
+
+        let standardOutput = String(decoding: outputData.get(), as: UTF8.self)
         guard process.terminationStatus == 0 else {
-            let standardError = String(decoding: error.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let standardError = String(decoding: errorData.get(), as: UTF8.self)
             throw CommandRunnerError.failed(exitCode: process.terminationStatus, standardError: standardError)
         }
         return standardOutput
