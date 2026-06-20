@@ -49,8 +49,13 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if let selectedPane = selectedPane {
-                    TerminalHostView(paneName: selectedPane)
-                        .environmentObject(terminalManager)
+                    if let workspace = reviewWorkspaceManager.workspace(forPaneName: selectedPane) {
+                        ReviewWorkspaceHostView(workspace: workspace)
+                            .environmentObject(terminalManager)
+                    } else {
+                        TerminalHostView(paneName: selectedPane)
+                            .environmentObject(terminalManager)
+                    }
                 } else {
                     Text("Select a pane")
                         .foregroundColor(.secondary)
@@ -78,6 +83,41 @@ struct ContentView: View {
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
+        }
+    }
+}
+
+@MainActor
+struct ReviewWorkspaceHostView: View {
+    let workspace: ReviewWorkspace
+    @EnvironmentObject var terminalManager: TerminalManager
+
+    var body: some View {
+        switch workspace.state {
+        case .running:
+            terminalView(or: "Terminal session is unavailable.")
+        case .exited(let code):
+            if terminalManager.engine(for: workspace.paneName) != nil {
+                terminalView(or: "Terminal session exited (\(code)).")
+            } else {
+                Text("Terminal session exited (\(code)).").foregroundColor(.secondary)
+            }
+        case .preparing:
+            ProgressView("Preparing review workspace…")
+        case .terminating:
+            ProgressView("Terminating review workspace…")
+        case .failed(let message):
+            ContentUnavailableView(
+                "Review workspace failed", systemImage: "exclamationmark.triangle", description: Text(message))
+        }
+    }
+
+    @ViewBuilder
+    private func terminalView(or unavailable: String) -> some View {
+        if let engine = terminalManager.engine(for: workspace.paneName) {
+            TerminalContainer(engine: engine, isFocused: true)
+        } else {
+            Text(unavailable).foregroundColor(.secondary)
         }
     }
 }

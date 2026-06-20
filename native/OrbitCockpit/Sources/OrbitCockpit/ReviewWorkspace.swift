@@ -24,6 +24,10 @@ final class ReviewWorkspaceManager: ObservableObject {
 
     init(terminalManager: TerminalManager) { self.terminalManager = terminalManager }
 
+    func workspace(forPaneName paneName: String) -> ReviewWorkspace? {
+        workspaces.first { $0.paneName == paneName }
+    }
+
     @discardableResult
     func createFixtureWorkspace(named name: String, id: UUID = UUID()) -> ReviewWorkspace? {
         let workspace = ReviewWorkspace(id: id, displayName: name, state: .preparing)
@@ -49,12 +53,20 @@ final class ReviewWorkspaceManager: ObservableObject {
 
     func reportTerminalExit(for id: UUID, exitCode: Int32?) {
         guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        switch workspaces[index].state {
+        case .preparing, .running, .terminating: break
+        case .exited, .failed: return
+        }
         terminalManager.workspaceProcessTerminated(workspaces[index].paneName, exitCode: exitCode)
         workspaces[index].state = .exited(exitCode ?? -1)
     }
 
     func reportSetupFailure(for id: UUID, message: String) {
         guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        switch workspaces[index].state {
+        case .preparing, .running: break
+        case .terminating, .exited, .failed: return
+        }
         workspaces[index].state = .failed(message)
     }
 
