@@ -197,16 +197,20 @@ class TerminalManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var onLog: ((String, LogLevel) -> Void)?
     private var launchTasks: [String: Task<Void, Never>] = [:]
+    let runtimeConfiguration: EngineRuntimeConfiguration
 
-    init(monitor: ActivityMonitor) {
+    init(monitor: ActivityMonitor, runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration()) {
+        self.runtimeConfiguration = runtimeConfiguration
         let logFunc: (String, LogLevel) -> Void = { msg, level in
             monitor.log(component: "[App]", level: level, message: msg)
         }
         self.onLog = logFunc
 
-        let newManager = NativeEngineManager(onLog: { msg, level in
-            monitor.log(component: "[Engine]", level: level, message: msg)
-        })
+        let newManager = NativeEngineManager(
+            runtimeConfiguration: runtimeConfiguration,
+            onLog: { msg, level in
+                monitor.log(component: "[Engine]", level: level, message: msg)
+            })
 
         newManager.objectWillChange
             .sink { [weak self] _ in
@@ -230,6 +234,14 @@ class TerminalManager: ObservableObject {
 
     func engine(for name: String) -> OrbitTerminalEngine? {
         panes[name]?.session?.engine
+    }
+
+    var managedSocketPath: String? { engineManager?.managedSocketPath }
+
+    var managedLaunchEnvironment: [String: String] {
+        var environment = runtimeConfiguration.environment
+        environment["GH_ORBIT_REQUIRE_ENGINE"] = "1"
+        return environment
     }
 
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
@@ -269,14 +281,7 @@ class TerminalManager: ObservableObject {
             onLog?("Final binary resolved to: \(executableURL.path)", .debug)
 
             // Propagate environment including GH_TOKEN if available
-            var env = ProcessInfo.processInfo.environment
-
-            // Ensure XDG_RUNTIME_DIR is set so TUI finds the same socket
-            if env["XDG_RUNTIME_DIR"] == nil {
-                let home = FileManager.default.homeDirectoryForCurrentUser.path
-                env["XDG_RUNTIME_DIR"] = home + "/.local/run"
-            }
-            env["GH_ORBIT_REQUIRE_ENGINE"] = "1"
+            let env = managedLaunchEnvironment
 
             // 2. Ensure Engine is running
             if let engineMgr = engineManager {

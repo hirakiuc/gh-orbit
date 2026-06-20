@@ -97,20 +97,26 @@ func verifyCodeSignature(pid int) error {
 	if err != nil {
 		return err
 	}
+	return verifyCodeSignatureAtPath(path)
+}
 
-	// Security Hardening: Enforce specific trust requirement.
-	// We require the peer to be signed by Apple or a valid Developer,
-	// AND have an identifier that starts with 'gh-orbit-'.
-	// This prevents any generic Apple app from talking to the socket.
-	req := `anchor apple generic and identifier prefix "gh-orbit-"`
+func verifyCodeSignatureAtPath(path string) error {
+	req := cockpitPeerRequirement()
 	// #nosec G204: Intentional security check of peer binary identity
-	cmd := exec.Command("codesign", "-v", "-R", req, path)
+	cmd := exec.Command("codesign", "-v", "-R", "="+req, path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("binary at %s is not validly signed or fails requirement: %s", path, string(out))
 	}
 
 	return nil
+}
+
+func cockpitPeerRequirement() string {
+	// Cockpit is bundled with ad-hoc signatures during local development, so an
+	// Apple anchor would reject the supported native build. Restrict same-user
+	// peers to the Cockpit probe, its bundled helper, and the local CLI identity.
+	return `identifier "com.hirakiuc.gh-orbit.cockpit" or identifier "com.hirakiuc.gh-orbit.cockpit.helper" or identifier "gh-orbit-cli"`
 }
 
 func getPidPath(pid int) (string, error) {

@@ -10,9 +10,13 @@ final class MockSupervisor: EngineProcessSupervising {
     var startCalls = 0
     var stopCalls = 0
     var startError: Error?
+    private(set) var arguments: [String] = []
+    private(set) var environment: [String: String]?
 
     func start(executable: URL, arguments: [String], environment: [String: String]?) throws {
         startCalls += 1
+        self.arguments = arguments
+        self.environment = environment
         if let startError {
             throw startError
         }
@@ -104,7 +108,7 @@ struct LifecycleTests {
         let probe = MockProbe(results: [false, false])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/non_existent_orbit.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             maxAttempts: 5,
             baseDelayNS: 1_000_000,
             probeTimeoutNS: 50_000_000,
@@ -126,7 +130,7 @@ struct LifecycleTests {
         let probe = MockProbe(results: [true])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/reused.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             engineSupervisor: supervisor,
             probe: probe
         )
@@ -144,7 +148,7 @@ struct LifecycleTests {
         let probe = MockProbe(results: [false, true])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/owned.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             engineSupervisor: supervisor,
             probe: probe
         )
@@ -156,6 +160,8 @@ struct LifecycleTests {
         #expect(manager.ownershipState == .ownedReady)
         #expect(supervisor.startCalls == 1)
         #expect(supervisor.stopCalls == 0)
+        #expect(supervisor.arguments == ["engine", "--socket", "/tmp/gh-orbit/engine.sock"])
+        #expect(!supervisor.arguments.contains("--insecure-dev"))
     }
 
     @Test("NativeEngineManager bounds stalled probe handling")
@@ -166,7 +172,7 @@ struct LifecycleTests {
         ])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/stalled.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             maxAttempts: 5,
             baseDelayNS: 1_000_000,
             probeTimeoutNS: 50_000_000,
@@ -194,7 +200,7 @@ struct LifecycleTests {
         ])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/concurrent.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             maxAttempts: 5,
             baseDelayNS: 1_000_000,
             probeTimeoutNS: 500_000_000,
@@ -220,7 +226,7 @@ struct LifecycleTests {
         let probe = MockProbe(results: [true])
         let supervisor = MockSupervisor()
         let manager = NativeEngineManager(
-            socketPath: "/tmp/reused.sock",
+            runtimeConfiguration: EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/tmp"]),
             engineSupervisor: supervisor,
             probe: probe
         )
@@ -271,6 +277,36 @@ struct LifecycleTests {
         fileSystem5.exists.insert("/Users/dev/orbit/go.mod")  // but project root is here
         let url5 = PathResolver.resolveBinary(fileSystem: fileSystem5, env: [:])
         #expect(url5 == nil)  // Should not find the binary because search stops at go.mod
+    }
+
+    @Test("Engine runtime configuration matches the Go CLI socket policy")
+    func testEngineRuntimeConfiguration() {
+        let fallback = EngineRuntimeConfiguration(environment: [:], homeDirectory: "/Users/tester")
+        #expect(fallback.baseRuntimeDirectory == "/Users/tester/.local/run")
+        #expect(fallback.socketPath == "/Users/tester/.local/run/gh-orbit/engine.sock")
+        #expect(fallback.environment["XDG_RUNTIME_DIR"] == "/Users/tester/.local/run")
+
+        let configured = EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/custom"])
+        #expect(configured.baseRuntimeDirectory == "/var/run/custom")
+        #expect(configured.socketPath == "/var/run/custom/gh-orbit/engine.sock")
+        #expect(configured.environment["XDG_RUNTIME_DIR"] == "/var/run/custom")
+
+        let endingInOrbit = EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/gh-orbit"])
+        #expect(endingInOrbit.socketPath == "/var/run/gh-orbit/gh-orbit/engine.sock")
+    }
+
+    @Test("TerminalManager shares one runtime configuration with engine and TUI")
+    func testTerminalManagerSharesRuntimeConfiguration() {
+        for configuration in [
+            EngineRuntimeConfiguration(environment: [:], homeDirectory: "/Users/tester"),
+            EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/custom"]),
+        ] {
+            let manager = TerminalManager(monitor: ActivityMonitor(), runtimeConfiguration: configuration)
+
+            #expect(manager.managedSocketPath == configuration.socketPath)
+            #expect(manager.managedLaunchEnvironment["XDG_RUNTIME_DIR"] == configuration.baseRuntimeDirectory)
+            #expect(manager.managedLaunchEnvironment["GH_ORBIT_REQUIRE_ENGINE"] == "1")
+        }
     }
 
     @Test("ActivityMonitor aggregation and debouncing")

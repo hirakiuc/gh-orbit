@@ -109,9 +109,11 @@ struct MCPInitializeProbe: EngineProbing {
         }.value
     }
 
-    nonisolated private static func validate(socketPath: String, protocolVersion: String, ioTimeoutMS: Int)
-        -> ProbeOutcome
-    {
+    nonisolated private static func validate(
+        socketPath: String,
+        protocolVersion: String,
+        ioTimeoutMS: Int
+    ) -> ProbeOutcome {
         let socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
         if socketFD < 0 {
             return .failed("socket() failed: errno=\(errno)")
@@ -234,8 +236,10 @@ class NativeEngineManager: ObservableObject {
     private let probeTimeoutNS: UInt64
     private var startupTask: Task<EngineStartupResult, Never>?
 
+    var managedSocketPath: String { socketPath }
+
     init(
-        socketPath: String? = nil,
+        runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration(),
         maxAttempts: Int = 10,
         baseDelayNS: UInt64 = 50_000_000,
         probeTimeoutNS: UInt64 = defaultProbeTimeoutNS,
@@ -249,18 +253,8 @@ class NativeEngineManager: ObservableObject {
         self.probe = probe
         self.engineSupervisor = engineSupervisor ?? ProcessSupervisor()
 
-        if let socketPath = socketPath {
-            self.socketPath = socketPath
-            onLog?("Using explicit socket path: \(self.socketPath)", .debug)
-        } else {
-            // Resolve socket path to standard XDG location
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            let runtimeDir =
-                ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-                ?? (home + "/.local/run/gh-orbit")
-            self.socketPath = runtimeDir + "/engine.sock"
-            onLog?("Resolved engine socket path: \(self.socketPath)", .debug)
-        }
+        self.socketPath = runtimeConfiguration.socketPath
+        onLog?("Resolved engine socket path: \(self.socketPath)", .debug)
 
         // Set the supervisor's logging closure
         self.engineSupervisor.onLog = { message, level in
@@ -289,7 +283,7 @@ class NativeEngineManager: ObservableObject {
                 self.engineSupervisor.onLog?("Starting gh-orbit engine with executable: \(executable.path)", .debug)
                 try self.engineSupervisor.start(
                     executable: executable,
-                    arguments: ["engine", "--socket", self.socketPath, "--insecure-dev"],
+                    arguments: ["engine", "--socket", self.socketPath],
                     environment: environment
                 )
 
