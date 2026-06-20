@@ -7,13 +7,16 @@ import SwiftUI
 struct OrbitCockpitApp: App {
     @StateObject private var activityMonitor: ActivityMonitor
     @StateObject private var terminalManager: TerminalManager
+    @StateObject private var reviewWorkspaceManager: ReviewWorkspaceManager
 
     init() {
         // App Lifecycle Logging (Safe: No environment variables exposed)
         let monitor = ActivityMonitor()
         monitor.log(component: "[App]", level: .info, message: "Launched Orbit Cockpit")
         _activityMonitor = StateObject(wrappedValue: monitor)
-        _terminalManager = StateObject(wrappedValue: TerminalManager(monitor: monitor))
+        let terminalManager = TerminalManager(monitor: monitor)
+        _terminalManager = StateObject(wrappedValue: terminalManager)
+        _reviewWorkspaceManager = StateObject(wrappedValue: ReviewWorkspaceManager(terminalManager: terminalManager))
     }
 
     var body: some Scene {
@@ -21,6 +24,7 @@ struct OrbitCockpitApp: App {
             ContentView()
                 .environmentObject(activityMonitor)
                 .environmentObject(terminalManager)
+                .environmentObject(reviewWorkspaceManager)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     terminalManager.shutdown()
                 }
@@ -35,16 +39,23 @@ struct ContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var activityMonitor: ActivityMonitor
     @EnvironmentObject var terminalManager: TerminalManager
+    @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
         NavigationSplitView {
             Sidebar(selectedPane: $selectedPane)
                 .environmentObject(terminalManager)
+                .environmentObject(reviewWorkspaceManager)
         } detail: {
             VStack(spacing: 0) {
                 if let selectedPane = selectedPane {
-                    TerminalHostView(paneName: selectedPane)
-                        .environmentObject(terminalManager)
+                    if let workspace = reviewWorkspaceManager.workspace(forPaneName: selectedPane) {
+                        ReviewWorkspaceHostView(workspace: workspace)
+                            .environmentObject(terminalManager)
+                    } else {
+                        TerminalHostView(paneName: selectedPane)
+                            .environmentObject(terminalManager)
+                    }
                 } else {
                     Text("Select a pane")
                         .foregroundColor(.secondary)
@@ -77,9 +88,45 @@ struct ContentView: View {
 }
 
 @MainActor
+struct ReviewWorkspaceHostView: View {
+    let workspace: ReviewWorkspace
+    @EnvironmentObject var terminalManager: TerminalManager
+
+    var body: some View {
+        switch workspace.state {
+        case .running:
+            terminalView(or: "Terminal session is unavailable.")
+        case .exited(let code):
+            if terminalManager.engine(for: workspace.paneName) != nil {
+                terminalView(or: "Terminal session exited (\(code)).")
+            } else {
+                Text("Terminal session exited (\(code)).").foregroundColor(.secondary)
+            }
+        case .preparing:
+            ProgressView("Preparing review workspace…")
+        case .terminating:
+            ProgressView("Terminating review workspace…")
+        case .failed(let message):
+            ContentUnavailableView(
+                "Review workspace failed", systemImage: "exclamationmark.triangle", description: Text(message))
+        }
+    }
+
+    @ViewBuilder
+    private func terminalView(or unavailable: String) -> some View {
+        if let engine = terminalManager.engine(for: workspace.paneName) {
+            TerminalContainer(engine: engine, isFocused: true)
+        } else {
+            Text(unavailable).foregroundColor(.secondary)
+        }
+    }
+}
+
+@MainActor
 struct Sidebar: View {
     @Binding var selectedPane: String?
     @EnvironmentObject var terminalManager: TerminalManager
+    @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
         List(selection: $selectedPane) {
@@ -100,8 +147,29 @@ struct Sidebar: View {
                 Label("Agent Beta", systemImage: "wand.and.stars")
                     .tag("Agent Beta")
             }
+
+            Section("Review Workspaces") {
+                ForEach(reviewWorkspaceManager.workspaces) { workspace in
+                    HStack {
+                        Label(workspace.displayName, systemImage: "doc.text.magnifyingglass")
+                        Spacer()
+                        Text(workspaceStatus(workspace.state)).foregroundColor(.secondary)
+                    }
+                    .tag(workspace.paneName)
+                }
+            }
         }
         .navigationTitle("Orbit Cockpit")
+    }
+
+    private func workspaceStatus(_ state: ReviewWorkspace.State) -> String {
+        switch state {
+        case .preparing: "Preparing"
+        case .running: "Running"
+        case .terminating: "Stopping"
+        case .exited(let code): "Exited (\(code))"
+        case .failed(let message): message
+        }
     }
 }
 
@@ -190,6 +258,7 @@ struct TerminalPaneSession {
 
 @MainActor
 class TerminalManager: ObservableObject {
+    static let workspacePanePrefix = "review-workspace:"
     @Published private var panes: [String: TerminalPaneSession] = [:]
     @Published var engineManager: NativeEngineManager?
 
@@ -245,10 +314,36 @@ class TerminalManager: ObservableObject {
     }
 
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
+        guard !name.hasPrefix(Self.workspacePanePrefix) else { return }
         panes[name] = TerminalPaneSession(state: state, session: session)
     }
 
+    func reserveWorkspacePane(_ name: String) -> Bool {
+        guard name.hasPrefix(Self.workspacePanePrefix), panes[name] == nil else { return false }
+        panes[name] = TerminalPaneSession(state: .launching, session: nil)
+        return true
+    }
+
+    func installWorkspaceSession(_ session: TerminalProcessSession, for name: String) -> Bool {
+        guard name.hasPrefix(Self.workspacePanePrefix), panes[name] != nil else { return false }
+        panes[name] = TerminalPaneSession(state: .running, session: session)
+        return true
+    }
+
+    func terminateWorkspacePane(_ name: String) { panes[name]?.session?.terminateProcess() }
+
+    func workspaceProcessTerminated(_ name: String, exitCode: Int32?) {
+        guard name.hasPrefix(Self.workspacePanePrefix), let session = panes[name]?.session else { return }
+        panes[name] = TerminalPaneSession(state: .exited(exitCode: exitCode ?? -1), session: session)
+    }
+
+    func releaseWorkspacePane(_ name: String) {
+        guard name.hasPrefix(Self.workspacePanePrefix) else { return }
+        panes[name] = nil
+    }
+
     func launch(_ name: String) {
+        guard !name.hasPrefix(Self.workspacePanePrefix) else { return }
         if launchTasks[name] != nil {
             return
         }
