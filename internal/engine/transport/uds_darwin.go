@@ -98,11 +98,7 @@ func verifyCodeSignature(pid int) error {
 		return err
 	}
 
-	// Cockpit is bundled with ad-hoc signatures during local development, so an
-	// Apple anchor would reject the supported native build. Restrict peers to the
-	// two exact bundle identifiers instead; the caller has already passed the
-	// same-user credential check above.
-	req := `identifier "com.hirakiuc.gh-orbit.cockpit" or identifier "com.hirakiuc.gh-orbit.cockpit.helper"`
+	req := cockpitPeerRequirement()
 	// #nosec G204: Intentional security check of peer binary identity
 	cmd := exec.Command("codesign", "-v", "-R", "="+req, path)
 	out, err := cmd.CombinedOutput()
@@ -111,6 +107,13 @@ func verifyCodeSignature(pid int) error {
 	}
 
 	return nil
+}
+
+func cockpitPeerRequirement() string {
+	// Cockpit is bundled with ad-hoc signatures during local development, so an
+	// Apple anchor would reject the supported native build. Restrict same-user
+	// peers to the Cockpit probe, its bundled helper, and the local CLI identity.
+	return `identifier "com.hirakiuc.gh-orbit.cockpit" or identifier "com.hirakiuc.gh-orbit.cockpit.helper" or identifier "gh-orbit-cli"`
 }
 
 func getPidPath(pid int) (string, error) {

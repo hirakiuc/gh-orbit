@@ -9,6 +9,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestCockpitPeerRequirement(t *testing.T) {
+	requirement := cockpitPeerRequirement()
+
+	assert.Contains(t, requirement, `identifier "com.hirakiuc.gh-orbit.cockpit"`)
+	assert.Contains(t, requirement, `identifier "com.hirakiuc.gh-orbit.cockpit.helper"`)
+	assert.Contains(t, requirement, `identifier "gh-orbit-cli"`)
+	assert.NotContains(t, requirement, "identifier prefix")
+	assert.NotContains(t, requirement, "anchor apple generic")
+}
+
 type mockVerifier struct {
 	shouldFail bool
 }
