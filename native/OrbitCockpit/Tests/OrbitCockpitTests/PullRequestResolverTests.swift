@@ -6,7 +6,7 @@ import Testing
 private final class MockCommandRunner: CommandRunning {
     var invocations: [CommandInvocation] = []
     var results: [String]
-    var failureAt: Int? = nil
+    var failureAt: Int?
 
     init(results: [String], failureAt: Int? = nil) {
         self.results = results
@@ -34,8 +34,8 @@ struct PullRequestResolverTests {
         ])
         let ghq = URL(fileURLWithPath: "/usr/local/bin/ghq")
         let git = URL(fileURLWithPath: "/usr/bin/git")
-        let gh = URL(fileURLWithPath: "/usr/local/bin/gh")
-        let resolver = PullRequestResolver(runner: runner, ghq: ghq, git: git, gh: gh)
+        let ghExecutable = URL(fileURLWithPath: "/usr/local/bin/gh")
+        let resolver = PullRequestResolver(runner: runner, ghq: ghq, git: git, ghExecutable: ghExecutable)
         let repository = RepositoryIdentity(host: "github.example.com", owner: "acme", name: "orbit")
 
         let result = try resolver.resolve(repository: repository, number: 12)
@@ -55,7 +55,7 @@ struct PullRequestResolverTests {
         #expect(
             runner.invocations[2]
                 == .init(
-                    executable: gh,
+                    executable: ghExecutable,
                     arguments: [
                         "pr", "view", "12", "--repo", "github.example.com/acme/orbit", "--json",
                         "number,url,headRefName,headRefOid,headRepository",
@@ -86,7 +86,7 @@ struct PullRequestResolverTests {
         let runner = MockCommandRunner(results: ["/tmp/orbit\n", "https://github.com/other/orbit.git\n"])
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
 
         #expect(throws: PullRequestResolutionError.cloneIdentityMismatch) {
             try resolver.resolve(
@@ -100,7 +100,7 @@ struct PullRequestResolverTests {
         let runner = MockCommandRunner(results: ["/tmp/orbit\n", "https://github.com/acme/orbit.git\n"], failureAt: 3)
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
 
         #expect(throws: PullRequestResolutionError.inaccessiblePullRequest) {
             try resolver.resolve(
@@ -113,7 +113,7 @@ struct PullRequestResolverTests {
         let runner = MockCommandRunner(results: [output])
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
         #expect(throws: PullRequestResolutionError.noLocalClone) {
             try resolver.resolve(
                 repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
@@ -128,7 +128,7 @@ struct PullRequestResolverTests {
         ])
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
         #expect(throws: PullRequestResolutionError.unavailableHead) {
             try resolver.resolve(
                 repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
@@ -143,7 +143,7 @@ struct PullRequestResolverTests {
         ])
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
         let result = try resolver.resolve(
             repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
         #expect(result.head == result.base)
@@ -161,7 +161,7 @@ struct PullRequestResolverTests {
         let runner = MockCommandRunner(results: ["/tmp/orbit\n"], failureAt: 2)
         let resolver = PullRequestResolver(
             runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
-            gh: URL(fileURLWithPath: "/gh"))
+            ghExecutable: URL(fileURLWithPath: "/gh"))
         #expect(throws: PullRequestResolutionError.notGitRepository) {
             try resolver.resolve(
                 repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)

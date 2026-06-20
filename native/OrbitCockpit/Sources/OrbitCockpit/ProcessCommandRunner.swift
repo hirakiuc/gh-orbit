@@ -2,6 +2,7 @@ import Foundation
 
 enum CommandRunnerError: Error, Equatable {
     case failed(exitCode: Int32, standardError: String)
+    case invalidOutputEncoding
 }
 
 private final class CapturedData: @unchecked Sendable {
@@ -50,9 +51,11 @@ struct ProcessCommandRunner: CommandRunning {
         process.waitUntilExit()
         group.wait()
 
-        let standardOutput = String(decoding: outputData.get(), as: UTF8.self)
+        guard let standardOutput = String(bytes: outputData.get(), encoding: .utf8) else {
+            throw CommandRunnerError.invalidOutputEncoding
+        }
         guard process.terminationStatus == 0 else {
-            let standardError = String(decoding: errorData.get(), as: UTF8.self)
+            let standardError = String(bytes: errorData.get(), encoding: .utf8) ?? "Invalid UTF-8 output"
             throw CommandRunnerError.failed(exitCode: process.terminationStatus, standardError: standardError)
         }
         return standardOutput

@@ -44,7 +44,7 @@ struct PullRequestResolver {
     let runner: CommandRunning
     let ghq: URL
     let git: URL
-    let gh: URL
+    let ghExecutable: URL
 
     static func production(
         runner: CommandRunning = ProcessCommandRunner(),
@@ -60,7 +60,8 @@ struct PullRequestResolver {
             throw PullRequestResolutionError.missingExecutable(name)
         }
         return try .init(
-            runner: runner, ghq: executable(named: "ghq"), git: executable(named: "git"), gh: executable(named: "gh"))
+            runner: runner, ghq: executable(named: "ghq"), git: executable(named: "git"),
+            ghExecutable: executable(named: "gh"))
     }
 
     func resolve(repository: RepositoryIdentity, number: Int) throws -> ResolvedPullRequest {
@@ -86,7 +87,8 @@ struct PullRequestResolver {
         do {
             output = try runner.run(
                 .init(
-                    executable: gh, arguments: ["pr", "view", String(number), "--repo", query, "--json", fields],
+                    executable: ghExecutable,
+                    arguments: ["pr", "view", String(number), "--repo", query, "--json", fields],
                     workingDirectory: clone))
         } catch { throw PullRequestResolutionError.inaccessiblePullRequest }
         guard let metadata = try? JSONDecoder().decode(Metadata.self, from: Data(output.utf8)) else {
