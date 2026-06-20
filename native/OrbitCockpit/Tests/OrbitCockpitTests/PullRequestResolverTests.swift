@@ -134,4 +134,37 @@ struct PullRequestResolverTests {
                 repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
         }
     }
+
+    @Test
+    func resolvesSameRepositoryHead() throws {
+        let runner = MockCommandRunner(results: [
+            "/tmp/orbit\n", "https://github.com/acme/orbit.git\n",
+            "{\"number\":1,\"url\":\"https://github.com/acme/orbit/pull/1\",\"headRefName\":\"main\",\"headRefOid\":\"abc\",\"headRepository\":{\"name\":\"orbit\",\"url\":\"https://github.com/acme/orbit.git\",\"owner\":{\"login\":\"acme\"}}}",
+        ])
+        let resolver = PullRequestResolver(
+            runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
+            gh: URL(fileURLWithPath: "/gh"))
+        let result = try resolver.resolve(
+            repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
+        #expect(result.head == result.base)
+    }
+
+    @Test
+    func reportsMissingExecutableFromEmptyPath() {
+        #expect(throws: PullRequestResolutionError.missingExecutable("ghq")) {
+            try PullRequestResolver.production(environment: ["PATH": ""])
+        }
+    }
+
+    @Test
+    func mapsGitRemoteFailureToNotGitRepository() {
+        let runner = MockCommandRunner(results: ["/tmp/orbit\n"], failureAt: 2)
+        let resolver = PullRequestResolver(
+            runner: runner, ghq: URL(fileURLWithPath: "/ghq"), git: URL(fileURLWithPath: "/git"),
+            gh: URL(fileURLWithPath: "/gh"))
+        #expect(throws: PullRequestResolutionError.notGitRepository) {
+            try resolver.resolve(
+                repository: RepositoryIdentity(host: "github.com", owner: "acme", name: "orbit"), number: 1)
+        }
+    }
 }
