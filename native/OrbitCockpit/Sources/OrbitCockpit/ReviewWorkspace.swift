@@ -10,6 +10,7 @@ struct ReviewWorkspace: Identifiable, Equatable {
         case failed(String)
     }
 
+    // swiftlint:disable:next identifier_name
     let id: UUID
     var displayName: String
     var state: State
@@ -29,30 +30,32 @@ final class ReviewWorkspaceManager: ObservableObject {
     }
 
     @discardableResult
-    func createFixtureWorkspace(named name: String, id: UUID = UUID()) -> ReviewWorkspace? {
-        let workspace = ReviewWorkspace(id: id, displayName: name, state: .preparing)
+    func createFixtureWorkspace(named name: String, workspaceID: UUID = UUID()) -> ReviewWorkspace? {
+        let workspace = ReviewWorkspace(id: workspaceID, displayName: name, state: .preparing)
         guard terminalManager.reserveWorkspacePane(workspace.paneName) else { return nil }
         workspaces.append(workspace)
         return workspace
     }
 
-    func install(_ session: TerminalProcessSession, for id: UUID) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }), workspaces[index].state == .preparing,
+    func install(_ session: TerminalProcessSession, for workspaceID: UUID) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }), workspaces[index].state == .preparing,
             terminalManager.installWorkspaceSession(session, for: workspaces[index].paneName)
         else { return }
         workspaces[index].state = .running
     }
 
-    func requestTermination(for id: UUID) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }), workspaces[index].state == .running else {
+    func requestTermination(for workspaceID: UUID) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
+              workspaces[index].state == .running
+        else {
             return
         }
         workspaces[index].state = .terminating
         terminalManager.terminateWorkspacePane(workspaces[index].paneName)
     }
 
-    func reportTerminalExit(for id: UUID, exitCode: Int32?) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+    func reportTerminalExit(for workspaceID: UUID, exitCode: Int32?) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         switch workspaces[index].state {
         case .preparing, .running, .terminating: break
         case .exited, .failed: return
@@ -61,8 +64,8 @@ final class ReviewWorkspaceManager: ObservableObject {
         workspaces[index].state = .exited(exitCode ?? -1)
     }
 
-    func reportSetupFailure(for id: UUID, message: String) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+    func reportSetupFailure(for workspaceID: UUID, message: String) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         switch workspaces[index].state {
         case .preparing, .running: break
         case .terminating, .exited, .failed: return
@@ -70,8 +73,8 @@ final class ReviewWorkspaceManager: ObservableObject {
         workspaces[index].state = .failed(message)
     }
 
-    func dismiss(_ id: UUID) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+    func dismiss(_ workspaceID: UUID) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         switch workspaces[index].state {
         case .exited, .failed: break
         default: return
