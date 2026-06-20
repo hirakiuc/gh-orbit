@@ -197,7 +197,7 @@ class TerminalManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var onLog: ((String, LogLevel) -> Void)?
     private var launchTasks: [String: Task<Void, Never>] = [:]
-    private let runtimeConfiguration: EngineRuntimeConfiguration
+    let runtimeConfiguration: EngineRuntimeConfiguration
 
     init(monitor: ActivityMonitor, runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration()) {
         self.runtimeConfiguration = runtimeConfiguration
@@ -234,6 +234,14 @@ class TerminalManager: ObservableObject {
 
     func engine(for name: String) -> OrbitTerminalEngine? {
         panes[name]?.session?.engine
+    }
+
+    var managedSocketPath: String? { engineManager?.managedSocketPath }
+
+    var managedLaunchEnvironment: [String: String] {
+        var environment = runtimeConfiguration.environment
+        environment["GH_ORBIT_REQUIRE_ENGINE"] = "1"
+        return environment
     }
 
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
@@ -273,8 +281,7 @@ class TerminalManager: ObservableObject {
             onLog?("Final binary resolved to: \(executableURL.path)", .debug)
 
             // Propagate environment including GH_TOKEN if available
-            var env = runtimeConfiguration.environment
-            env["GH_ORBIT_REQUIRE_ENGINE"] = "1"
+            let env = managedLaunchEnvironment
 
             // 2. Ensure Engine is running
             if let engineMgr = engineManager {

@@ -234,6 +234,8 @@ class NativeEngineManager: ObservableObject {
     private let probeTimeoutNS: UInt64
     private var startupTask: Task<EngineStartupResult, Never>?
 
+    var managedSocketPath: String { socketPath }
+
     init(
         runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration(),
         maxAttempts: Int = 10,

@@ -290,6 +290,23 @@ struct LifecycleTests {
         #expect(configured.baseRuntimeDirectory == "/var/run/custom")
         #expect(configured.socketPath == "/var/run/custom/gh-orbit/engine.sock")
         #expect(configured.environment["XDG_RUNTIME_DIR"] == "/var/run/custom")
+
+        let endingInOrbit = EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/gh-orbit"])
+        #expect(endingInOrbit.socketPath == "/var/run/gh-orbit/gh-orbit/engine.sock")
+    }
+
+    @Test("TerminalManager shares one runtime configuration with engine and TUI")
+    func testTerminalManagerSharesRuntimeConfiguration() {
+        for configuration in [
+            EngineRuntimeConfiguration(environment: [:], homeDirectory: "/Users/tester"),
+            EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/custom"]),
+        ] {
+            let manager = TerminalManager(monitor: ActivityMonitor(), runtimeConfiguration: configuration)
+
+            #expect(manager.managedSocketPath == configuration.socketPath)
+            #expect(manager.managedLaunchEnvironment["XDG_RUNTIME_DIR"] == configuration.baseRuntimeDirectory)
+            #expect(manager.managedLaunchEnvironment["GH_ORBIT_REQUIRE_ENGINE"] == "1")
+        }
     }
 
     @Test("ActivityMonitor aggregation and debouncing")
