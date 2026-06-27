@@ -127,12 +127,15 @@ struct ReviewWorkspaceTests {
             ])
 
         let manager = ReviewWorkspaceManager(terminalManager: terminalManager, lifecycleController: lifecycle)
+        manager.restoreManagedWorkspacesIfNeeded()
 
         #expect(lifecycle.restoreCallCount == 1)
         #expect(manager.workspaces.count == 2)
         #expect(manager.workspaces[0].state == .available)
         #expect(manager.workspaces[0].record == record)
         #expect(manager.workspaces[1].state == .cleanupRequired("Orphaned managed worktree at /tmp/orphan."))
+        manager.restoreManagedWorkspacesIfNeeded()
+        #expect(lifecycle.restoreCallCount == 1)
     }
 
     @Test @MainActor

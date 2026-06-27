@@ -76,6 +76,7 @@ final class ReviewWorkspaceManager: ObservableObject {
     private let terminalManager: TerminalManager
     private let lifecycleController: ReviewWorkspaceLifecycleControlling?
     private let now: () -> Date
+    private var didRestoreManagedWorkspaces = false
 
     init(
         terminalManager: TerminalManager,
@@ -85,7 +86,6 @@ final class ReviewWorkspaceManager: ObservableObject {
         self.terminalManager = terminalManager
         self.lifecycleController = lifecycleController
         self.now = now
-        restoreManagedWorkspaces()
     }
 
     func workspace(forPaneName paneName: String) -> ReviewWorkspace? {
@@ -200,6 +200,12 @@ final class ReviewWorkspaceManager: ObservableObject {
         }
         terminalManager.releaseWorkspacePane(workspaces[index].paneName)
         workspaces.remove(at: index)
+    }
+
+    func restoreManagedWorkspacesIfNeeded() {
+        guard !didRestoreManagedWorkspaces else { return }
+        didRestoreManagedWorkspaces = true
+        restoreManagedWorkspaces()
     }
 
     private func restoreManagedWorkspaces() {

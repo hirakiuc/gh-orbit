@@ -94,6 +94,7 @@ struct ContentView: View {
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
+            reviewWorkspaceManager.restoreManagedWorkspacesIfNeeded()
         }
     }
 }
