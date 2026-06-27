@@ -6,6 +6,7 @@ PROJECT_ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PROJECT_TMP=${PROJECT_TMP:-"$PROJECT_ROOT/tmp"}
 NATIVE_TIMEOUT_SECONDS=${NATIVE_SWIFT_TEST_TIMEOUT_SECONDS:-180}
 NATIVE_SAMPLE_SECONDS=${NATIVE_SWIFT_TEST_SAMPLE_SECONDS:-3}
+NATIVE_SWIFT_TEST_DEBUG=${NATIVE_SWIFT_TEST_DEBUG:-0}
 NATIVE_SWIFT_TEST_ARGS=${NATIVE_SWIFT_TEST_ARGS:---disable-xctest --enable-swift-testing}
 TIMEOUT_FLAG="$PROJECT_TMP/native-swift-test-timeout.flag"
 SAMPLE_FILE="$PROJECT_TMP/native-swift-test.sample.txt"
@@ -13,6 +14,10 @@ COMMAND_PID_FILE="$PROJECT_TMP/native-swift-test.pid"
 
 log() {
   printf '[native/test][%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"
+}
+
+debug_enabled() {
+  [ "$NATIVE_SWIFT_TEST_DEBUG" = "1" ]
 }
 
 capture_processes() {
@@ -80,14 +85,14 @@ rm -f "$TIMEOUT_FLAG" "$SAMPLE_FILE" "$COMMAND_PID_FILE"
 
 cd "$PROJECT_ROOT/native/OrbitCockpit"
 
-log "GitHub Actions watchdog enabled."
-log "Working directory: $(pwd)"
-log "Timeout seconds: $NATIVE_TIMEOUT_SECONDS"
-log "HOME: ${HOME:-"(unset)"}"
-log "PROJECT_TMP: $PROJECT_TMP"
-
-swift --version
-xcodebuild -version || true
+log "GitHub Actions watchdog enabled (timeout=${NATIVE_TIMEOUT_SECONDS}s, debug=${NATIVE_SWIFT_TEST_DEBUG})."
+if debug_enabled; then
+  log "Working directory: $(pwd)"
+  log "HOME: ${HOME:-"(unset)"}"
+  log "PROJECT_TMP: $PROJECT_TMP"
+  swift --version
+  xcodebuild -version || true
+fi
 
 if [ "$#" -gt 0 ]; then
   if [ "$1" = "--" ]; then
@@ -106,15 +111,19 @@ printf '%s\n' "$COMMAND_PID" >"$COMMAND_PID_FILE"
 
 log "Launched command: $COMMAND_DESC"
 log "Child PID: $COMMAND_PID"
-log "Watchdog wait started."
+if debug_enabled; then
+  log "Watchdog wait started."
+fi
 
 (
   sleep "$NATIVE_TIMEOUT_SECONDS"
   if kill -0 "$COMMAND_PID" 2>/dev/null; then
     log "Watchdog threshold reached while command is still running."
     printf 'timeout\n' >"$TIMEOUT_FLAG"
-    capture_processes
-    capture_sample "$COMMAND_PID"
+    if debug_enabled; then
+      capture_processes
+      capture_sample "$COMMAND_PID"
+    fi
     terminate_process_tree "$COMMAND_PID"
   fi
 ) &
