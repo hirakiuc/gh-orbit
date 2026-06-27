@@ -284,11 +284,14 @@ struct LifecycleTests {
         let fallback = EngineRuntimeConfiguration(environment: [:], homeDirectory: "/Users/tester")
         #expect(fallback.baseRuntimeDirectory == "/Users/tester/.local/run")
         #expect(fallback.socketPath == "/Users/tester/.local/run/gh-orbit/engine.sock")
+        #expect(
+            fallback.reviewWorkspaceRequestDirectory == "/Users/tester/.local/run/gh-orbit/review-workspace-requests")
         #expect(fallback.environment["XDG_RUNTIME_DIR"] == "/Users/tester/.local/run")
 
         let configured = EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/custom"])
         #expect(configured.baseRuntimeDirectory == "/var/run/custom")
         #expect(configured.socketPath == "/var/run/custom/gh-orbit/engine.sock")
+        #expect(configured.reviewWorkspaceRequestDirectory == "/var/run/custom/gh-orbit/review-workspace-requests")
         #expect(configured.environment["XDG_RUNTIME_DIR"] == "/var/run/custom")
 
         let endingInOrbit = EngineRuntimeConfiguration(environment: ["XDG_RUNTIME_DIR": "/var/run/gh-orbit"])
@@ -306,6 +309,9 @@ struct LifecycleTests {
             #expect(manager.managedSocketPath == configuration.socketPath)
             #expect(manager.managedLaunchEnvironment["XDG_RUNTIME_DIR"] == configuration.baseRuntimeDirectory)
             #expect(manager.managedLaunchEnvironment["GH_ORBIT_REQUIRE_ENGINE"] == "1")
+            #expect(
+                manager.managedLaunchEnvironment["GH_ORBIT_REVIEW_WORKSPACE_REQUEST_DIR"]
+                    == configuration.reviewWorkspaceRequestDirectory)
         }
     }
 

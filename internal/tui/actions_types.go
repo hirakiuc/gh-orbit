@@ -5,6 +5,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 // Action defines the interface for decoupled TUI side-effects.
@@ -43,6 +44,14 @@ type ActionCheckoutPR struct {
 }
 
 func (a ActionCheckoutPR) Type() string { return "checkout_pr" }
+
+type ActionStartReviewWorkspace struct {
+	NotificationID    string
+	Repository        types.ReviewWorkspaceRepository
+	PullRequestNumber int
+}
+
+func (a ActionStartReviewWorkspace) Type() string { return "start_review_workspace" }
 
 type ActionViewWeb struct {
 	Notification triage.NotificationWithState

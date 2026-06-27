@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
@@ -272,4 +274,56 @@ func TestTUIBackendContract_SetPrioritySuccess(t *testing.T) {
 			assert.NoError(t, result.Err)
 		})
 	}
+}
+
+func TestTUIBackendContract_StartReviewWorkspaceUnsupportedInStandalone(t *testing.T) {
+	backend, err := api.NewAppBackend(api.AppBackendParams{
+		UserID:   "user-1",
+		Store:    mocks.NewMockRepository(t),
+		Client:   mocks.NewMockClient(t),
+		Syncer:   mocks.NewMockSyncer(t),
+		Enricher: mocks.NewMockEnricher(t),
+	})
+	require.NoError(t, err)
+
+	err = backend.StartReviewWorkspace(context.Background(), types.ReviewWorkspaceStartRequest{
+		Repository: types.ReviewWorkspaceRepository{
+			Host:  "github.com",
+			Owner: "acme",
+			Name:  "orbit",
+		},
+		PullRequestNumber: 42,
+	})
+	require.ErrorIs(t, err, types.ErrReviewWorkspaceUnsupported)
+}
+
+func TestTUIBackendContract_StartReviewWorkspaceConnectedWritesStructuredRequest(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(reviewWorkspaceRequestDirectoryEnv, dir)
+
+	backend := NewMCPAdapter(nil)
+	request := types.ReviewWorkspaceStartRequest{
+		Repository: types.ReviewWorkspaceRepository{
+			Host:  "github.com",
+			Owner: "acme",
+			Name:  "orbit",
+		},
+		PullRequestNumber: 42,
+	}
+
+	require.NoError(t, backend.StartReviewWorkspace(context.Background(), request))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, ".json", filepath.Ext(entries[0].Name()))
+
+	requestPath := filepath.Join(dir, filepath.Base(entries[0].Name()))
+	// #nosec G304 -- the test reads the single file it just created inside t.TempDir().
+	payload, err := os.ReadFile(requestPath)
+	require.NoError(t, err)
+
+	var got types.ReviewWorkspaceStartRequest
+	require.NoError(t, json.Unmarshal(payload, &got))
+	assert.Equal(t, request, got)
 }

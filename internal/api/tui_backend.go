@@ -204,6 +204,12 @@ func (b *AppBackend) SetPriority(ctx context.Context, id string, priority int) (
 	}, nil
 }
 
+func (b *AppBackend) StartReviewWorkspace(ctx context.Context, request types.ReviewWorkspaceStartRequest) error {
+	_ = ctx
+	_ = request
+	return types.ErrReviewWorkspaceUnsupported
+}
+
 func (b *AppBackend) FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error) {
 	return b.Enricher.FetchDetail(ctx, u, subjectType, force)
 }

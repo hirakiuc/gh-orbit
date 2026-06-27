@@ -166,11 +166,10 @@ final class ReviewWorkspaceManager: ObservableObject {
             return workspaceID
         }
 
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result {
-                try resolver.resolve(repository: request.repository, number: request.pullRequestNumber)
-            }
-            await MainActor.run {
+        let completeReviewWorkspaceStart:
+            @MainActor (
+                NativeReviewRequest, LaunchClaimKey, UUID, Result<ResolvedPullRequest, Error>
+            ) -> Void = { [weak self] request, claimKey, workspaceID, result in
                 self?.completeReviewWorkspaceStart(
                     for: request,
                     claimKey: claimKey,
@@ -178,6 +177,12 @@ final class ReviewWorkspaceManager: ObservableObject {
                     result: result
                 )
             }
+
+        Task.detached(priority: .userInitiated) {
+            let result = Result {
+                try resolver.resolve(repository: request.repository, number: request.pullRequestNumber)
+            }
+            await completeReviewWorkspaceStart(request, claimKey, workspaceID, result)
         }
 
         return workspaceID

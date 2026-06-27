@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,6 +98,8 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		return m.handleNotificationsLoaded(msg)
 	case mutationAppliedMsg:
 		return m.handleMutationApplied(msg)
+	case reviewWorkspaceStartedMsg:
+		return m.handleReviewWorkspaceStarted(msg)
 	case syncCompleteMsg:
 		return m.handleSyncComplete(msg)
 	case enrichmentBatchCompleteMsg:
@@ -166,6 +170,10 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 				if number != "" {
 					actions = append(actions, ActionCheckoutPR{Repository: i.notification.RepositoryFullName, Number: number})
 				}
+			}
+		case key.Matches(msg, m.keys.StartReviewWorkspace):
+			if i, ok := m.listView.list.SelectedItem().(item); ok {
+				actions = append(actions, m.handleStartReviewWorkspaceNotification(i.notification)...)
 			}
 		case key.Matches(msg, m.keys.Quit):
 			return m.handleQuitTransition()
@@ -550,6 +558,13 @@ func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {
 	return []Action{ActionShowToast{Message: msg.toast}}
 }
 
+func (m *Model) handleReviewWorkspaceStarted(msg reviewWorkspaceStartedMsg) []Action {
+	if msg.toast == "" {
+		return nil
+	}
+	return []Action{ActionShowToast{Message: msg.toast}}
+}
+
 func (m *Model) handleSyncComplete(msg syncCompleteMsg) []Action {
 	m.ui.SetSyncing(false)
 	m.LastSyncAt = time.Now()
@@ -677,6 +692,10 @@ func (m *Model) handleTransitionError(msg types.ErrMsg) []Action {
 		return []Action{ActionShowToast{Message: "Sync failed"}}
 	}
 
+	if errors.Is(msg.Err, types.ErrReviewWorkspaceUnsupported) {
+		return []Action{ActionShowToast{Message: "Review workspace start is unavailable in this session"}}
+	}
+
 	return nil
 }
 
@@ -720,6 +739,8 @@ func (m *Model) handleNavigationKeys(msg tea.KeyMsg) []Action {
 		return m.handleOpenBrowserKey()
 	case key.Matches(msg, m.keys.CheckoutPR):
 		return m.handleCheckoutPRKey()
+	case key.Matches(msg, m.keys.StartReviewWorkspace):
+		return m.handleStartReviewWorkspaceKey()
 	}
 	return nil
 }
@@ -840,6 +861,41 @@ func (m *Model) handleCheckoutPRKey() []Action {
 		NotificationID: n.GitHubID,
 		Repository:     n.RepositoryFullName,
 		Number:         number,
+	}}
+}
+
+func (m *Model) handleStartReviewWorkspaceKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+	return m.handleStartReviewWorkspaceNotification(n)
+}
+
+func (m *Model) handleStartReviewWorkspaceNotification(n triage.NotificationWithState) []Action {
+	if n.SubjectType != triage.SubjectPullRequest {
+		return nil
+	}
+
+	number := extractNumberFromURL(n.SubjectURL)
+	if number == "" {
+		return nil
+	}
+
+	repository, ok := extractReviewWorkspaceRepository(n)
+	if !ok {
+		return nil
+	}
+
+	pullRequestNumber, err := strconv.Atoi(number)
+	if err != nil || pullRequestNumber <= 0 {
+		return nil
+	}
+
+	return []Action{ActionStartReviewWorkspace{
+		NotificationID:    n.GitHubID,
+		Repository:        repository,
+		PullRequestNumber: pullRequestNumber,
 	}}
 }
 

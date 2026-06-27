@@ -47,6 +47,8 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.executeOpenBrowser(a.URL)
 	case ActionCheckoutPR:
 		return i.executeCheckoutPR(a.NotificationID, a.Repository, a.Number)
+	case ActionStartReviewWorkspace:
+		return i.executeStartReviewWorkspace(a.Repository, a.PullRequestNumber)
 	case ActionEnrichItems:
 		return i.model.enrichItems(a.Notifications, a.Force)
 	case ActionFetchDetail:
@@ -136,6 +138,25 @@ func (i *Interpreter) executeCheckoutPR(id, repo, number string) tea.Cmd {
 		return tea.Batch(checkoutCmd, i.model.MarkReadByID(id, true))
 	}
 	return checkoutCmd
+}
+
+func (i *Interpreter) executeStartReviewWorkspace(repository types.ReviewWorkspaceRepository, pullRequestNumber int) tea.Cmd {
+	if repository.Host == "" || repository.Owner == "" || repository.Name == "" || pullRequestNumber <= 0 {
+		return func() tea.Msg {
+			return types.ErrMsg{Err: types.ErrInvalidReviewWorkspaceRequest}
+		}
+	}
+
+	return i.model.submitTask("review-workspace:start", 0, api.PriorityUser, func(ctx context.Context) any {
+		err := i.model.backend.StartReviewWorkspace(ctx, types.ReviewWorkspaceStartRequest{
+			Repository:        repository,
+			PullRequestNumber: pullRequestNumber,
+		})
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+		return reviewWorkspaceStartedMsg{toast: "Starting review workspace..."}
+	})
 }
 
 func (i *Interpreter) executeViewWeb(n triage.NotificationWithState) tea.Cmd {
