@@ -90,8 +90,8 @@ if [ "$#" -gt 0 ]; then
   COMMAND_DESC="$*"
   "$@" &
 else
-  COMMAND_DESC="swift test --disable-sandbox --build-path $PROJECT_TMP/swift-build"
-  swift test --disable-sandbox --build-path "$PROJECT_TMP/swift-build" &
+  COMMAND_DESC="swift test --disable-sandbox --build-path $PROJECT_TMP/swift-build --disable-xctest --enable-swift-testing"
+  swift test --disable-sandbox --build-path "$PROJECT_TMP/swift-build" --disable-xctest --enable-swift-testing &
 fi
 
 COMMAND_PID=$!

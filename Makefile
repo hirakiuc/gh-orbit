@@ -184,7 +184,7 @@ native/test:
 		PROJECT_TMP=$(PROJECT_TMP) \
 		sh ./tools/native-swift-test-watchdog.sh; \
 	else \
-		if cd native/OrbitCockpit && HOME=$(PROJECT_TMP)/swift-home swift test --disable-sandbox --build-path $(PROJECT_TMP)/swift-build 2>/dev/null; then \
+		if cd native/OrbitCockpit && HOME=$(PROJECT_TMP)/swift-home swift test --disable-sandbox --build-path $(PROJECT_TMP)/swift-build --disable-xctest --enable-swift-testing 2>/dev/null; then \
 			echo "Swift tests passed."; \
 		else \
 			echo "Warning: Swift tests skipped or failed (likely due to missing XCTest/Testing module in this shell). Architectural integrity verified via build."; \
