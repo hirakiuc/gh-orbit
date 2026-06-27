@@ -39,12 +39,27 @@ enum ReviewWorkspaceCleanupResult: Equatable {
     case cleanupRequired(ReviewWorkspaceRecord)
 }
 
-enum ReviewWorkspaceLifecycleError: Error, Equatable {
+enum ReviewWorkspaceLifecycleError: Error, Equatable, LocalizedError {
     case invalidHeadSHA
     case worktreePathInsideSourceClone
     case worktreePathOutsideManagedRoot
     case fetchedRefMismatch(expected: String, actual: String)
     case checkedOutHeadMismatch(expected: String, actual: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidHeadSHA:
+            "The pull request head SHA is invalid and cannot be used to prepare a managed review workspace."
+        case .worktreePathInsideSourceClone:
+            "The managed review workspace path would overlap the source clone, so the worktree was not created."
+        case .worktreePathOutsideManagedRoot:
+            "The managed review workspace path escaped the configured review-workspace root."
+        case .fetchedRefMismatch(let expected, let actual):
+            "Fetched review ref mismatch: expected \(expected), got \(actual)."
+        case .checkedOutHeadMismatch(let expected, let actual):
+            "Checked-out review workspace mismatch: expected \(expected), got \(actual)."
+        }
+    }
 }
 
 struct ReviewWorkspacePaths {

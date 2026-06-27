@@ -46,8 +46,80 @@ private final class MockReviewWorkspaceLifecycleController: ReviewWorkspaceLifec
     }
 }
 
+private final class MockPullRequestResolver: PullRequestResolving, @unchecked Sendable {
+    private let lock = NSLock()
+    var resolveCalls: [(RepositoryIdentity, Int)] = []
+    var result: Result<ResolvedPullRequest, Error>
+    var waitForResume = false
+    private let semaphore = DispatchSemaphore(value: 0)
+
+    init(result: Result<ResolvedPullRequest, Error>) {
+        self.result = result
+    }
+
+    func resolve(repository: RepositoryIdentity, number: Int) throws -> ResolvedPullRequest {
+        lock.lock()
+        resolveCalls.append((repository, number))
+        let shouldWait = waitForResume
+        lock.unlock()
+
+        if shouldWait {
+            semaphore.wait()
+        }
+        return try result.get()
+    }
+
+    func resume() {
+        semaphore.signal()
+    }
+}
+
+@MainActor
+private final class MockReviewWorkspaceCodexLauncher: ReviewWorkspaceCodexLaunching {
+    private(set) var launchedRecords: [ReviewWorkspaceRecord] = []
+    private let session: MockTerminalSession
+
+    init(session: MockTerminalSession = MockTerminalSession()) {
+        self.session = session
+    }
+
+    func launchSession(
+        for record: ReviewWorkspaceRecord,
+        environment: [String: String],
+        onTerminate: @escaping (Int32?) -> Void
+    ) throws -> TerminalProcessSession {
+        launchedRecords.append(record)
+        return session
+    }
+}
+
 @Suite("Review workspace lifecycle")
 struct ReviewWorkspaceTests {
+    private func sampleRequest() -> NativeReviewRequest {
+        NativeReviewRequest(
+            repository: .init(host: "github.com", owner: "acme", name: "orbit"),
+            pullRequestNumber: 42,
+            title: "Needs review",
+            subtitle: "Review request fixture"
+        )
+    }
+
+    private func sampleResolvedPullRequest(
+        headSHA: String = "0123456789abcdef0123456789abcdef01234567"
+    ) -> ResolvedPullRequest {
+        .init(
+            base: .init(host: "github.com", owner: "acme", name: "orbit"),
+            localClonePath: URL(fileURLWithPath: "/tmp/source", isDirectory: true),
+            localCloneRemoteURL: "git@github.com:acme/orbit.git",
+            number: 42,
+            url: URL(string: "https://github.com/acme/orbit/pull/42")!,
+            head: .init(host: "github.com", owner: "contrib", name: "orbit"),
+            headCloneURL: URL(fileURLWithPath: "/tmp/origin.git", isDirectory: true),
+            headBranch: "feature/review",
+            headSHA: headSHA
+        )
+    }
+
     @Test @MainActor
     func workspacesUseIndependentReservedPanes() throws {
         let terminalManager = TerminalManager(monitor: ActivityMonitor())
@@ -189,5 +261,110 @@ struct ReviewWorkspaceTests {
         #expect(
             manager.workspace(forPaneName: workspace.paneName)?.state
                 == .cleanupRequired("Cleanup required for /tmp/worktree."))
+    }
+
+    @Test @MainActor
+    func duplicateStartsReusePreparingPlaceholderBeforeResolutionCompletes() async throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let lifecycle = MockReviewWorkspaceLifecycleController()
+        let resolver = MockPullRequestResolver(result: .success(sampleResolvedPullRequest()))
+        resolver.waitForResume = true
+        let codexLauncher = MockReviewWorkspaceCodexLauncher()
+        let manager = ReviewWorkspaceManager(
+            terminalManager: terminalManager,
+            lifecycleController: lifecycle,
+            codexLauncher: codexLauncher,
+            pullRequestResolverFactory: { resolver }
+        )
+        var focusedPanes: [String] = []
+        manager.onPaneFocusRequested = { focusedPanes.append($0) }
+
+        let firstID = try #require(manager.startReviewWorkspace(for: sampleRequest()))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let secondID = try #require(manager.startReviewWorkspace(for: sampleRequest()))
+
+        #expect(firstID == secondID)
+        #expect(manager.workspaces.count == 1)
+        #expect(manager.workspaces[0].state == .preparing)
+        #expect(resolver.resolveCalls.count == 1)
+        #expect(focusedPanes.count == 2)
+        #expect(focusedPanes[0] == focusedPanes[1])
+
+        resolver.resume()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(manager.workspaces[0].state == .running)
+    }
+
+    @Test @MainActor
+    func identicalResolvedWorkspaceIsFocusedInsteadOfDuplicated() async throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let lifecycle = MockReviewWorkspaceLifecycleController()
+        let resolver = MockPullRequestResolver(result: .success(sampleResolvedPullRequest()))
+        let codexLauncher = MockReviewWorkspaceCodexLauncher()
+        let manager = ReviewWorkspaceManager(
+            terminalManager: terminalManager,
+            lifecycleController: lifecycle,
+            codexLauncher: codexLauncher,
+            pullRequestResolverFactory: { resolver }
+        )
+        var focusedPanes: [String] = []
+        manager.onPaneFocusRequested = { focusedPanes.append($0) }
+
+        _ = manager.startReviewWorkspace(for: sampleRequest())
+        try await Task.sleep(nanoseconds: 100_000_000)
+        _ = manager.startReviewWorkspace(for: sampleRequest())
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(manager.workspaces.count == 1)
+        #expect(manager.workspaces[0].state == .running)
+        #expect(codexLauncher.launchedRecords.count == 1)
+        #expect(resolver.resolveCalls.count == 2)
+        #expect(focusedPanes.last == manager.workspaces[0].paneName)
+    }
+
+    @Test @MainActor
+    func changedHeadAllowsSecondWorkspaceLaunch() async throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let lifecycle = MockReviewWorkspaceLifecycleController()
+        let resolver = MockPullRequestResolver(result: .success(sampleResolvedPullRequest()))
+        let codexLauncher = MockReviewWorkspaceCodexLauncher()
+        let manager = ReviewWorkspaceManager(
+            terminalManager: terminalManager,
+            lifecycleController: lifecycle,
+            codexLauncher: codexLauncher,
+            pullRequestResolverFactory: { resolver }
+        )
+
+        _ = manager.startReviewWorkspace(for: sampleRequest())
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        resolver.result = .success(sampleResolvedPullRequest(headSHA: "fedcba9876543210fedcba9876543210fedcba98"))
+        _ = manager.startReviewWorkspace(for: sampleRequest())
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(manager.workspaces.count == 2)
+        #expect(manager.workspaces.allSatisfy { $0.state == .running })
+    }
+
+    @Test @MainActor
+    func resolutionFailuresRemainVisibleAsFailedWorkspace() async throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let lifecycle = MockReviewWorkspaceLifecycleController()
+        let resolver = MockPullRequestResolver(result: .failure(PullRequestResolutionError.noLocalClone))
+        let manager = ReviewWorkspaceManager(
+            terminalManager: terminalManager,
+            lifecycleController: lifecycle,
+            pullRequestResolverFactory: { resolver }
+        )
+
+        let workspaceID = try #require(manager.startReviewWorkspace(for: sampleRequest()))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let workspace = try #require(manager.workspaces.first(where: { $0.id == workspaceID }))
+        #expect(
+            workspace.state
+                == .failed(
+                    "No local clone matched the selected repository. Ensure the repository is available through `ghq`."
+                ))
     }
 }
