@@ -69,4 +69,5 @@ jobs:
       env:
         NATIVE_SWIFT_TEST_TIMEOUT_SECONDS: 180
         NATIVE_SWIFT_TEST_SAMPLE_SECONDS: 3
+        NATIVE_SWIFT_TEST_ARGS: --disable-xctest --enable-swift-testing --no-parallel
       run: make native/test

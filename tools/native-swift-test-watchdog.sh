@@ -6,6 +6,7 @@ PROJECT_ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PROJECT_TMP=${PROJECT_TMP:-"$PROJECT_ROOT/tmp"}
 NATIVE_TIMEOUT_SECONDS=${NATIVE_SWIFT_TEST_TIMEOUT_SECONDS:-180}
 NATIVE_SAMPLE_SECONDS=${NATIVE_SWIFT_TEST_SAMPLE_SECONDS:-3}
+NATIVE_SWIFT_TEST_ARGS=${NATIVE_SWIFT_TEST_ARGS:---disable-xctest --enable-swift-testing}
 TIMEOUT_FLAG="$PROJECT_TMP/native-swift-test-timeout.flag"
 SAMPLE_FILE="$PROJECT_TMP/native-swift-test.sample.txt"
 COMMAND_PID_FILE="$PROJECT_TMP/native-swift-test.pid"
@@ -46,27 +47,32 @@ capture_sample() {
 
 terminate_process_tree() {
   target_pid=$1
-  target_pgid=$2
+  remaining_pids="$target_pid"
 
-  if [ -n "$target_pgid" ]; then
-    log "Sending TERM to process group $target_pgid."
-    kill -TERM -- "-$target_pgid" 2>/dev/null || true
+  if descendant_output=$(pgrep -P "$target_pid" 2>&1); then
+    for child_pid in $descendant_output; do
+      terminate_process_tree "$child_pid"
+      remaining_pids="$remaining_pids $child_pid"
+    done
   else
-    log "Sending TERM to PID $target_pid."
-    kill -TERM "$target_pid" 2>/dev/null || true
+    case "$descendant_output" in
+      *"Cannot get process list"*)
+        log "Child process lookup unavailable for PID $target_pid: $descendant_output"
+        ;;
+    esac
   fi
+
+  log "Sending TERM to PID $target_pid."
+  kill -TERM "$target_pid" 2>/dev/null || true
 
   sleep 5
 
-  if kill -0 "$target_pid" 2>/dev/null; then
-    if [ -n "$target_pgid" ]; then
-      log "Process group $target_pgid still alive; sending KILL."
-      kill -KILL -- "-$target_pgid" 2>/dev/null || true
-    else
-      log "PID $target_pid still alive; sending KILL."
-      kill -KILL "$target_pid" 2>/dev/null || true
+  for pid in $remaining_pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      log "PID $pid still alive; sending KILL."
+      kill -KILL "$pid" 2>/dev/null || true
     fi
-  fi
+  done
 }
 
 mkdir -p "$PROJECT_TMP"
@@ -90,22 +96,16 @@ if [ "$#" -gt 0 ]; then
   COMMAND_DESC="$*"
   "$@" &
 else
-  COMMAND_DESC="swift test --disable-sandbox --build-path $PROJECT_TMP/swift-build --disable-xctest --enable-swift-testing"
-  swift test --disable-sandbox --build-path "$PROJECT_TMP/swift-build" --disable-xctest --enable-swift-testing &
+  COMMAND_DESC="swift test --disable-sandbox --build-path $PROJECT_TMP/swift-build $NATIVE_SWIFT_TEST_ARGS"
+  # shellcheck disable=SC2086
+  swift test --disable-sandbox --build-path "$PROJECT_TMP/swift-build" $NATIVE_SWIFT_TEST_ARGS &
 fi
 
 COMMAND_PID=$!
 printf '%s\n' "$COMMAND_PID" >"$COMMAND_PID_FILE"
-if pgid_output=$(ps -o pgid= -p "$COMMAND_PID" 2>&1); then
-  COMMAND_PGID=$(printf '%s' "$pgid_output" | tr -d ' ')
-else
-  COMMAND_PGID=""
-  log "PGID lookup unavailable: $pgid_output"
-fi
 
 log "Launched command: $COMMAND_DESC"
 log "Child PID: $COMMAND_PID"
-log "Child PGID: ${COMMAND_PGID:-unknown}"
 log "Watchdog wait started."
 
 (
@@ -115,7 +115,7 @@ log "Watchdog wait started."
     printf 'timeout\n' >"$TIMEOUT_FLAG"
     capture_processes
     capture_sample "$COMMAND_PID"
-    terminate_process_tree "$COMMAND_PID" "$COMMAND_PGID"
+    terminate_process_tree "$COMMAND_PID"
   fi
 ) &
 WATCHDOG_PID=$!
