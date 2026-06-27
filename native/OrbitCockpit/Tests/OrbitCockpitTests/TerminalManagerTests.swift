@@ -29,9 +29,14 @@ final class MockTerminalEngine: OrbitTerminalEngine {
 final class MockTerminalSession: TerminalProcessSession {
     let engine: OrbitTerminalEngine
     var terminateCalls = 0
+    var sendCalls: [String] = []
 
     init(engine: OrbitTerminalEngine = MockTerminalEngine()) {
         self.engine = engine
+    }
+
+    func send(string: String) {
+        sendCalls.append(string)
     }
 
     func terminateProcess() {
