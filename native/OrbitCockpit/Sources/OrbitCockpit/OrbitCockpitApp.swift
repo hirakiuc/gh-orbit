@@ -7,7 +7,6 @@ import SwiftUI
 struct OrbitCockpitApp: App {
     @StateObject private var activityMonitor: ActivityMonitor
     @StateObject private var terminalManager: TerminalManager
-    @StateObject private var reviewRequestStore: ReviewRequestStore
     @StateObject private var reviewWorkspaceManager: ReviewWorkspaceManager
     private let reviewWorkspaceRequestInbox: ReviewWorkspaceRequestInbox
 
@@ -18,7 +17,6 @@ struct OrbitCockpitApp: App {
         _activityMonitor = StateObject(wrappedValue: monitor)
         let terminalManager = TerminalManager(monitor: monitor)
         _terminalManager = StateObject(wrappedValue: terminalManager)
-        _reviewRequestStore = StateObject(wrappedValue: ReviewRequestStore())
         let runtimeConfiguration = terminalManager.runtimeConfiguration
         let workspacePaths = ReviewWorkspacePaths(
             root: URL(fileURLWithPath: runtimeConfiguration.reviewWorkspaceRoot, isDirectory: true))
@@ -52,7 +50,6 @@ struct OrbitCockpitApp: App {
             ContentView()
                 .environmentObject(activityMonitor)
                 .environmentObject(terminalManager)
-                .environmentObject(reviewRequestStore)
                 .environmentObject(reviewWorkspaceManager)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     reviewWorkspaceRequestInbox.stop()
@@ -69,14 +66,12 @@ struct ContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var activityMonitor: ActivityMonitor
     @EnvironmentObject var terminalManager: TerminalManager
-    @EnvironmentObject var reviewRequestStore: ReviewRequestStore
     @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
         NavigationSplitView {
             Sidebar(selectedPane: $selectedPane)
                 .environmentObject(terminalManager)
-                .environmentObject(reviewRequestStore)
                 .environmentObject(reviewWorkspaceManager)
         } detail: {
             VStack(spacing: 0) {
@@ -84,9 +79,6 @@ struct ContentView: View {
                     if let workspace = reviewWorkspaceManager.workspace(forPaneName: selectedPane) {
                         ReviewWorkspaceHostView(workspace: workspace)
                             .environmentObject(terminalManager)
-                    } else if let request = reviewRequestStore.request(forPaneName: selectedPane) {
-                        ReviewRequestDetailView(request: request)
-                            .environmentObject(reviewWorkspaceManager)
                     } else {
                         TerminalHostView(paneName: selectedPane)
                             .environmentObject(terminalManager)
@@ -126,44 +118,6 @@ struct ContentView: View {
         .onDisappear {
             reviewWorkspaceManager.onPaneFocusRequested = nil
         }
-    }
-}
-
-@MainActor
-struct ReviewRequestDetailView: View {
-    let request: NativeReviewRequest
-    @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(request.title)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Text(request.subtitle)
-                    .foregroundColor(.secondary)
-                Text("\(request.repository.host)/\(request.repository.owner)/\(request.repository.name)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                Text("Pull request #\(request.pullRequestNumber)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-
-            Button("Start review workspace") {
-                _ = reviewWorkspaceManager.startReviewWorkspace(for: request)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Text("If the pull request head changes, starting again creates a new workspace for the new review target.")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(24)
-        .navigationTitle(request.displayName)
     }
 }
 
@@ -226,7 +180,6 @@ struct ReviewWorkspaceHostView: View {
 struct Sidebar: View {
     @Binding var selectedPane: String?
     @EnvironmentObject var terminalManager: TerminalManager
-    @EnvironmentObject var reviewRequestStore: ReviewRequestStore
     @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
@@ -247,18 +200,6 @@ struct Sidebar: View {
                     .tag("Agent Alpha")
                 Label("Agent Beta", systemImage: "wand.and.stars")
                     .tag("Agent Beta")
-            }
-
-            Section("Review Requests") {
-                ForEach(reviewRequestStore.requests) { request in
-                    HStack {
-                        Label(request.title, systemImage: "person.crop.rectangle.badge.checkmark")
-                        Spacer()
-                        Text("PR #\(request.pullRequestNumber)")
-                            .foregroundColor(.secondary)
-                    }
-                    .tag(request.paneName)
-                }
             }
 
             Section("Review Workspaces") {
