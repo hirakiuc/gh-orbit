@@ -16,7 +16,18 @@ struct OrbitCockpitApp: App {
         _activityMonitor = StateObject(wrappedValue: monitor)
         let terminalManager = TerminalManager(monitor: monitor)
         _terminalManager = StateObject(wrappedValue: terminalManager)
-        _reviewWorkspaceManager = StateObject(wrappedValue: ReviewWorkspaceManager(terminalManager: terminalManager))
+        let runtimeConfiguration = terminalManager.runtimeConfiguration
+        let workspacePaths = ReviewWorkspacePaths(
+            root: URL(fileURLWithPath: runtimeConfiguration.reviewWorkspaceRoot, isDirectory: true))
+        let lifecycleController = ReviewWorkspaceLifecycleController(
+            store: ReviewWorkspaceMetadataStore(paths: workspacePaths),
+            service: ReviewWorkspaceGitService(
+                git: URL(fileURLWithPath: "/usr/bin/git"),
+                paths: workspacePaths))
+        _reviewWorkspaceManager = StateObject(
+            wrappedValue: ReviewWorkspaceManager(
+                terminalManager: terminalManager,
+                lifecycleController: lifecycleController))
     }
 
     var body: some Scene {
@@ -83,6 +94,7 @@ struct ContentView: View {
         }
         .onAppear {
             terminalManager.updateTheme(isDark: colorScheme == .dark)
+            reviewWorkspaceManager.restoreManagedWorkspacesIfNeeded()
         }
     }
 }
@@ -94,6 +106,12 @@ struct ReviewWorkspaceHostView: View {
 
     var body: some View {
         switch workspace.state {
+        case .available:
+            if let path = workspace.record?.worktreePath.path {
+                Text("Managed worktree is available at \(path).").foregroundColor(.secondary)
+            } else {
+                Text("Managed worktree is available.").foregroundColor(.secondary)
+            }
         case .running:
             terminalView(or: "Terminal session is unavailable.")
         case .exited(let code):
@@ -102,6 +120,16 @@ struct ReviewWorkspaceHostView: View {
             } else {
                 Text("Terminal session exited (\(code)).").foregroundColor(.secondary)
             }
+        case .cleanupRequired(let message):
+            ContentUnavailableView(
+                "Review workspace requires cleanup",
+                systemImage: "externaldrive.badge.exclamationmark",
+                description: Text(message))
+        case .missing(let message):
+            ContentUnavailableView(
+                "Review workspace missing",
+                systemImage: "externaldrive.badge.questionmark",
+                description: Text(message))
         case .preparing:
             ProgressView("Preparing review workspace…")
         case .terminating:
@@ -165,9 +193,12 @@ struct Sidebar: View {
     private func workspaceStatus(_ state: ReviewWorkspace.State) -> String {
         switch state {
         case .preparing: "Preparing"
+        case .available: "Available"
         case .running: "Running"
         case .terminating: "Stopping"
         case .exited(let code): "Exited (\(code))"
+        case .missing: "Missing"
+        case .cleanupRequired: "Cleanup required"
         case .failed(let message): message
         }
     }
