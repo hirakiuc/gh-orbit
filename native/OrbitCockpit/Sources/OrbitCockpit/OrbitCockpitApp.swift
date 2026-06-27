@@ -24,10 +24,12 @@ struct OrbitCockpitApp: App {
             service: ReviewWorkspaceGitService(
                 git: URL(fileURLWithPath: "/usr/bin/git"),
                 paths: workspacePaths))
+        let codexLauncher = CodexReviewWorkspaceLauncher(terminalSessionFactory: terminalManager)
         _reviewWorkspaceManager = StateObject(
             wrappedValue: ReviewWorkspaceManager(
                 terminalManager: terminalManager,
-                lifecycleController: lifecycleController))
+                lifecycleController: lifecycleController,
+                codexLauncher: codexLauncher))
     }
 
     var body: some Scene {
@@ -103,6 +105,7 @@ struct ContentView: View {
 struct ReviewWorkspaceHostView: View {
     let workspace: ReviewWorkspace
     @EnvironmentObject var terminalManager: TerminalManager
+    @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
         switch workspace.state {
@@ -132,6 +135,9 @@ struct ReviewWorkspaceHostView: View {
                 description: Text(message))
         case .preparing:
             ProgressView("Preparing review workspace…")
+                .onAppear {
+                    reviewWorkspaceManager.launchCodexIfNeeded(for: workspace.id)
+                }
         case .terminating:
             ProgressView("Terminating review workspace…")
         case .failed(let message):
@@ -272,6 +278,7 @@ enum TerminalPaneState: Equatable {
 @MainActor
 protocol TerminalProcessSession: AnyObject {
     var engine: OrbitTerminalEngine { get }
+    func send(string: String)
     func terminateProcess()
 }
 
@@ -288,7 +295,32 @@ struct TerminalPaneSession {
 }
 
 @MainActor
-class TerminalManager: ObservableObject {
+protocol TerminalSessionLaunching {
+    func launchSession(
+        request: TerminalLaunchRequest,
+        isDark: Bool,
+        onLog: ((String, LogLevel) -> Void)?,
+        onTerminate: @escaping (Int32?) -> Void
+    ) -> TerminalProcessSession
+}
+
+@MainActor
+struct SwiftTermSessionLauncher: TerminalSessionLaunching {
+    func launchSession(
+        request: TerminalLaunchRequest,
+        isDark: Bool,
+        onLog: ((String, LogLevel) -> Void)?,
+        onTerminate: @escaping (Int32?) -> Void
+    ) -> TerminalProcessSession {
+        let adapter = SwiftTermAdapter(onLog: onLog, onTerminate: onTerminate)
+        adapter.isDarkMode(isDark)
+        adapter.startProcess(request: request)
+        return adapter
+    }
+}
+
+@MainActor
+class TerminalManager: ObservableObject, TerminalSessionCreating {
     static let workspacePanePrefix = "review-workspace:"
     @Published private var panes: [String: TerminalPaneSession] = [:]
     @Published var engineManager: NativeEngineManager?
@@ -297,10 +329,16 @@ class TerminalManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var onLog: ((String, LogLevel) -> Void)?
     private var launchTasks: [String: Task<Void, Never>] = [:]
+    private let sessionLauncher: any TerminalSessionLaunching
     let runtimeConfiguration: EngineRuntimeConfiguration
 
-    init(monitor: ActivityMonitor, runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration()) {
+    init(
+        monitor: ActivityMonitor,
+        runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration(),
+        sessionLauncher: any TerminalSessionLaunching = SwiftTermSessionLauncher()
+    ) {
         self.runtimeConfiguration = runtimeConfiguration
+        self.sessionLauncher = sessionLauncher
         let logFunc: (String, LogLevel) -> Void = { msg, level in
             monitor.log(component: "[App]", level: level, message: msg)
         }
@@ -337,11 +375,24 @@ class TerminalManager: ObservableObject {
     }
 
     var managedSocketPath: String? { engineManager?.managedSocketPath }
+    var isDarkModeEnabled: Bool { isDark }
 
     var managedLaunchEnvironment: [String: String] {
         var environment = runtimeConfiguration.environment
         environment["GH_ORBIT_REQUIRE_ENGINE"] = "1"
         return environment
+    }
+
+    func makeSession(
+        request: TerminalLaunchRequest,
+        onTerminate: @escaping (Int32?) -> Void
+    ) -> TerminalProcessSession {
+        sessionLauncher.launchSession(
+            request: request,
+            isDark: isDark,
+            onLog: onLog,
+            onTerminate: onTerminate
+        )
     }
 
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
@@ -387,13 +438,6 @@ class TerminalManager: ObservableObject {
 
         let task = Task { @MainActor in
             defer { launchTasks[name] = nil }
-            let adapter = SwiftTermAdapter(
-                onLog: onLog,
-                onTerminate: { [weak self] exitCode in
-                    self?.processTerminated(name: name, exitCode: exitCode)
-                })
-            adapter.isDarkMode(isDark)
-
             onLog?("Resolving gh-orbit binary...", .debug)
             // 1. Resolve binary
             guard let executableURL = PathResolver.resolveBinary(onLog: onLog) else {
@@ -429,9 +473,17 @@ class TerminalManager: ObservableObject {
             }
 
             onLog?("Launching TUI process with args: \(args)", .debug)
-            adapter.startProcess(
-                executable: executableURL, args: args, environment: env.map { "\($0.key)=\($0.value)" })
-            panes[name] = TerminalPaneSession(state: .running, session: adapter)
+            let session = makeSession(
+                request: TerminalLaunchRequest(
+                    executable: executableURL,
+                    arguments: args,
+                    environment: env,
+                    currentDirectoryURL: nil
+                ),
+                onTerminate: { [weak self] exitCode in
+                    self?.processTerminated(name: name, exitCode: exitCode)
+                })
+            panes[name] = TerminalPaneSession(state: .running, session: session)
         }
         launchTasks[name] = task
     }

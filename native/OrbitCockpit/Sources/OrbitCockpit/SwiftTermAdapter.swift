@@ -5,6 +5,7 @@ import SwiftTerm
 @MainActor
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
+    private let processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)?
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
 
@@ -12,10 +13,16 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         return terminalView
     }
 
-    init(onLog: ((String, LogLevel) -> Void)? = nil, onTerminate: ((Int32?) -> Void)? = nil) {
+    init(
+        terminalView: LocalProcessTerminalView = LocalProcessTerminalView(frame: .zero),
+        processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)? = nil,
+        onLog: ((String, LogLevel) -> Void)? = nil,
+        onTerminate: ((Int32?) -> Void)? = nil
+    ) {
+        self.processStarter = processStarter
         self.onLog = onLog
         self.onTerminate = onTerminate
-        self.terminalView = LocalProcessTerminalView(frame: .zero)
+        self.terminalView = terminalView
         super.init()
         self.terminalView.processDelegate = self
         setupFont()
@@ -117,13 +124,17 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         // Implementation
     }
 
-    /// Launches the gh-orbit helper process.
-    func startProcess(executable: URL, args: [String], environment: [String]?) {
+    func startProcess(request: TerminalLaunchRequest) {
+        if let processStarter {
+            processStarter(terminalView, request)
+            return
+        }
         terminalView.startProcess(
-            executable: executable.path,
-            args: args,
-            environment: environment,
-            execName: nil
+            executable: request.executable.path,
+            args: request.arguments,
+            environment: request.environment.map { $0.map { "\($0.key)=\($0.value)" } },
+            execName: nil,
+            currentDirectory: request.currentDirectoryURL?.path
         )
     }
 

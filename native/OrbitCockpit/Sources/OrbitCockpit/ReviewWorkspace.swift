@@ -75,16 +75,19 @@ final class ReviewWorkspaceManager: ObservableObject {
     @Published private(set) var workspaces: [ReviewWorkspace] = []
     private let terminalManager: TerminalManager
     private let lifecycleController: ReviewWorkspaceLifecycleControlling?
+    private let codexLauncher: ReviewWorkspaceCodexLaunching?
     private let now: () -> Date
     private var didRestoreManagedWorkspaces = false
 
     init(
         terminalManager: TerminalManager,
         lifecycleController: ReviewWorkspaceLifecycleControlling? = nil,
+        codexLauncher: ReviewWorkspaceCodexLaunching? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.terminalManager = terminalManager
         self.lifecycleController = lifecycleController
+        self.codexLauncher = codexLauncher
         self.now = now
     }
 
@@ -124,9 +127,37 @@ final class ReviewWorkspaceManager: ObservableObject {
         do {
             let record = try lifecycleController.createWorkspace(
                 for: pullRequest, workspaceID: workspaceID, now: now())
-            return attachManagedWorkspace(record, displayName: displayName, initialState: .preparing)
+            let workspace = attachManagedWorkspace(record, displayName: displayName, initialState: .preparing)
+            if let workspace {
+                launchCodexIfNeeded(for: workspace.id)
+            }
+            return workspace
         } catch {
             return nil
+        }
+    }
+
+    func launchCodexIfNeeded(for workspaceID: UUID) {
+        guard let codexLauncher,
+            let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
+            workspaces[index].state == .preparing,
+            let record = workspaces[index].record
+        else {
+            return
+        }
+
+        do {
+            let session = try codexLauncher.launchSession(
+                for: record,
+                environment: terminalManager.managedLaunchEnvironment,
+                onTerminate: { [weak self] exitCode in
+                    Task { @MainActor in
+                        self?.reportTerminalExit(for: workspaceID, exitCode: exitCode)
+                    }
+                })
+            install(session, for: workspaceID)
+        } catch {
+            reportSetupFailure(for: workspaceID, message: error.localizedDescription)
         }
     }
 
