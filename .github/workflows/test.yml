@@ -66,4 +66,7 @@ jobs:
       run: make native/lint
 
     - name: Run Swift Tests
+      env:
+        NATIVE_SWIFT_TEST_TIMEOUT_SECONDS: 180
+        NATIVE_SWIFT_TEST_SAMPLE_SECONDS: 3
       run: make native/test

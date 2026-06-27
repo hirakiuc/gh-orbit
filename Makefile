@@ -180,9 +180,9 @@ native/dist: native/build ## Verify bundle integrity
 native/test:
 	@echo "Running Swift tests..."
 	@if [ "$$GITHUB_ACTIONS" = "true" ]; then \
-		cd native/OrbitCockpit && \
-			HOME=$(PROJECT_TMP)/swift-home \
-			swift test --disable-sandbox --build-path $(PROJECT_TMP)/swift-build; \
+		HOME=$(PROJECT_TMP)/swift-home \
+		PROJECT_TMP=$(PROJECT_TMP) \
+		sh ./tools/native-swift-test-watchdog.sh; \
 	else \
 		if cd native/OrbitCockpit && HOME=$(PROJECT_TMP)/swift-home swift test --disable-sandbox --build-path $(PROJECT_TMP)/swift-build 2>/dev/null; then \
 			echo "Swift tests passed."; \
