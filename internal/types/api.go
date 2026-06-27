@@ -11,11 +11,13 @@ import (
 
 // Sentinel errors for common failure modes.
 var (
-	ErrSyncIntervalNotReached = errors.New("sync: polling interval not reached")
-	ErrUnauthorized           = errors.New("github: unauthorized (401)")
-	ErrRateLimited            = errors.New("github: rate limited (403)")
-	ErrInternalServerError    = errors.New("github: internal server error (500)")
-	ErrNetworkTimeout         = errors.New("github: network timeout")
+	ErrSyncIntervalNotReached        = errors.New("sync: polling interval not reached")
+	ErrUnauthorized                  = errors.New("github: unauthorized (401)")
+	ErrRateLimited                   = errors.New("github: rate limited (403)")
+	ErrInternalServerError           = errors.New("github: internal server error (500)")
+	ErrNetworkTimeout                = errors.New("github: network timeout")
+	ErrReviewWorkspaceUnsupported    = errors.New("review workspace start is unavailable in this session")
+	ErrInvalidReviewWorkspaceRequest = errors.New("review workspace request is invalid")
 )
 
 // ConnectedSyncTimeout bounds connected/native sync requests so stalled MCP calls
@@ -165,6 +167,7 @@ type TUIBackend interface {
 	Sync(ctx context.Context, force bool) (models.RateLimitInfo, error)
 	MarkRead(ctx context.Context, id string, read bool) (MarkReadResult, error)
 	SetPriority(ctx context.Context, id string, priority int) (PriorityUpdateResult, error)
+	StartReviewWorkspace(ctx context.Context, request ReviewWorkspaceStartRequest) error
 	FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error)
 	PersistFetchedDetail(ctx context.Context, id, sourceURL string, res models.EnrichmentResult) error
 	FetchHybridBatch(ctx context.Context, notifications []triage.NotificationWithState, force bool) map[string]models.EnrichmentResult
@@ -218,4 +221,15 @@ type Repository interface {
 	MuteThread(ctx context.Context, id string) error
 	UnmuteThread(ctx context.Context, id string) error
 	SetPriority(ctx context.Context, id string, priority int) error
+}
+
+type ReviewWorkspaceRepository struct {
+	Host  string `json:"host"`
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
+}
+
+type ReviewWorkspaceStartRequest struct {
+	Repository        ReviewWorkspaceRepository `json:"repository"`
+	PullRequestNumber int                       `json:"pull_request_number"`
 }

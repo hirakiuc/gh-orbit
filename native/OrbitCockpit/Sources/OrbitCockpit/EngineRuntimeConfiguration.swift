@@ -3,6 +3,7 @@ import Foundation
 struct EngineRuntimeConfiguration: Equatable {
     let baseRuntimeDirectory: String
     let socketPath: String
+    let reviewWorkspaceRequestDirectory: String
     let reviewWorkspaceRoot: String
     let environment: [String: String]
 
@@ -20,6 +21,7 @@ struct EngineRuntimeConfiguration: Equatable {
 
         self.baseRuntimeDirectory = baseRuntimeDirectory
         self.socketPath = baseRuntimeDirectory + "/gh-orbit/engine.sock"
+        self.reviewWorkspaceRequestDirectory = baseRuntimeDirectory + "/gh-orbit/review-workspace-requests"
         self.reviewWorkspaceRoot = reviewWorkspaceRoot ?? appSupportDirectory + "/gh-orbit/worktrees"
 
         var environment = environment

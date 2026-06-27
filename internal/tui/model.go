@@ -426,6 +426,10 @@ type mutationAppliedMsg struct {
 	err           error
 }
 
+type reviewWorkspaceStartedMsg struct {
+	toast string
+}
+
 type syncCompleteMsg struct {
 	rateLimit models.RateLimitInfo
 	IsForced  bool

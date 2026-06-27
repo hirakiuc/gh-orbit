@@ -84,6 +84,14 @@ func TestInterpreter_Execute(t *testing.T) {
 		ActionSetPriority{ID: "1", Priority: 1},
 		ActionViewWeb{Notification: notif},
 		ActionCheckoutPR{Repository: "o/r", Number: "1"},
+		ActionStartReviewWorkspace{
+			Repository: types.ReviewWorkspaceRepository{
+				Host:  "github.com",
+				Owner: "o",
+				Name:  "r",
+			},
+			PullRequestNumber: 1,
+		},
 		ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}},
 		ActionLoadNotifications{IsInitial: true, IsManual: false},
 		ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 100}},
@@ -100,6 +108,41 @@ func TestInterpreter_Execute(t *testing.T) {
 			assert.Equal(t, "msg", m.ui.toastMessage)
 		}
 	}
+}
+
+func TestHandleStartReviewWorkspaceKey_PRSelectionEmitsStructuredAction(t *testing.T) {
+	m := newTestModel(t)
+	m.allNotifications = []triage.NotificationWithState{
+		{
+			Notification: triage.Notification{
+				GitHubID:           "notif-1",
+				SubjectURL:         "https://api.github.com/repos/acme/orbit/pulls/42",
+				SubjectType:        triage.SubjectPullRequest,
+				RepositoryFullName: "acme/orbit",
+				HTMLURL:            "https://github.com/acme/orbit/pull/42",
+			},
+		},
+	}
+	m.applyFilters()
+
+	actions := m.handleStartReviewWorkspaceKey()
+	require.Len(t, actions, 1)
+	assert.Equal(t, ActionStartReviewWorkspace{
+		NotificationID: "notif-1",
+		Repository: types.ReviewWorkspaceRepository{
+			Host:  "github.com",
+			Owner: "acme",
+			Name:  "orbit",
+		},
+		PullRequestNumber: 42,
+	}, actions[0])
+}
+
+func TestHandleTransitionError_ReviewWorkspaceUnsupportedShowsToast(t *testing.T) {
+	m := newTestModel(t)
+
+	actions := m.handleTransitionError(types.ErrMsg{Err: types.ErrReviewWorkspaceUnsupported})
+	assert.Contains(t, actions, ActionShowToast{Message: "Review workspace start is unavailable in this session"})
 }
 
 func TestInterpreter_Execute_UpdateRateLimitConnectedMode(t *testing.T) {

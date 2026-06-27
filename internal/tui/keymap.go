@@ -7,27 +7,28 @@ import (
 
 // KeyMap defines the custom keybindings for the gh-orbit TUI.
 type KeyMap struct {
-	Sync             key.Binding
-	PriorityUp       key.Binding
-	PriorityDown     key.Binding
-	PriorityNone     key.Binding
-	Tab1             key.Binding
-	Tab2             key.Binding
-	Tab3             key.Binding
-	CopyURL          key.Binding
-	ToggleRead       key.Binding
-	NextTab          key.Binding
-	PrevTab          key.Binding
-	CheckoutPR       key.Binding
-	ViewContextual   key.Binding
-	OpenBrowser      key.Binding
-	ToggleDetail     key.Binding
-	Back             key.Binding
-	Quit             key.Binding
-	FilterPR         key.Binding
-	FilterIssue      key.Binding
-	FilterDiscussion key.Binding
-	Help             key.Binding
+	Sync                 key.Binding
+	PriorityUp           key.Binding
+	PriorityDown         key.Binding
+	PriorityNone         key.Binding
+	Tab1                 key.Binding
+	Tab2                 key.Binding
+	Tab3                 key.Binding
+	CopyURL              key.Binding
+	ToggleRead           key.Binding
+	NextTab              key.Binding
+	PrevTab              key.Binding
+	CheckoutPR           key.Binding
+	StartReviewWorkspace key.Binding
+	ViewContextual       key.Binding
+	OpenBrowser          key.Binding
+	ToggleDetail         key.Binding
+	Back                 key.Binding
+	Quit                 key.Binding
+	FilterPR             key.Binding
+	FilterIssue          key.Binding
+	FilterDiscussion     key.Binding
+	Help                 key.Binding
 }
 
 // NewKeyMap returns keybindings initialized from configuration.
@@ -81,6 +82,10 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 		CheckoutPR: key.NewBinding(
 			key.WithKeys(k.CheckoutPR...),
 			key.WithHelp(k.CheckoutPR[0], "checkout pr"),
+		),
+		StartReviewWorkspace: key.NewBinding(
+			key.WithKeys(k.StartReviewWorkspace...),
+			key.WithHelp(k.StartReviewWorkspace[0], "start review workspace"),
 		),
 		ViewContextual: key.NewBinding(
 			key.WithKeys(k.ViewContextual...),
@@ -139,6 +144,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
 		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
 		{k.Tab1, k.Tab2, k.Tab3},
-		{k.NextTab, k.PrevTab, k.CheckoutPR, k.Help, k.Quit},
+		{k.NextTab, k.PrevTab, k.CheckoutPR, k.StartReviewWorkspace, k.Help, k.Quit},
 	}
 }

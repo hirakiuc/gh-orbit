@@ -9,6 +9,7 @@ struct OrbitCockpitApp: App {
     @StateObject private var terminalManager: TerminalManager
     @StateObject private var reviewRequestStore: ReviewRequestStore
     @StateObject private var reviewWorkspaceManager: ReviewWorkspaceManager
+    private let reviewWorkspaceRequestInbox: ReviewWorkspaceRequestInbox
 
     init() {
         // App Lifecycle Logging (Safe: No environment variables exposed)
@@ -27,11 +28,23 @@ struct OrbitCockpitApp: App {
                 git: URL(fileURLWithPath: "/usr/bin/git"),
                 paths: workspacePaths))
         let codexLauncher = CodexReviewWorkspaceLauncher(terminalSessionFactory: terminalManager)
+        let reviewWorkspaceManager = ReviewWorkspaceManager(
+            terminalManager: terminalManager,
+            lifecycleController: lifecycleController,
+            codexLauncher: codexLauncher)
         _reviewWorkspaceManager = StateObject(
-            wrappedValue: ReviewWorkspaceManager(
-                terminalManager: terminalManager,
-                lifecycleController: lifecycleController,
-                codexLauncher: codexLauncher))
+            wrappedValue: reviewWorkspaceManager)
+        let requestInbox = ReviewWorkspaceRequestInbox(
+            requestDirectoryURL: URL(
+                fileURLWithPath: runtimeConfiguration.reviewWorkspaceRequestDirectory, isDirectory: true),
+            onLog: { message, level in
+                monitor.log(component: "[ReviewWorkspaceBridge]", level: level, message: message)
+            },
+            onRequest: { request in
+                _ = reviewWorkspaceManager.startReviewWorkspace(for: request.nativeReviewRequest)
+            })
+        requestInbox.start()
+        self.reviewWorkspaceRequestInbox = requestInbox
     }
 
     var body: some Scene {
@@ -42,6 +55,7 @@ struct OrbitCockpitApp: App {
                 .environmentObject(reviewRequestStore)
                 .environmentObject(reviewWorkspaceManager)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    reviewWorkspaceRequestInbox.stop()
                     terminalManager.shutdown()
                 }
         }
@@ -445,6 +459,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     var managedLaunchEnvironment: [String: String] {
         var environment = runtimeConfiguration.environment
         environment["GH_ORBIT_REQUIRE_ENGINE"] = "1"
+        environment["GH_ORBIT_REVIEW_WORKSPACE_REQUEST_DIR"] = runtimeConfiguration.reviewWorkspaceRequestDirectory
         return environment
     }
 
