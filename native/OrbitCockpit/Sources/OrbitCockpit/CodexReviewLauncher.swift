@@ -119,7 +119,7 @@ struct CodexReviewPromptBuilder: CodexReviewPromptBuilding {
 
     func buildPrompt(for record: ReviewWorkspaceRecord) -> CodexReviewPromptContract {
         let instructions =
-            instructionReader.readInstructions(from: record.sourceClonePath)
+            instructionReader.readInstructions(from: record.worktreePath)
             ?? "No repository-specific AGENTS.md instructions were found."
 
         let renderedPrompt = """

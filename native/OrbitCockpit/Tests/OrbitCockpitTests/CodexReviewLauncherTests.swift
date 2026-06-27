@@ -4,11 +4,17 @@ import Testing
 
 @testable import OrbitCockpit
 
-private struct StubInstructionReader: RepositoryInstructionReading {
+private final class SpyInstructionReader: RepositoryInstructionReading {
     let contents: String?
+    private(set) var readRoots: [URL] = []
+
+    init(contents: String?) {
+        self.contents = contents
+    }
 
     func readInstructions(from repositoryRoot: URL) -> String? {
-        contents
+        readRoots.append(repositoryRoot)
+        return contents
     }
 }
 
@@ -62,8 +68,9 @@ struct CodexReviewLauncherTests {
     @Test
     func promptIncludesRequiredContextAndExcludesCloneSecrets() throws {
         let record = try sampleRecord()
+        let instructionReader = SpyInstructionReader(contents: "Follow AGENTS instructions.")
         let prompt = CodexReviewPromptBuilder(
-            instructionReader: StubInstructionReader(contents: "Follow AGENTS instructions.")
+            instructionReader: instructionReader
         ).buildPrompt(for: record)
 
         #expect(prompt.renderedPrompt.contains("[gh-orbit-review-contract/v1]"))
@@ -74,6 +81,8 @@ struct CodexReviewLauncherTests {
         #expect(prompt.renderedPrompt.contains("Follow AGENTS instructions."))
         #expect(!prompt.renderedPrompt.contains(record.sourceCloneRemoteURL))
         #expect(!prompt.renderedPrompt.contains(record.headCloneURL.absoluteString))
+        #expect(instructionReader.readRoots == [record.worktreePath])
+        #expect(instructionReader.readRoots != [record.sourceClonePath])
     }
 
     @Test @MainActor
@@ -85,7 +94,7 @@ struct CodexReviewLauncherTests {
             executableResolver: StubCodexExecutableResolver(
                 result: .success(URL(fileURLWithPath: "/usr/local/bin/codex"))),
             promptBuilder: CodexReviewPromptBuilder(
-                instructionReader: StubInstructionReader(contents: "Follow AGENTS instructions.")),
+                instructionReader: SpyInstructionReader(contents: "Follow AGENTS instructions.")),
             terminalSessionFactory: factory
         )
 
