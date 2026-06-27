@@ -1,6 +1,6 @@
 import Foundation
 
-struct RepositoryIdentity: Codable, Equatable {
+struct RepositoryIdentity: Codable, Equatable, Hashable {
     let host: String
     let owner: String
     let name: String
@@ -30,17 +30,40 @@ struct CommandInvocation: Equatable {
     let workingDirectory: URL?
 }
 
-protocol CommandRunning {
+protocol CommandRunning: Sendable {
     func run(_ invocation: CommandInvocation) throws -> String
 }
 
-enum PullRequestResolutionError: Error, Equatable {
+enum PullRequestResolutionError: Error, Equatable, LocalizedError {
     case missingExecutable(String)
     case noLocalClone, notGitRepository, unsupportedRemote, cloneIdentityMismatch
     case inaccessiblePullRequest, unavailableHead
+
+    var errorDescription: String? {
+        switch self {
+        case .missingExecutable(let name):
+            "Required tool `\(name)` was not found in PATH."
+        case .noLocalClone:
+            "No local clone matched the selected repository. Ensure the repository is available through `ghq`."
+        case .notGitRepository:
+            "The matched local clone is not a usable Git repository."
+        case .unsupportedRemote:
+            "The local clone uses an unsupported remote URL format."
+        case .cloneIdentityMismatch:
+            "The matched local clone does not point at the selected repository."
+        case .inaccessiblePullRequest:
+            "The selected pull request could not be resolved from the local clone."
+        case .unavailableHead:
+            "The selected pull request is missing immutable head metadata required for workspace launch."
+        }
+    }
 }
 
-struct PullRequestResolver {
+protocol PullRequestResolving: Sendable {
+    func resolve(repository: RepositoryIdentity, number: Int) throws -> ResolvedPullRequest
+}
+
+struct PullRequestResolver: PullRequestResolving, Sendable {
     let runner: CommandRunning
     let ghq: URL
     let git: URL

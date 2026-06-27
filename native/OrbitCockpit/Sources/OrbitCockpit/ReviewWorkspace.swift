@@ -70,24 +70,63 @@ struct ReviewWorkspace: Identifiable, Equatable {
     var paneName: String { "review-workspace:\(id.uuidString.lowercased())" }
 }
 
+struct NativeReviewRequest: Identifiable, Equatable {
+    let repository: RepositoryIdentity
+    let pullRequestNumber: Int
+    let title: String
+    let subtitle: String
+
+    // swiftlint:disable:next identifier_name
+    var id: String { paneName }
+    var paneName: String {
+        "review-request:\(repository.host)/\(repository.owner)/\(repository.name)#\(pullRequestNumber)"
+    }
+    var displayName: String { "PR #\(pullRequestNumber)" }
+    var repositoryLabel: String { "\(repository.owner)/\(repository.name)" }
+}
+
+enum ReviewWorkspaceLaunchError: Error, Equatable, LocalizedError {
+    case unavailableResolver
+    case unavailableLifecycle
+    case duplicatePlaceholderConflict
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailableResolver:
+            "Pull request resolution is unavailable in this build."
+        case .unavailableLifecycle:
+            "Managed review-workspace lifecycle is unavailable in this build."
+        case .duplicatePlaceholderConflict:
+            "A review workspace placeholder already exists but could not be reused safely."
+        }
+    }
+}
+
 @MainActor
 final class ReviewWorkspaceManager: ObservableObject {
     @Published private(set) var workspaces: [ReviewWorkspace] = []
     private let terminalManager: TerminalManager
     private let lifecycleController: ReviewWorkspaceLifecycleControlling?
     private let codexLauncher: ReviewWorkspaceCodexLaunching?
+    private let pullRequestResolverFactory: () throws -> any PullRequestResolving
     private let now: () -> Date
     private var didRestoreManagedWorkspaces = false
+    private var phaseOneClaims: [LaunchClaimKey: UUID] = [:]
+    var onPaneFocusRequested: ((String) -> Void)?
 
     init(
         terminalManager: TerminalManager,
         lifecycleController: ReviewWorkspaceLifecycleControlling? = nil,
         codexLauncher: ReviewWorkspaceCodexLaunching? = nil,
+        pullRequestResolverFactory: @escaping () throws -> any PullRequestResolving = {
+            try PullRequestResolver.production()
+        },
         now: @escaping () -> Date = Date.init
     ) {
         self.terminalManager = terminalManager
         self.lifecycleController = lifecycleController
         self.codexLauncher = codexLauncher
+        self.pullRequestResolverFactory = pullRequestResolverFactory
         self.now = now
     }
 
@@ -101,6 +140,47 @@ final class ReviewWorkspaceManager: ObservableObject {
         guard terminalManager.reserveWorkspacePane(workspace.paneName) else { return nil }
         workspaces.append(workspace)
         return workspace
+    }
+
+    @discardableResult
+    func startReviewWorkspace(for request: NativeReviewRequest) -> UUID? {
+        let claimKey = LaunchClaimKey(repository: request.repository, pullRequestNumber: request.pullRequestNumber)
+        if let existingID = activeClaimedWorkspaceID(for: claimKey) {
+            requestFocus(for: existingID)
+            return existingID
+        }
+
+        let workspaceID = UUID()
+        guard createFixtureWorkspace(named: request.displayName, workspaceID: workspaceID) != nil else {
+            return nil
+        }
+        phaseOneClaims[claimKey] = workspaceID
+        requestFocus(for: workspaceID)
+
+        let resolver: any PullRequestResolving
+        do {
+            resolver = try pullRequestResolverFactory()
+        } catch {
+            phaseOneClaims.removeValue(forKey: claimKey)
+            reportSetupFailure(for: workspaceID, message: error.localizedDescription)
+            return workspaceID
+        }
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result {
+                try resolver.resolve(repository: request.repository, number: request.pullRequestNumber)
+            }
+            await MainActor.run {
+                self?.completeReviewWorkspaceStart(
+                    for: request,
+                    claimKey: claimKey,
+                    placeholderWorkspaceID: workspaceID,
+                    result: result
+                )
+            }
+        }
+
+        return workspaceID
     }
 
     @discardableResult
@@ -239,6 +319,121 @@ final class ReviewWorkspaceManager: ObservableObject {
         restoreManagedWorkspaces()
     }
 
+    private func completeReviewWorkspaceStart(
+        for request: NativeReviewRequest,
+        claimKey: LaunchClaimKey,
+        placeholderWorkspaceID: UUID,
+        result: Result<ResolvedPullRequest, Error>
+    ) {
+        phaseOneClaims.removeValue(forKey: claimKey)
+
+        switch result {
+        case .success(let pullRequest):
+            reconcileResolvedWorkspace(
+                for: request,
+                pullRequest: pullRequest,
+                placeholderWorkspaceID: placeholderWorkspaceID
+            )
+        case .failure(let error):
+            reportSetupFailure(for: placeholderWorkspaceID, message: error.localizedDescription)
+        }
+    }
+
+    private func reconcileResolvedWorkspace(
+        for request: NativeReviewRequest,
+        pullRequest: ResolvedPullRequest,
+        placeholderWorkspaceID: UUID
+    ) {
+        let resolvedKey = ResolvedLaunchKey(
+            repository: request.repository,
+            pullRequestNumber: request.pullRequestNumber,
+            headSHA: pullRequest.headSHA
+        )
+        if let existingID = activeResolvedWorkspaceID(for: resolvedKey), existingID != placeholderWorkspaceID {
+            discardPlaceholderWorkspace(for: placeholderWorkspaceID)
+            requestFocus(for: existingID)
+            return
+        }
+
+        do {
+            try materializeManagedWorkspace(
+                for: pullRequest,
+                displayName: request.displayName,
+                workspaceID: placeholderWorkspaceID
+            )
+            requestFocus(for: placeholderWorkspaceID)
+        } catch {
+            reportSetupFailure(for: placeholderWorkspaceID, message: error.localizedDescription)
+        }
+    }
+
+    private func materializeManagedWorkspace(
+        for pullRequest: ResolvedPullRequest,
+        displayName: String,
+        workspaceID: UUID
+    ) throws {
+        guard let lifecycleController else {
+            throw ReviewWorkspaceLaunchError.unavailableLifecycle
+        }
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
+            workspaces[index].record == nil,
+            workspaces[index].state == .preparing
+        else {
+            throw ReviewWorkspaceLaunchError.duplicatePlaceholderConflict
+        }
+
+        let record = try lifecycleController.createWorkspace(
+            for: pullRequest,
+            workspaceID: workspaceID,
+            now: now()
+        )
+        workspaces[index].displayName = displayName
+        workspaces[index].record = record
+        launchCodexIfNeeded(for: workspaceID)
+    }
+
+    private func discardPlaceholderWorkspace(for workspaceID: UUID) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }),
+            workspaces[index].record == nil
+        else { return }
+        terminalManager.releaseWorkspacePane(workspaces[index].paneName)
+        workspaces.remove(at: index)
+    }
+
+    private func activeClaimedWorkspaceID(for key: LaunchClaimKey) -> UUID? {
+        guard let workspaceID = phaseOneClaims[key] else { return nil }
+        guard let workspace = workspaces.first(where: { $0.id == workspaceID }), isDuplicateActiveState(workspace.state)
+        else {
+            phaseOneClaims.removeValue(forKey: key)
+            return nil
+        }
+        return workspace.id
+    }
+
+    private func activeResolvedWorkspaceID(for key: ResolvedLaunchKey) -> UUID? {
+        workspaces.first {
+            guard let record = $0.record else { return false }
+            return $0.record?.repository == key.repository
+                && record.pullRequestNumber == key.pullRequestNumber
+                && record.headSHA.caseInsensitiveCompare(key.headSHA) == .orderedSame
+                && isDuplicateActiveState($0.state)
+        }?.id
+    }
+
+    private func isDuplicateActiveState(_ state: ReviewWorkspace.State) -> Bool {
+        switch state {
+        case .preparing, .running:
+            true
+        case .available, .terminating, .exited, .missing, .cleanupRequired, .failed:
+            false
+        }
+    }
+
+    private func requestFocus(for workspaceID: UUID) {
+        guard let workspace = workspaces.first(where: { $0.id == workspaceID }) else { return }
+        onPaneFocusRequested?(workspace.paneName)
+    }
+
     private func restoreManagedWorkspaces() {
         guard let lifecycleController else { return }
         do {
@@ -270,4 +465,15 @@ final class ReviewWorkspaceManager: ObservableObject {
             .missing("Managed worktree missing at \(record.worktreePath.path).")
         }
     }
+}
+
+private struct LaunchClaimKey: Hashable {
+    let repository: RepositoryIdentity
+    let pullRequestNumber: Int
+}
+
+private struct ResolvedLaunchKey: Hashable {
+    let repository: RepositoryIdentity
+    let pullRequestNumber: Int
+    let headSHA: String
 }

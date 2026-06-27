@@ -3,7 +3,7 @@ import Testing
 
 @testable import OrbitCockpit
 
-private final class MockCommandRunner: CommandRunning {
+private final class MockCommandRunner: CommandRunning, @unchecked Sendable {
     var invocations: [CommandInvocation] = []
     var results: [String]
     var failureAt: Int?
