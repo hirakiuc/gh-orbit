@@ -172,9 +172,8 @@ struct ReviewWorkspaceHostView: View {
                 }
         case .terminating:
             ProgressView("Terminating review workspace…")
-        case .failed(let message):
-            ContentUnavailableView(
-                "Review workspace failed", systemImage: "exclamationmark.triangle", description: Text(message))
+        case .failed(let failure):
+            ReviewWorkspaceFailureView(failure: failure)
         }
     }
 
@@ -184,6 +183,43 @@ struct ReviewWorkspaceHostView: View {
             TerminalContainer(engine: engine, isFocused: true)
         } else {
             Text(unavailable).foregroundColor(.secondary)
+        }
+    }
+}
+
+struct ReviewWorkspaceFailureView: View {
+    let failure: ReviewWorkspaceFailure
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ContentUnavailableView(
+                    failure.title,
+                    systemImage: failure.systemImage,
+                    description: Text(failure.summary)
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("What you can do next")
+                        .font(.headline)
+
+                    ForEach(Array(failure.recoveryGuidance.enumerated()), id: \.offset) { _, step in
+                        Label(step, systemImage: "arrow.right.circle")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Original error")
+                        .font(.headline)
+                    Text(failure.message)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -316,7 +352,7 @@ struct Sidebar: View {
         case .exited(let code): "Exited (\(code))"
         case .missing: "Missing"
         case .cleanupRequired: "Cleanup required"
-        case .failed(let message): message
+        case .failed(let failure): failure.title
         }
     }
 }

@@ -58,7 +58,7 @@ struct ReviewWorkspace: Identifiable, Equatable {
         case exited(Int32)
         case missing(String)
         case cleanupRequired(String)
-        case failed(String)
+        case failed(ReviewWorkspaceFailure)
     }
 
     // swiftlint:disable:next identifier_name
@@ -69,6 +69,125 @@ struct ReviewWorkspace: Identifiable, Equatable {
     var diagnostics: [WorkspaceDiagnosticEntry] = []
 
     var paneName: String { "review-workspace:\(id.uuidString.lowercased())" }
+}
+
+struct ReviewWorkspaceFailure: Equatable {
+    enum Kind: Equatable {
+        case missingTool(String?)
+        case noLocalClone
+        case cloneMismatch
+        case inaccessiblePullRequest
+        case worktreeSetup
+        case codexLaunch
+        case unknown
+    }
+
+    let kind: Kind
+    let message: String
+
+    var title: String {
+        switch kind {
+        case .missingTool:
+            "Required tool missing"
+        case .noLocalClone:
+            "Local clone not found"
+        case .cloneMismatch:
+            "Local clone mismatch"
+        case .inaccessiblePullRequest:
+            "Pull request could not be resolved"
+        case .worktreeSetup:
+            "Managed worktree setup failed"
+        case .codexLaunch:
+            "Codex session launch failed"
+        case .unknown:
+            "Review workspace failed"
+        }
+    }
+
+    var summary: String {
+        switch kind {
+        case .missingTool(let tool):
+            if let tool, !tool.isEmpty {
+                return "Orbit Cockpit could not find the required `\(tool)` executable for this review workspace."
+            }
+            return "Orbit Cockpit could not find a required executable for this review workspace."
+        case .noLocalClone:
+            return "Orbit Cockpit could not find a matching local clone for the selected repository."
+        case .cloneMismatch:
+            return "Orbit Cockpit found a local clone, but it does not match the selected repository setup."
+        case .inaccessiblePullRequest:
+            return "Orbit Cockpit could not read immutable pull request details from the selected repository."
+        case .worktreeSetup:
+            return "Orbit Cockpit could not prepare the managed review worktree for this pull request."
+        case .codexLaunch:
+            return "Orbit Cockpit prepared the workspace, but the Codex review session could not be started."
+        case .unknown:
+            return "Orbit Cockpit could not finish preparing this review workspace."
+        }
+    }
+
+    var recoveryGuidance: [String] {
+        switch kind {
+        case .missingTool(let tool):
+            if let tool, !tool.isEmpty {
+                return [
+                    "Install `\(tool)` locally or expose it through your PATH.",
+                    "If the executable is installed in a custom location, point the app to it with the expected environment override before relaunching the workspace.",
+                ]
+            }
+            return [
+                "Install the missing command-line tool locally and make sure it is available in PATH.",
+                "Restart the workspace after the executable becomes available.",
+            ]
+        case .noLocalClone:
+            return [
+                "Clone the repository locally with `ghq` before starting a review workspace.",
+                "Confirm the repository path matches the selected owner and repository name.",
+            ]
+        case .cloneMismatch:
+            return [
+                "Check the matched local clone's `origin` remote and make sure it points at the selected repository.",
+                "Use the correct local clone before starting the review workspace again.",
+            ]
+        case .inaccessiblePullRequest:
+            return [
+                "Confirm the pull request still exists and that the local clone can access its metadata.",
+                "Refresh local authentication or repository access, then retry the review workspace launch.",
+            ]
+        case .worktreeSetup:
+            return [
+                "Check whether the review workspace root is writable and whether a prior worktree needs manual cleanup.",
+                "Retry after fixing the local workspace environment.",
+            ]
+        case .codexLaunch:
+            return [
+                "Confirm the Codex CLI is installed and can be launched from the local environment.",
+                "If the review workspace was prepared successfully, retry after fixing the local Codex runtime or terminal session setup.",
+            ]
+        case .unknown:
+            return [
+                "Review the supporting error message and workspace diagnostics below for more detail.",
+                "Retry after fixing the local environment or repository state that blocked workspace launch.",
+            ]
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case .missingTool:
+            "wrench.and.screwdriver"
+        case .noLocalClone, .cloneMismatch:
+            "externaldrive.badge.xmark"
+        case .inaccessiblePullRequest:
+            "arrow.trianglehead.branch"
+        case .worktreeSetup:
+            "externaldrive.badge.exclamationmark"
+        case .codexLaunch:
+            "terminal.badge.exclamationmark"
+        case .unknown:
+            "exclamationmark.triangle"
+        }
+    }
 }
 
 struct WorkspaceDiagnosticEntry: Identifiable, Equatable {
@@ -202,6 +321,7 @@ final class ReviewWorkspaceManager: ObservableObject {
             reportSetupFailure(
                 for: workspaceID,
                 category: .resolution,
+                error: error,
                 message: error.localizedDescription
             )
             return workspaceID
@@ -292,6 +412,7 @@ final class ReviewWorkspaceManager: ObservableObject {
             reportSetupFailure(
                 for: workspaceID,
                 category: .codex,
+                error: error,
                 message: error.localizedDescription
             )
         }
@@ -388,6 +509,7 @@ final class ReviewWorkspaceManager: ObservableObject {
     func reportSetupFailure(
         for workspaceID: UUID,
         category: WorkspaceDiagnosticEntry.Category = .workspace,
+        error: Error? = nil,
         message: String
     ) {
         guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
@@ -401,7 +523,7 @@ final class ReviewWorkspaceManager: ObservableObject {
             level: .error,
             message: message
         )
-        workspaces[index].state = .failed(message)
+        workspaces[index].state = .failed(classifyFailure(category: category, error: error, message: message))
     }
 
     func reportCleanupRequired(for workspaceID: UUID, message: String, record: ReviewWorkspaceRecord? = nil) {
@@ -460,6 +582,7 @@ final class ReviewWorkspaceManager: ObservableObject {
             reportSetupFailure(
                 for: placeholderWorkspaceID,
                 category: .resolution,
+                error: error,
                 message: error.localizedDescription
             )
         }
@@ -504,6 +627,7 @@ final class ReviewWorkspaceManager: ObservableObject {
             reportSetupFailure(
                 for: placeholderWorkspaceID,
                 category: .workspace,
+                error: error,
                 message: error.localizedDescription
             )
         }
@@ -574,6 +698,52 @@ final class ReviewWorkspaceManager: ObservableObject {
     private func requestFocus(for workspaceID: UUID) {
         guard let workspace = workspaces.first(where: { $0.id == workspaceID }) else { return }
         onPaneFocusRequested?(workspace.paneName)
+    }
+
+    private func classifyFailure(
+        category: WorkspaceDiagnosticEntry.Category,
+        error: Error?,
+        message: String
+    ) -> ReviewWorkspaceFailure {
+        if let resolutionError = error as? PullRequestResolutionError {
+            switch resolutionError {
+            case .missingExecutable(let name):
+                return ReviewWorkspaceFailure(kind: .missingTool(name), message: message)
+            case .noLocalClone:
+                return ReviewWorkspaceFailure(kind: .noLocalClone, message: message)
+            case .notGitRepository, .unsupportedRemote, .cloneIdentityMismatch:
+                return ReviewWorkspaceFailure(kind: .cloneMismatch, message: message)
+            case .inaccessiblePullRequest, .unavailableHead:
+                return ReviewWorkspaceFailure(kind: .inaccessiblePullRequest, message: message)
+            }
+        }
+
+        if let codexError = error as? CodexExecutableResolutionError {
+            switch codexError {
+            case .missingExecutable:
+                return ReviewWorkspaceFailure(kind: .missingTool("codex"), message: message)
+            }
+        }
+
+        if let launchError = error as? ReviewWorkspaceLaunchError {
+            switch launchError {
+            case .unavailableResolver:
+                return ReviewWorkspaceFailure(kind: .unknown, message: message)
+            case .unavailableLifecycle, .duplicatePlaceholderConflict:
+                return ReviewWorkspaceFailure(kind: .worktreeSetup, message: message)
+            }
+        }
+
+        switch category {
+        case .resolution:
+            return ReviewWorkspaceFailure(kind: .inaccessiblePullRequest, message: message)
+        case .workspace:
+            return ReviewWorkspaceFailure(kind: .worktreeSetup, message: message)
+        case .codex:
+            return ReviewWorkspaceFailure(kind: .codexLaunch, message: message)
+        case .launch, .cleanup, .restore:
+            return ReviewWorkspaceFailure(kind: .unknown, message: message)
+        }
     }
 
     private func appendDiagnostic(
