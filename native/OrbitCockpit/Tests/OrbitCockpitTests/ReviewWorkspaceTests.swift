@@ -264,6 +264,23 @@ struct ReviewWorkspaceTests {
     }
 
     @Test @MainActor
+    func attachFailureBecomesVisibleWorkspaceScopedCodexError() throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let manager = ReviewWorkspaceManager(terminalManager: terminalManager)
+        let workspace = try #require(manager.createFixtureWorkspace(named: "review"))
+        let session = MockTerminalSession()
+
+        terminalManager.releaseWorkspacePane(workspace.paneName)
+        manager.install(session, for: workspace.id)
+
+        let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
+        #expect(updatedWorkspace.state == .failed("Failed to attach the managed workspace to a terminal session."))
+        #expect(updatedWorkspace.diagnostics.map(\.category) == [.codex])
+        #expect(updatedWorkspace.diagnostics.last?.level == .error)
+        #expect(session.terminateCalls == 1)
+    }
+
+    @Test @MainActor
     func duplicateStartsReusePreparingPlaceholderBeforeResolutionCompletes() async throws {
         let terminalManager = TerminalManager(monitor: ActivityMonitor())
         let lifecycle = MockReviewWorkspaceLifecycleController()

@@ -298,9 +298,17 @@ final class ReviewWorkspaceManager: ObservableObject {
     }
 
     func install(_ session: TerminalProcessSession, for workspaceID: UUID) {
-        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }), workspaces[index].state == .preparing,
-            terminalManager.installWorkspaceSession(session, for: workspaces[index].paneName)
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }), workspaces[index].state == .preparing
         else { return }
+        guard terminalManager.installWorkspaceSession(session, for: workspaces[index].paneName) else {
+            session.terminateProcess()
+            reportSetupFailure(
+                for: workspaceID,
+                category: .codex,
+                message: "Failed to attach the managed workspace to a terminal session."
+            )
+            return
+        }
         workspaces[index].state = .running
         appendDiagnostic(
             for: workspaceID,
