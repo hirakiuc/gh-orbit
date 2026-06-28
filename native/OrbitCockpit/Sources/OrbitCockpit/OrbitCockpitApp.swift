@@ -128,6 +128,18 @@ struct ReviewWorkspaceHostView: View {
     @EnvironmentObject var reviewWorkspaceManager: ReviewWorkspaceManager
 
     var body: some View {
+        VStack(spacing: 0) {
+            workspaceContent
+
+            Divider()
+
+            WorkspaceDiagnosticsView(diagnostics: workspace.diagnostics)
+                .frame(minHeight: 180, idealHeight: 220, maxHeight: 260)
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceContent: some View {
         switch workspace.state {
         case .available:
             if let path = workspace.record?.worktreePath.path {
@@ -173,6 +185,85 @@ struct ReviewWorkspaceHostView: View {
         } else {
             Text(unavailable).foregroundColor(.secondary)
         }
+    }
+}
+
+struct WorkspaceDiagnosticsView: View {
+    let diagnostics: [WorkspaceDiagnosticEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Workspace Diagnostics", systemImage: "stethoscope")
+                    .font(.headline)
+                Spacer()
+                Text("\(diagnostics.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            if diagnostics.isEmpty {
+                ContentUnavailableView(
+                    "Waiting for workspace diagnostics",
+                    systemImage: "text.magnifyingglass",
+                    description: Text("Events for the selected review workspace will appear here."))
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(diagnostics) { diagnostic in
+                            WorkspaceDiagnosticRow(entry: diagnostic)
+                        }
+                    }
+                    .padding(12)
+                }
+                .background(Color(NSColor.textBackgroundColor))
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+}
+
+struct WorkspaceDiagnosticRow: View {
+    let entry: WorkspaceDiagnosticEntry
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    private var levelColor: Color {
+        switch entry.level {
+        case .debug:
+            return .gray
+        case .info:
+            return .primary
+        case .warning:
+            return .yellow
+        case .error:
+            return .red
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(Self.timestampFormatter.string(from: entry.timestamp))
+                .foregroundColor(.secondary)
+                .frame(width: 56, alignment: .leading)
+
+            Text(entry.category.rawValue.uppercased())
+                .foregroundColor(levelColor)
+                .frame(width: 82, alignment: .leading)
+
+            Text(entry.message)
+                .foregroundColor(levelColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.system(.caption, design: .monospaced))
     }
 }
 

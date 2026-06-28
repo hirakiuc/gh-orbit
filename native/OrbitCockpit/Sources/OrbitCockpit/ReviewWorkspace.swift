@@ -66,8 +66,27 @@ struct ReviewWorkspace: Identifiable, Equatable {
     var displayName: String
     var state: State
     var record: ReviewWorkspaceRecord?
+    var diagnostics: [WorkspaceDiagnosticEntry] = []
 
     var paneName: String { "review-workspace:\(id.uuidString.lowercased())" }
+}
+
+struct WorkspaceDiagnosticEntry: Identifiable, Equatable {
+    enum Category: String, Equatable {
+        case launch = "Launch"
+        case resolution = "Resolution"
+        case workspace = "Workspace"
+        case codex = "Codex"
+        case cleanup = "Cleanup"
+        case restore = "Restore"
+    }
+
+    // swiftlint:disable:next identifier_name
+    let id = UUID()
+    let timestamp: Date
+    let category: Category
+    let level: LogLevel
+    let message: String
 }
 
 struct NativeReviewRequest: Identifiable, Equatable {
@@ -146,6 +165,12 @@ final class ReviewWorkspaceManager: ObservableObject {
     func startReviewWorkspace(for request: NativeReviewRequest) -> UUID? {
         let claimKey = LaunchClaimKey(repository: request.repository, pullRequestNumber: request.pullRequestNumber)
         if let existingID = activeClaimedWorkspaceID(for: claimKey) {
+            appendDiagnostic(
+                for: existingID,
+                category: .launch,
+                level: .info,
+                message: "Reused the existing in-progress workspace for PR #\(request.pullRequestNumber)."
+            )
             requestFocus(for: existingID)
             return existingID
         }
@@ -155,6 +180,18 @@ final class ReviewWorkspaceManager: ObservableObject {
             return nil
         }
         phaseOneClaims[claimKey] = workspaceID
+        appendDiagnostic(
+            for: workspaceID,
+            category: .launch,
+            level: .info,
+            message: "Accepted a start request for \(request.repositoryLabel) PR #\(request.pullRequestNumber)."
+        )
+        appendDiagnostic(
+            for: workspaceID,
+            category: .resolution,
+            level: .info,
+            message: "Resolving the selected pull request against the local clone."
+        )
         requestFocus(for: workspaceID)
 
         let resolver: any PullRequestResolving
@@ -162,7 +199,11 @@ final class ReviewWorkspaceManager: ObservableObject {
             resolver = try pullRequestResolverFactory()
         } catch {
             phaseOneClaims.removeValue(forKey: claimKey)
-            reportSetupFailure(for: workspaceID, message: error.localizedDescription)
+            reportSetupFailure(
+                for: workspaceID,
+                category: .resolution,
+                message: error.localizedDescription
+            )
             return workspaceID
         }
 
@@ -240,9 +281,19 @@ final class ReviewWorkspaceManager: ObservableObject {
                         self?.reportTerminalExit(for: workspaceID, exitCode: exitCode)
                     }
                 })
+            appendDiagnostic(
+                for: workspaceID,
+                category: .codex,
+                level: .info,
+                message: "Launching the Codex review session."
+            )
             install(session, for: workspaceID)
         } catch {
-            reportSetupFailure(for: workspaceID, message: error.localizedDescription)
+            reportSetupFailure(
+                for: workspaceID,
+                category: .codex,
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -251,6 +302,12 @@ final class ReviewWorkspaceManager: ObservableObject {
             terminalManager.installWorkspaceSession(session, for: workspaces[index].paneName)
         else { return }
         workspaces[index].state = .running
+        appendDiagnostic(
+            for: workspaceID,
+            category: .codex,
+            level: .info,
+            message: "Attached the workspace to a running Codex session."
+        )
     }
 
     func requestTermination(for workspaceID: UUID) {
@@ -260,6 +317,12 @@ final class ReviewWorkspaceManager: ObservableObject {
             return
         }
         workspaces[index].state = .terminating
+        appendDiagnostic(
+            for: workspaceID,
+            category: .cleanup,
+            level: .info,
+            message: "Terminating the active workspace session."
+        )
         terminalManager.terminateWorkspacePane(workspaces[index].paneName)
     }
 
@@ -273,6 +336,12 @@ final class ReviewWorkspaceManager: ObservableObject {
         guard let record = workspaces[index].record, workspaces[index].state == .terminating, let lifecycleController
         else {
             workspaces[index].state = .exited(exitCode ?? -1)
+            appendDiagnostic(
+                for: workspaceID,
+                category: .cleanup,
+                level: .info,
+                message: "The workspace session exited with code \(exitCode ?? -1)."
+            )
             return
         }
         do {
@@ -281,21 +350,49 @@ final class ReviewWorkspaceManager: ObservableObject {
             case .removed:
                 workspaces[index].record = nil
                 workspaces[index].state = .exited(exitCode ?? -1)
+                appendDiagnostic(
+                    for: workspaceID,
+                    category: .cleanup,
+                    level: .info,
+                    message: "Cleaned up the managed workspace after exit."
+                )
             case .cleanupRequired(let updated):
                 workspaces[index].record = updated
                 workspaces[index].state = .cleanupRequired("Cleanup required for \(updated.worktreePath.path).")
+                appendDiagnostic(
+                    for: workspaceID,
+                    category: .cleanup,
+                    level: .warning,
+                    message: "Workspace cleanup requires manual action for \(updated.worktreePath.path)."
+                )
             }
         } catch {
             workspaces[index].state = .cleanupRequired("Cleanup required for \(record.worktreePath.path).")
+            appendDiagnostic(
+                for: workspaceID,
+                category: .cleanup,
+                level: .error,
+                message: "Workspace cleanup failed for \(record.worktreePath.path)."
+            )
         }
     }
 
-    func reportSetupFailure(for workspaceID: UUID, message: String) {
+    func reportSetupFailure(
+        for workspaceID: UUID,
+        category: WorkspaceDiagnosticEntry.Category = .workspace,
+        message: String
+    ) {
         guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         switch workspaces[index].state {
         case .preparing, .running: break
         case .available, .terminating, .exited, .missing, .cleanupRequired, .failed: return
         }
+        appendDiagnostic(
+            for: workspaceID,
+            category: category,
+            level: .error,
+            message: message
+        )
         workspaces[index].state = .failed(message)
     }
 
@@ -305,6 +402,12 @@ final class ReviewWorkspaceManager: ObservableObject {
         if let record {
             workspaces[index].record = record
         }
+        appendDiagnostic(
+            for: workspaceID,
+            category: .cleanup,
+            level: .warning,
+            message: message
+        )
         workspaces[index].state = .cleanupRequired(message)
     }
 
@@ -334,13 +437,23 @@ final class ReviewWorkspaceManager: ObservableObject {
 
         switch result {
         case .success(let pullRequest):
+            appendDiagnostic(
+                for: placeholderWorkspaceID,
+                category: .resolution,
+                level: .info,
+                message: "Resolved the pull request head at \(pullRequest.headSHA)."
+            )
             reconcileResolvedWorkspace(
                 for: request,
                 pullRequest: pullRequest,
                 placeholderWorkspaceID: placeholderWorkspaceID
             )
         case .failure(let error):
-            reportSetupFailure(for: placeholderWorkspaceID, message: error.localizedDescription)
+            reportSetupFailure(
+                for: placeholderWorkspaceID,
+                category: .resolution,
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -355,6 +468,12 @@ final class ReviewWorkspaceManager: ObservableObject {
             headSHA: pullRequest.headSHA
         )
         if let existingID = activeResolvedWorkspaceID(for: resolvedKey), existingID != placeholderWorkspaceID {
+            appendDiagnostic(
+                for: existingID,
+                category: .workspace,
+                level: .info,
+                message: "Reused the existing workspace for the resolved head \(pullRequest.headSHA)."
+            )
             discardPlaceholderWorkspace(for: placeholderWorkspaceID)
             requestFocus(for: existingID)
             return
@@ -366,9 +485,19 @@ final class ReviewWorkspaceManager: ObservableObject {
                 displayName: request.displayName,
                 workspaceID: placeholderWorkspaceID
             )
+            appendDiagnostic(
+                for: placeholderWorkspaceID,
+                category: .workspace,
+                level: .info,
+                message: "Prepared the managed worktree for \(request.displayName)."
+            )
             requestFocus(for: placeholderWorkspaceID)
         } catch {
-            reportSetupFailure(for: placeholderWorkspaceID, message: error.localizedDescription)
+            reportSetupFailure(
+                for: placeholderWorkspaceID,
+                category: .workspace,
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -439,13 +568,37 @@ final class ReviewWorkspaceManager: ObservableObject {
         onPaneFocusRequested?(workspace.paneName)
     }
 
+    private func appendDiagnostic(
+        for workspaceID: UUID,
+        category: WorkspaceDiagnosticEntry.Category,
+        level: LogLevel,
+        message: String
+    ) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
+        workspaces[index].diagnostics.append(
+            WorkspaceDiagnosticEntry(
+                timestamp: now(),
+                category: category,
+                level: level,
+                message: message
+            )
+        )
+    }
+
     private func restoreManagedWorkspaces() {
         guard let lifecycleController else { return }
         do {
             let result = try lifecycleController.restoreWorkspaces(now: now())
             for record in result.records {
                 let displayName = "PR #\(record.pullRequestNumber)"
-                _ = attachManagedWorkspace(record, displayName: displayName)
+                if let workspace = attachManagedWorkspace(record, displayName: displayName) {
+                    appendDiagnostic(
+                        for: workspace.id,
+                        category: .restore,
+                        level: .info,
+                        message: "Restored a managed workspace from persisted state."
+                    )
+                }
             }
             for orphaned in result.orphanedWorktrees {
                 let workspaceID = UUID()
@@ -453,7 +606,15 @@ final class ReviewWorkspaceManager: ObservableObject {
                     id: workspaceID,
                     displayName: orphaned.worktreePath.lastPathComponent,
                     state: .cleanupRequired("Orphaned managed worktree at \(orphaned.worktreePath.path)."),
-                    record: nil)
+                    record: nil,
+                    diagnostics: [
+                        WorkspaceDiagnosticEntry(
+                            timestamp: now(),
+                            category: .restore,
+                            level: .warning,
+                            message: "Detected an orphaned managed worktree at \(orphaned.worktreePath.path)."
+                        )
+                    ])
                 guard terminalManager.reserveWorkspacePane(workspace.paneName) else { continue }
                 workspaces.append(workspace)
             }
