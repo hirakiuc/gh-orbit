@@ -95,6 +95,13 @@ private final class MockReviewWorkspaceCodexLauncher: ReviewWorkspaceCodexLaunch
 
 @Suite("Review workspace lifecycle")
 struct ReviewWorkspaceTests {
+    private func failure(
+        _ kind: ReviewWorkspaceFailure.Kind,
+        message: String
+    ) -> ReviewWorkspaceFailure {
+        ReviewWorkspaceFailure(kind: kind, message: message)
+    }
+
     private func sampleRequest() -> NativeReviewRequest {
         NativeReviewRequest(
             repository: .init(host: "github.com", owner: "acme", name: "orbit"),
@@ -158,7 +165,9 @@ struct ReviewWorkspaceTests {
         manager.install(firstSession, for: first.id)
         manager.reportSetupFailure(for: second.id, message: "setup failed")
         manager.reportTerminalExit(for: second.id, exitCode: 0)
-        #expect(manager.workspace(forPaneName: second.paneName)?.state == .failed("setup failed"))
+        #expect(
+            manager.workspace(forPaneName: second.paneName)?.state
+                == .failed(failure(.worktreeSetup, message: "setup failed")))
         manager.requestTermination(for: first.id)
         #expect(manager.workspace(forPaneName: first.paneName)?.state == .terminating)
         manager.reportSetupFailure(for: first.id, message: "late failure")
@@ -166,7 +175,9 @@ struct ReviewWorkspaceTests {
         manager.reportTerminalExit(for: first.id, exitCode: 0)
         manager.dismiss(first.id)
         #expect(manager.workspace(forPaneName: first.paneName) == nil)
-        #expect(manager.workspace(forPaneName: second.paneName)?.state == .failed("setup failed"))
+        #expect(
+            manager.workspace(forPaneName: second.paneName)?.state
+                == .failed(failure(.worktreeSetup, message: "setup failed")))
     }
 
     @Test @MainActor
@@ -274,7 +285,13 @@ struct ReviewWorkspaceTests {
         manager.install(session, for: workspace.id)
 
         let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
-        #expect(updatedWorkspace.state == .failed("Failed to attach the managed workspace to a terminal session."))
+        #expect(
+            updatedWorkspace.state
+                == .failed(
+                    failure(
+                        .codexLaunch,
+                        message: "Failed to attach the managed workspace to a terminal session."
+                    )))
         #expect(updatedWorkspace.diagnostics.map(\.category) == [.codex])
         #expect(updatedWorkspace.diagnostics.last?.level == .error)
         #expect(session.terminateCalls == 1)
@@ -381,10 +398,146 @@ struct ReviewWorkspaceTests {
         #expect(
             workspace.state
                 == .failed(
-                    "No local clone matched the selected repository. Ensure the repository is available through `ghq`."
+                    failure(
+                        .noLocalClone,
+                        message:
+                            "No local clone matched the selected repository. Ensure the repository is available through `ghq`."
+                    )
                 ))
         #expect(workspace.diagnostics.map(\.category) == [.launch, .resolution, .resolution])
         #expect(workspace.diagnostics.last?.level == .error)
+    }
+
+    @Test @MainActor
+    func setupFailurePreservesStructuredFailureClassForMissingTool() throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let manager = ReviewWorkspaceManager(terminalManager: terminalManager)
+        let workspace = try #require(manager.createFixtureWorkspace(named: "review"))
+
+        manager.reportSetupFailure(
+            for: workspace.id,
+            category: .resolution,
+            error: PullRequestResolutionError.missingExecutable("ghq"),
+            message: "Required tool `ghq` was not found in PATH."
+        )
+
+        let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
+        #expect(
+            updatedWorkspace.state
+                == .failed(failure(.missingTool("ghq"), message: "Required tool `ghq` was not found in PATH."))
+        )
+    }
+
+    @Test @MainActor
+    func setupFailurePreservesStructuredFailureClassForCloneMismatch() throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let manager = ReviewWorkspaceManager(terminalManager: terminalManager)
+        let workspace = try #require(manager.createFixtureWorkspace(named: "review"))
+
+        manager.reportSetupFailure(
+            for: workspace.id,
+            category: .resolution,
+            error: PullRequestResolutionError.cloneIdentityMismatch,
+            message: "The matched local clone does not point at the selected repository."
+        )
+
+        let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
+        #expect(
+            updatedWorkspace.state
+                == .failed(
+                    failure(
+                        .cloneMismatch,
+                        message: "The matched local clone does not point at the selected repository."
+                    )))
+    }
+
+    @Test @MainActor
+    func setupFailurePreservesStructuredFailureClassForInaccessiblePullRequest() throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let manager = ReviewWorkspaceManager(terminalManager: terminalManager)
+        let workspace = try #require(manager.createFixtureWorkspace(named: "review"))
+
+        manager.reportSetupFailure(
+            for: workspace.id,
+            category: .resolution,
+            error: PullRequestResolutionError.inaccessiblePullRequest,
+            message: "The selected pull request could not be resolved from the local clone."
+        )
+
+        let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
+        #expect(
+            updatedWorkspace.state
+                == .failed(
+                    failure(
+                        .inaccessiblePullRequest,
+                        message: "The selected pull request could not be resolved from the local clone."
+                    )))
+    }
+
+    @Test @MainActor
+    func setupFailurePreservesStructuredFailureClassForCodexMissingTool() throws {
+        let terminalManager = TerminalManager(monitor: ActivityMonitor())
+        let manager = ReviewWorkspaceManager(terminalManager: terminalManager)
+        let workspace = try #require(manager.createFixtureWorkspace(named: "review"))
+
+        manager.reportSetupFailure(
+            for: workspace.id,
+            category: .codex,
+            error: CodexExecutableResolutionError.missingExecutable(
+                "Codex CLI not found. Install `codex` or set CODEX_BIN to the executable path."
+            ),
+            message: "Codex CLI not found. Install `codex` or set CODEX_BIN to the executable path."
+        )
+
+        let updatedWorkspace = try #require(manager.workspace(forPaneName: workspace.paneName))
+        #expect(
+            updatedWorkspace.state
+                == .failed(
+                    failure(
+                        .missingTool("codex"),
+                        message: "Codex CLI not found. Install `codex` or set CODEX_BIN to the executable path."
+                    )))
+    }
+
+    @Test
+    func failureGuidanceProvidesPlainLanguageRecoveryHints() {
+        let missingTool = ReviewWorkspaceFailure(
+            kind: .missingTool("ghq"),
+            message: "Required tool `ghq` was not found in PATH."
+        )
+        let cloneMismatch = ReviewWorkspaceFailure(
+            kind: .cloneMismatch,
+            message: "The matched local clone does not point at the selected repository."
+        )
+        let inaccessiblePullRequest = ReviewWorkspaceFailure(
+            kind: .inaccessiblePullRequest,
+            message: "The selected pull request could not be resolved from the local clone."
+        )
+        let worktreeSetup = ReviewWorkspaceFailure(
+            kind: .worktreeSetup,
+            message: "Managed review-workspace lifecycle is unavailable in this build."
+        )
+        let codexLaunch = ReviewWorkspaceFailure(
+            kind: .codexLaunch,
+            message: "Failed to attach the managed workspace to a terminal session."
+        )
+        let unknown = ReviewWorkspaceFailure(
+            kind: .unknown,
+            message: "Unclassified failure."
+        )
+
+        #expect(missingTool.title == "Required tool missing")
+        #expect(missingTool.recoveryGuidance[0].contains("Install `ghq`"))
+        #expect(cloneMismatch.title == "Local clone mismatch")
+        #expect(cloneMismatch.recoveryGuidance[0].contains("origin"))
+        #expect(inaccessiblePullRequest.title == "Pull request could not be resolved")
+        #expect(inaccessiblePullRequest.recoveryGuidance[0].contains("pull request still exists"))
+        #expect(worktreeSetup.title == "Managed worktree setup failed")
+        #expect(worktreeSetup.recoveryGuidance[0].contains("review workspace root"))
+        #expect(codexLaunch.title == "Codex session launch failed")
+        #expect(codexLaunch.recoveryGuidance[0].contains("Codex CLI"))
+        #expect(unknown.title == "Review workspace failed")
+        #expect(unknown.recoveryGuidance[0].contains("workspace diagnostics"))
     }
 
     @Test @MainActor
