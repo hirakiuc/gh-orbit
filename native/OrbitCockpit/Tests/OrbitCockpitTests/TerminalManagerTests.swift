@@ -169,7 +169,6 @@ struct TerminalManagerTests {
     @MainActor
     func testMakeSessionUsesSettingsStoreSnapshot() async throws {
         let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.TerminalManager.\(UUID().uuidString)"))
-        let settingsStore = OrbitCockpitSettingsStore(defaults: defaults)
         var configured = OrbitCockpitSettings.defaults
         configured.terminal.fontSize = 15
         configured.terminal.usesNerdFont = false

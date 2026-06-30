@@ -7,7 +7,7 @@ struct OrbitCockpitSettingsView: View {
     var body: some View {
         TabView {
             Form {
-                Section("Terminal Defaults") {
+                Section {
                     Stepper(value: settingsStore.binding(\.terminal.fontSize), in: 10...24, step: 1) {
                         HStack {
                             Text("Font Size")
@@ -18,6 +18,8 @@ struct OrbitCockpitSettingsView: View {
                     }
 
                     Toggle("Prefer Nerd Font", isOn: settingsStore.binding(\.terminal.usesNerdFont))
+                } header: {
+                    Text("Terminal Defaults")
                 } footer: {
                     Text("These defaults are consumed when Orbit Cockpit launches new terminal sessions.")
                 }
@@ -29,7 +31,7 @@ struct OrbitCockpitSettingsView: View {
             }
 
             Form {
-                Section("Appearance") {
+                Section {
                     Picker(
                         "Terminal Theme",
                         selection: settingsStore.binding(\.appearance.terminalColorSchemePreference)
@@ -41,6 +43,8 @@ struct OrbitCockpitSettingsView: View {
 
                     Toggle(
                         "Show debug logs on launch", isOn: settingsStore.binding(\.appearance.showDebugLogsByDefault))
+                } header: {
+                    Text("Appearance")
                 } footer: {
                     Text(
                         "Appearance defaults are stored now so later tasks can wire immediate runtime application cleanly."
@@ -54,10 +58,12 @@ struct OrbitCockpitSettingsView: View {
             }
 
             Form {
-                Section("Links & Input") {
+                Section {
                     Toggle(
                         "Open detected links directly", isOn: settingsStore.binding(\.linksAndInput.openLinksDirectly))
                     Toggle("Treat Option as Meta", isOn: settingsStore.binding(\.linksAndInput.optionKeySendsMeta))
+                } header: {
+                    Text("Links & Input")
                 } footer: {
                     Text("This section establishes typed native ownership for later SwiftTerm input behavior.")
                 }
@@ -69,7 +75,7 @@ struct OrbitCockpitSettingsView: View {
             }
 
             Form {
-                Section("Advanced") {
+                Section {
                     Toggle(
                         "Prefer GPU rendering when available", isOn: settingsStore.binding(\.advanced.preferGPURenderer)
                     )
@@ -84,6 +90,8 @@ struct OrbitCockpitSettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                } header: {
+                    Text("Advanced")
                 } footer: {
                     Text(
                         "Advanced values are persisted behind the native settings model so future engine-specific work stays decoupled from raw storage."
