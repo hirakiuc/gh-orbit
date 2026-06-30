@@ -231,6 +231,17 @@ struct TerminalManagerTests {
         store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
         store.binding(\.linksAndInput.backspaceSendsControlH).wrappedValue = true
 
+        for _ in 0..<20 {
+            if let latest = engine.appliedSettings.last,
+                latest.0.fontSize == 18,
+                latest.0.optionKeySendsMeta == false,
+                latest.0.backspaceSendsControlH
+            {
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
         let latest = try #require(engine.appliedSettings.last)
         #expect(latest.0.fontSize == 18)
         #expect(!latest.0.optionKeySendsMeta)
