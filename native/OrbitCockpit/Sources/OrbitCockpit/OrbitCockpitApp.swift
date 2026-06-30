@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct OrbitCockpitApp: App {
     @StateObject private var activityMonitor: ActivityMonitor
+    @StateObject private var settingsStore: OrbitCockpitSettingsStore
     @StateObject private var terminalManager: TerminalManager
     @StateObject private var reviewWorkspaceManager: ReviewWorkspaceManager
     private let reviewWorkspaceRequestInbox: ReviewWorkspaceRequestInbox
@@ -15,7 +16,9 @@ struct OrbitCockpitApp: App {
         let monitor = ActivityMonitor()
         monitor.log(component: "[App]", level: .info, message: "Launched Orbit Cockpit")
         _activityMonitor = StateObject(wrappedValue: monitor)
-        let terminalManager = TerminalManager(monitor: monitor)
+        let settingsStore = OrbitCockpitSettingsStore()
+        _settingsStore = StateObject(wrappedValue: settingsStore)
+        let terminalManager = TerminalManager(monitor: monitor, settingsStore: settingsStore)
         _terminalManager = StateObject(wrappedValue: terminalManager)
         let runtimeConfiguration = terminalManager.runtimeConfiguration
         let workspacePaths = ReviewWorkspacePaths(
@@ -49,12 +52,18 @@ struct OrbitCockpitApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(activityMonitor)
+                .environmentObject(settingsStore)
                 .environmentObject(terminalManager)
                 .environmentObject(reviewWorkspaceManager)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     reviewWorkspaceRequestInbox.stop()
                     terminalManager.shutdown()
                 }
+        }
+
+        Settings {
+            OrbitCockpitSettingsView()
+                .environmentObject(settingsStore)
         }
     }
 }
@@ -445,6 +454,7 @@ struct TerminalPaneSession {
 protocol TerminalSessionLaunching {
     func launchSession(
         request: TerminalLaunchRequest,
+        settings: TerminalSessionSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
@@ -455,11 +465,12 @@ protocol TerminalSessionLaunching {
 struct SwiftTermSessionLauncher: TerminalSessionLaunching {
     func launchSession(
         request: TerminalLaunchRequest,
+        settings: TerminalSessionSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
     ) -> TerminalProcessSession {
-        let adapter = SwiftTermAdapter(onLog: onLog, onTerminate: onTerminate)
+        let adapter = SwiftTermAdapter(settings: settings, onLog: onLog, onTerminate: onTerminate)
         adapter.isDarkMode(isDark)
         adapter.startProcess(request: request)
         return adapter
@@ -477,13 +488,16 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     private var onLog: ((String, LogLevel) -> Void)?
     private var launchTasks: [String: Task<Void, Never>] = [:]
     private let sessionLauncher: any TerminalSessionLaunching
+    private let settingsStore: OrbitCockpitSettingsStore
     let runtimeConfiguration: EngineRuntimeConfiguration
 
     init(
         monitor: ActivityMonitor,
+        settingsStore: OrbitCockpitSettingsStore = OrbitCockpitSettingsStore(),
         runtimeConfiguration: EngineRuntimeConfiguration = EngineRuntimeConfiguration(),
         sessionLauncher: any TerminalSessionLaunching = SwiftTermSessionLauncher()
     ) {
+        self.settingsStore = settingsStore
         self.runtimeConfiguration = runtimeConfiguration
         self.sessionLauncher = sessionLauncher
         let logFunc: (String, LogLevel) -> Void = { msg, level in
@@ -537,6 +551,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     ) -> TerminalProcessSession {
         sessionLauncher.launchSession(
             request: request,
+            settings: settingsStore.terminalSessionSettings,
             isDark: isDark,
             onLog: onLog,
             onTerminate: onTerminate

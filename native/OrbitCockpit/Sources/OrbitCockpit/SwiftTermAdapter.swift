@@ -5,6 +5,7 @@ import SwiftTerm
 @MainActor
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
+    private let settings: TerminalSessionSettings
     private let processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)?
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
@@ -14,11 +15,13 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     }
 
     init(
+        settings: TerminalSessionSettings = .defaults,
         terminalView: LocalProcessTerminalView = LocalProcessTerminalView(frame: .zero),
         processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)? = nil,
         onLog: ((String, LogLevel) -> Void)? = nil,
         onTerminate: ((Int32?) -> Void)? = nil
     ) {
+        self.settings = settings
         self.processStarter = processStarter
         self.onLog = onLog
         self.onTerminate = onTerminate
@@ -29,6 +32,12 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     }
 
     private func setupFont() {
+        let fontSize = settings.fontSize
+        guard settings.usesNerdFont else {
+            terminalView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            return
+        }
+
         // Preferred "Mono" Nerd Fonts for fixed-width icon rendering.
         let preferredFonts = [
             "MonaspiceNe Nerd Font Mono",
@@ -44,7 +53,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
 
         var selectedFont: NSFont?
         for name in preferredFonts {
-            if let font = NSFont(name: name, size: 12) {
+            if let font = NSFont(name: name, size: fontSize) {
                 selectedFont = font
                 onLog?("Found Nerd Font: \(name)", .debug)
                 break
@@ -54,7 +63,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         if let font = selectedFont {
             terminalView.font = font
         } else {
-            terminalView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            terminalView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             onLog?("No Nerd Font found, falling back to system monospaced font.", .warning)
             print("[SwiftTermAdapter] No Nerd Font found, falling back to system monospaced font.")
         }
