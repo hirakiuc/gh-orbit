@@ -72,7 +72,13 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     private func applyTheme(isDark: Bool) {
         switch settings.colorSchemePreference {
         case .system:
-            isDarkMode(isDark)
+            if isDark {
+                terminalView.nativeBackgroundColor = .black
+                terminalView.nativeForegroundColor = .white
+            } else {
+                terminalView.nativeBackgroundColor = .white
+                terminalView.nativeForegroundColor = .black
+            }
         case .light:
             terminalView.nativeBackgroundColor = .white
             terminalView.nativeForegroundColor = .black
