@@ -44,6 +44,31 @@ final class MockTerminalSession: TerminalProcessSession {
     }
 }
 
+@MainActor
+final class RecordingSessionLauncher: TerminalSessionLaunching {
+    var lastRequest: TerminalLaunchRequest?
+    var lastSettings: TerminalSessionSettings?
+    var lastIsDark: Bool?
+    let session: TerminalProcessSession
+
+    init(session: TerminalProcessSession = MockTerminalSession()) {
+        self.session = session
+    }
+
+    func launchSession(
+        request: TerminalLaunchRequest,
+        settings: TerminalSessionSettings,
+        isDark: Bool,
+        onLog: ((String, LogLevel) -> Void)?,
+        onTerminate: @escaping (Int32?) -> Void
+    ) -> TerminalProcessSession {
+        lastRequest = request
+        lastSettings = settings
+        lastIsDark = isDark
+        return session
+    }
+}
+
 @Suite("Terminal Manager Tests")
 struct TerminalManagerTests {
 
@@ -138,5 +163,39 @@ struct TerminalManagerTests {
         manager.shutdown()
 
         #expect(manager.engineManager?.isEngineReady == false)
+    }
+
+    @Test("Launch path consumes typed terminal settings from the native store")
+    @MainActor
+    func testMakeSessionUsesSettingsStoreSnapshot() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.TerminalManager.\(UUID().uuidString)"))
+        let settingsStore = OrbitCockpitSettingsStore(defaults: defaults)
+        var configured = OrbitCockpitSettings.defaults
+        configured.terminal.fontSize = 15
+        configured.terminal.usesNerdFont = false
+        configured.appearance.terminalColorSchemePreference = .dark
+        defaults.set(try JSONEncoder().encode(configured), forKey: OrbitCockpitSettingsStore.defaultStorageKey)
+        let reloadedStore = OrbitCockpitSettingsStore(defaults: defaults)
+
+        let launcher = RecordingSessionLauncher()
+        let manager = TerminalManager(
+            monitor: ActivityMonitor(),
+            settingsStore: reloadedStore,
+            sessionLauncher: launcher)
+        let request = TerminalLaunchRequest(
+            executable: URL(fileURLWithPath: "/usr/bin/env"),
+            arguments: ["true"],
+            environment: nil,
+            currentDirectoryURL: nil)
+
+        _ = manager.makeSession(request: request, onTerminate: { _ in })
+
+        #expect(launcher.lastRequest == request)
+        #expect(
+            launcher.lastSettings
+                == TerminalSessionSettings(
+                    fontSize: 15,
+                    usesNerdFont: false,
+                    colorSchemePreference: .dark))
     }
 }

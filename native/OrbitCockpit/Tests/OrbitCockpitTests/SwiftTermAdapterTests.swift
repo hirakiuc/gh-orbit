@@ -23,4 +23,18 @@ struct SwiftTermAdapterTests {
         // Verify font size is 12
         #expect(terminalView.font.pointSize == 12)
     }
+
+    @Test("Configured font size is applied to terminal view")
+    @MainActor
+    func testConfiguredFontSizeIsApplied() async throws {
+        let settings = TerminalSessionSettings(fontSize: 16, usesNerdFont: false, colorSchemePreference: .system)
+        let adapter = SwiftTermAdapter(settings: settings, onLog: nil)
+
+        guard let terminalView = adapter.view as? LocalProcessTerminalView else {
+            Issue.record("adapter.view is not a LocalProcessTerminalView")
+            return
+        }
+
+        #expect(terminalView.font.pointSize == 16)
+    }
 }
