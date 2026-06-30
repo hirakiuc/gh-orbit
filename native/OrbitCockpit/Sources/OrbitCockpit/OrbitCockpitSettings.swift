@@ -22,6 +22,9 @@ struct OrbitCockpitSettings: Equatable, Codable, Sendable {
     struct Terminal: Equatable, Codable, Sendable {
         var fontSize: Double = 12
         var usesNerdFont: Bool = true
+        var useBrightColorsForBoldText: Bool = true
+        var useCustomBlockGlyphs: Bool = true
+        var antiAliasCustomBlockGlyphs: Bool = false
     }
 
     struct Appearance: Equatable, Codable, Sendable {
@@ -32,6 +35,8 @@ struct OrbitCockpitSettings: Equatable, Codable, Sendable {
     struct LinksAndInput: Equatable, Codable, Sendable {
         var openLinksDirectly: Bool = true
         var optionKeySendsMeta: Bool = true
+        var mouseReportingEnabled: Bool = true
+        var backspaceSendsControlH: Bool = false
     }
 
     struct Advanced: Equatable, Codable, Sendable {
@@ -50,20 +55,40 @@ struct OrbitCockpitSettings: Equatable, Codable, Sendable {
 struct TerminalSessionSettings: Equatable, Sendable {
     var fontSize: Double
     var usesNerdFont: Bool
+    var useBrightColorsForBoldText: Bool
+    var useCustomBlockGlyphs: Bool
+    var antiAliasCustomBlockGlyphs: Bool
     var colorSchemePreference: TerminalColorSchemePreference
+    var optionKeySendsMeta: Bool
+    var mouseReportingEnabled: Bool
+    var backspaceSendsControlH: Bool
 
     static let defaults = TerminalSessionSettings(
         fontSize: OrbitCockpitSettings.defaults.terminal.fontSize,
         usesNerdFont: OrbitCockpitSettings.defaults.terminal.usesNerdFont,
-        colorSchemePreference: OrbitCockpitSettings.defaults.appearance.terminalColorSchemePreference)
+        useBrightColorsForBoldText: OrbitCockpitSettings.defaults.terminal.useBrightColorsForBoldText,
+        useCustomBlockGlyphs: OrbitCockpitSettings.defaults.terminal.useCustomBlockGlyphs,
+        antiAliasCustomBlockGlyphs: OrbitCockpitSettings.defaults.terminal.antiAliasCustomBlockGlyphs,
+        colorSchemePreference: OrbitCockpitSettings.defaults.appearance.terminalColorSchemePreference,
+        optionKeySendsMeta: OrbitCockpitSettings.defaults.linksAndInput.optionKeySendsMeta,
+        mouseReportingEnabled: OrbitCockpitSettings.defaults.linksAndInput.mouseReportingEnabled,
+        backspaceSendsControlH: OrbitCockpitSettings.defaults.linksAndInput.backspaceSendsControlH)
 }
 
 extension OrbitCockpitSettings {
+    /// The explicit subset of terminal settings that Orbit Cockpit supports
+    /// both for new sessions and live application to running SwiftTerm views.
     var terminalSessionSettings: TerminalSessionSettings {
         TerminalSessionSettings(
             fontSize: terminal.fontSize,
             usesNerdFont: terminal.usesNerdFont,
-            colorSchemePreference: appearance.terminalColorSchemePreference)
+            useBrightColorsForBoldText: terminal.useBrightColorsForBoldText,
+            useCustomBlockGlyphs: terminal.useCustomBlockGlyphs,
+            antiAliasCustomBlockGlyphs: terminal.antiAliasCustomBlockGlyphs,
+            colorSchemePreference: appearance.terminalColorSchemePreference,
+            optionKeySendsMeta: linksAndInput.optionKeySendsMeta,
+            mouseReportingEnabled: linksAndInput.mouseReportingEnabled,
+            backspaceSendsControlH: linksAndInput.backspaceSendsControlH)
     }
 }
 

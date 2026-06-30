@@ -22,12 +22,14 @@ struct OrbitCockpitSettingsStoreTests {
 
         store.binding(\.terminal.fontSize).wrappedValue = 14
         store.binding(\.appearance.showDebugLogsByDefault).wrappedValue = true
+        store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
         store.binding(\.advanced.scrollbackLineLimit).wrappedValue = 20_000
 
         let reloaded = OrbitCockpitSettingsStore(defaults: defaults)
 
         #expect(reloaded.settings.terminal.fontSize == 14)
         #expect(reloaded.settings.appearance.showDebugLogsByDefault)
+        #expect(!reloaded.settings.linksAndInput.optionKeySendsMeta)
         #expect(reloaded.settings.advanced.scrollbackLineLimit == 20_000)
     }
 
@@ -38,6 +40,7 @@ struct OrbitCockpitSettingsStoreTests {
 
         store.binding(\.terminal.fontSize).wrappedValue = 18
         store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
+        store.binding(\.linksAndInput.mouseReportingEnabled).wrappedValue = false
         store.binding(\.advanced.preferGPURenderer).wrappedValue = false
 
         store.resetToDefaults()

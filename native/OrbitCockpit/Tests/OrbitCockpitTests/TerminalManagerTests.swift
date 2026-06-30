@@ -9,6 +9,7 @@ import Testing
 final class MockTerminalEngine: OrbitTerminalEngine {
     let view = NSView()
     var isDarkModeCalls: [Bool] = []
+    var appliedSettings: [(TerminalSessionSettings, Bool)] = []
 
     func feed(data: Data) {}
 
@@ -18,6 +19,10 @@ final class MockTerminalEngine: OrbitTerminalEngine {
 
     func getBuffer() -> String {
         ""
+    }
+
+    func applyTerminalSettings(_ settings: TerminalSessionSettings, isDark: Bool) {
+        appliedSettings.append((settings, isDark))
     }
 
     func isDarkMode(_ isDark: Bool) {
@@ -172,7 +177,13 @@ struct TerminalManagerTests {
         var configured = OrbitCockpitSettings.defaults
         configured.terminal.fontSize = 15
         configured.terminal.usesNerdFont = false
+        configured.terminal.useBrightColorsForBoldText = false
+        configured.terminal.useCustomBlockGlyphs = false
+        configured.terminal.antiAliasCustomBlockGlyphs = true
         configured.appearance.terminalColorSchemePreference = .dark
+        configured.linksAndInput.optionKeySendsMeta = false
+        configured.linksAndInput.mouseReportingEnabled = false
+        configured.linksAndInput.backspaceSendsControlH = true
         defaults.set(try JSONEncoder().encode(configured), forKey: OrbitCockpitSettingsStore.defaultStorageKey)
         let reloadedStore = OrbitCockpitSettingsStore(defaults: defaults)
 
@@ -195,6 +206,61 @@ struct TerminalManagerTests {
                 == TerminalSessionSettings(
                     fontSize: 15,
                     usesNerdFont: false,
-                    colorSchemePreference: .dark))
+                    useBrightColorsForBoldText: false,
+                    useCustomBlockGlyphs: false,
+                    antiAliasCustomBlockGlyphs: true,
+                    colorSchemePreference: .dark,
+                    optionKeySendsMeta: false,
+                    mouseReportingEnabled: false,
+                    backspaceSendsControlH: true))
+    }
+
+    @Test("Running sessions receive live-applied terminal settings updates")
+    @MainActor
+    func testSettingsStoreUpdatesRunningSessions() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.LiveApply.\(UUID().uuidString)"))
+        let store = OrbitCockpitSettingsStore(defaults: defaults)
+        let manager = TerminalManager(monitor: ActivityMonitor(), settingsStore: store)
+        let engine = MockTerminalEngine()
+        let session = MockTerminalSession(engine: engine)
+
+        manager.installSession(session, for: "TUI")
+        #expect(engine.appliedSettings.count == 1)
+
+        store.binding(\.terminal.fontSize).wrappedValue = 18
+        store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
+        store.binding(\.linksAndInput.backspaceSendsControlH).wrappedValue = true
+
+        let latest = try #require(engine.appliedSettings.last)
+        #expect(latest.0.fontSize == 18)
+        #expect(!latest.0.optionKeySendsMeta)
+        #expect(latest.0.backspaceSendsControlH)
+    }
+
+    @Test("New sessions inherit updated settings snapshots")
+    @MainActor
+    func testNewSessionsInheritUpdatedSettings() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.NewSessions.\(UUID().uuidString)"))
+        let store = OrbitCockpitSettingsStore(defaults: defaults)
+        let launcher = RecordingSessionLauncher()
+        let manager = TerminalManager(
+            monitor: ActivityMonitor(),
+            settingsStore: store,
+            sessionLauncher: launcher)
+
+        store.binding(\.terminal.fontSize).wrappedValue = 17
+        store.binding(\.linksAndInput.mouseReportingEnabled).wrappedValue = false
+
+        _ = manager.makeSession(
+            request: TerminalLaunchRequest(
+                executable: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["true"],
+                environment: nil,
+                currentDirectoryURL: nil),
+            onTerminate: { _ in })
+
+        let launchedSettings = try #require(launcher.lastSettings)
+        #expect(launchedSettings.fontSize == 17)
+        #expect(!launchedSettings.mouseReportingEnabled)
     }
 }

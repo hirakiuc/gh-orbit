@@ -20,6 +20,9 @@ protocol OrbitTerminalEngine: AnyObject {
     /// Extracts the current plain-text content of the terminal buffer.
     func getBuffer() -> String
 
+    /// Applies the live-supported terminal settings to an existing terminal view.
+    func applyTerminalSettings(_ settings: TerminalSessionSettings, isDark: Bool)
+
     /// Sets the terminal theme (e.g., Light or Dark).
     func isDarkMode(_ isDark: Bool)
 }

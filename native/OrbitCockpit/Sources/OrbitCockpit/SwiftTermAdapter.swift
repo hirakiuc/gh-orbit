@@ -5,7 +5,7 @@ import SwiftTerm
 @MainActor
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
-    private let settings: TerminalSessionSettings
+    private var settings: TerminalSessionSettings
     private let processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)?
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
@@ -28,7 +28,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         self.terminalView = terminalView
         super.init()
         self.terminalView.processDelegate = self
-        setupFont()
+        applyTerminalSettings(settings, isDark: false)
     }
 
     private func setupFont() {
@@ -69,6 +69,24 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         }
     }
 
+    private func applyTheme(isDark: Bool) {
+        switch settings.colorSchemePreference {
+        case .system:
+            isDarkMode(isDark)
+        case .light:
+            terminalView.nativeBackgroundColor = .white
+            terminalView.nativeForegroundColor = .black
+        case .dark:
+            terminalView.nativeBackgroundColor = .black
+            terminalView.nativeForegroundColor = .white
+        }
+    }
+
+    private func refreshDisplay() {
+        terminalView.terminal.updateFullScreen()
+        terminalView.setNeedsDisplay(terminalView.bounds)
+    }
+
     func feed(data: Data) {
         let bytes = [UInt8](data)
         terminalView.feed(byteArray: bytes[...])
@@ -99,14 +117,21 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         return fullText
     }
 
+    func applyTerminalSettings(_ settings: TerminalSessionSettings, isDark: Bool) {
+        self.settings = settings
+        setupFont()
+        terminalView.optionAsMetaKey = settings.optionKeySendsMeta
+        terminalView.allowMouseReporting = settings.mouseReportingEnabled
+        terminalView.backspaceSendsControlH = settings.backspaceSendsControlH
+        terminalView.useBrightColors = settings.useBrightColorsForBoldText
+        terminalView.customBlockGlyphs = settings.useCustomBlockGlyphs
+        terminalView.antiAliasCustomBlockGlyphs = settings.antiAliasCustomBlockGlyphs
+        applyTheme(isDark: isDark)
+        refreshDisplay()
+    }
+
     func isDarkMode(_ isDark: Bool) {
-        if isDark {
-            terminalView.nativeBackgroundColor = .black
-            terminalView.nativeForegroundColor = .white
-        } else {
-            terminalView.nativeBackgroundColor = .white
-            terminalView.nativeForegroundColor = .black
-        }
+        applyTheme(isDark: isDark)
     }
 
     // MARK: - LocalProcessTerminalViewDelegate
