@@ -5,6 +5,21 @@ import Testing
 
 @testable import OrbitCockpit
 
+private final class StubRendererController: TerminalRendererControlling {
+    var metalBufferingMode: MetalBufferingMode = .perRowPersistent
+    var isUsingMetalRenderer = false
+    var setUseMetalCalls: [Bool] = []
+    var errorToThrow: Error?
+
+    func setUseMetal(_ enabled: Bool) throws {
+        setUseMetalCalls.append(enabled)
+        if let errorToThrow {
+            throw errorToThrow
+        }
+        isUsingMetalRenderer = enabled
+    }
+}
+
 @Suite("SwiftTermAdapter Tests")
 struct SwiftTermAdapterTests {
 
@@ -17,6 +32,13 @@ struct SwiftTermAdapterTests {
 
     private static func isXtermPalette(_ strategy: Ansi256PaletteStrategy) -> Bool {
         if case .xterm = strategy {
+            return true
+        }
+        return false
+    }
+
+    private static func isPerFrameAggregated(_ mode: MetalBufferingMode) -> Bool {
+        if case .perFrameAggregated = mode {
             return true
         }
         return false
@@ -121,5 +143,66 @@ struct SwiftTermAdapterTests {
         #expect(terminalView.antiAliasCustomBlockGlyphs)
         #expect(terminalView.nativeBackgroundColor == .white)
         #expect(terminalView.nativeForegroundColor == .black)
+    }
+
+    @Test("Renderer settings apply successfully and report active Metal state")
+    @MainActor
+    func testApplyRendererSettingsSuccess() async throws {
+        let rendererController = StubRendererController()
+        let adapter = SwiftTermAdapter(
+            rendererSettings: TerminalRendererSettings(
+                useMetalRenderer: false,
+                metalBufferingMode: .perRowPersistent),
+            rendererController: rendererController,
+            onLog: nil)
+
+        adapter.applyRendererSettings(
+            TerminalRendererSettings(
+                useMetalRenderer: true,
+                metalBufferingMode: .perFrameAggregated))
+
+        #expect(Self.isPerFrameAggregated(rendererController.metalBufferingMode))
+        #expect(rendererController.setUseMetalCalls.isEmpty)
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(!adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == nil)
+
+        adapter.didAttachToWindow()
+
+        #expect(rendererController.setUseMetalCalls == [true])
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == nil)
+    }
+
+    @Test("Renderer settings preserve fallback when Metal activation fails after attachment")
+    @MainActor
+    func testApplyRendererSettingsFallbackOnMetalError() async throws {
+        let rendererController = StubRendererController()
+        let adapter = SwiftTermAdapter(
+            rendererSettings: TerminalRendererSettings(
+                useMetalRenderer: false,
+                metalBufferingMode: .perRowPersistent),
+            rendererController: rendererController,
+            onLog: nil)
+        rendererController.errorToThrow = MetalError.deviceUnavailable
+
+        adapter.applyRendererSettings(
+            TerminalRendererSettings(
+                useMetalRenderer: true,
+                metalBufferingMode: .perFrameAggregated))
+
+        #expect(Self.isPerFrameAggregated(rendererController.metalBufferingMode))
+        #expect(rendererController.setUseMetalCalls.isEmpty)
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(!adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == nil)
+
+        adapter.didAttachToWindow()
+
+        #expect(rendererController.setUseMetalCalls == [true, false])
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(!adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == MetalError.deviceUnavailable.description)
     }
 }

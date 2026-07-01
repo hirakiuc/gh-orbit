@@ -10,6 +10,8 @@ final class MockTerminalEngine: OrbitTerminalEngine {
     let view = NSView()
     var isDarkModeCalls: [Bool] = []
     var appliedSettings: [(TerminalSessionSettings, Bool)] = []
+    var appliedRendererSettings: [TerminalRendererSettings] = []
+    var rendererStatus = TerminalRendererStatus.defaults
 
     func feed(data: Data) {}
 
@@ -24,6 +26,16 @@ final class MockTerminalEngine: OrbitTerminalEngine {
     func applyTerminalSettings(_ settings: TerminalSessionSettings, isDark: Bool) {
         appliedSettings.append((settings, isDark))
     }
+
+    func applyRendererSettings(_ settings: TerminalRendererSettings) {
+        appliedRendererSettings.append(settings)
+        rendererStatus = TerminalRendererStatus(
+            preferredMetalRenderer: settings.useMetalRenderer,
+            isUsingMetalRenderer: settings.useMetalRenderer,
+            lastRendererError: nil)
+    }
+
+    func didAttachToWindow() {}
 
     func isDarkMode(_ isDark: Bool) {
         isDarkModeCalls.append(isDark)
@@ -54,6 +66,7 @@ final class RecordingSessionLauncher: TerminalSessionLaunching {
     var lastRequest: TerminalLaunchRequest?
     var lastSettings: TerminalSessionSettings?
     var lastStartupSettings: TerminalStartupSettings?
+    var lastRendererSettings: TerminalRendererSettings?
     var lastIsDark: Bool?
     let session: TerminalProcessSession
 
@@ -65,6 +78,7 @@ final class RecordingSessionLauncher: TerminalSessionLaunching {
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
         startupSettings: TerminalStartupSettings,
+        rendererSettings: TerminalRendererSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
@@ -72,6 +86,7 @@ final class RecordingSessionLauncher: TerminalSessionLaunching {
         lastRequest = request
         lastSettings = settings
         lastStartupSettings = startupSettings
+        lastRendererSettings = rendererSettings
         lastIsDark = isDark
         return session
     }
@@ -194,6 +209,8 @@ struct TerminalManagerTests {
         configured.advanced.screenReaderMode = true
         configured.advanced.sixelSupportEnabled = false
         configured.advanced.ansi256PaletteStrategy = .xterm
+        configured.advanced.preferGPURenderer = false
+        configured.advanced.metalBufferingMode = .perFrameAggregated
         defaults.set(try JSONEncoder().encode(configured), forKey: OrbitCockpitSettingsStore.defaultStorageKey)
         let reloadedStore = OrbitCockpitSettingsStore(defaults: defaults)
 
@@ -233,6 +250,11 @@ struct TerminalManagerTests {
                     screenReaderMode: true,
                     sixelSupportEnabled: false,
                     ansi256PaletteStrategy: .xterm))
+        #expect(
+            launcher.lastRendererSettings
+                == TerminalRendererSettings(
+                    useMetalRenderer: false,
+                    metalBufferingMode: .perFrameAggregated))
     }
 
     @Test("Running sessions receive live-applied terminal settings updates")
@@ -246,6 +268,7 @@ struct TerminalManagerTests {
 
         manager.installSession(session, for: "TUI")
         #expect(engine.appliedSettings.count == 1)
+        #expect(engine.appliedRendererSettings.count == 1)
 
         store.binding(\.terminal.fontSize).wrappedValue = 18
         store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
@@ -266,6 +289,28 @@ struct TerminalManagerTests {
         #expect(latest.0.fontSize == 18)
         #expect(!latest.0.optionKeySendsMeta)
         #expect(latest.0.backspaceSendsControlH)
+    }
+
+    @Test("Running sessions receive live-applied renderer settings updates")
+    @MainActor
+    func testRendererSettingsUpdateRunningSessions() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.RendererLiveApply.\(UUID().uuidString)"))
+        let store = OrbitCockpitSettingsStore(defaults: defaults)
+        let manager = TerminalManager(monitor: ActivityMonitor(), settingsStore: store)
+        let engine = MockTerminalEngine()
+        let session = MockTerminalSession(engine: engine)
+
+        manager.installSession(session, for: "TUI")
+        #expect(engine.appliedRendererSettings.count == 1)
+
+        store.binding(\.advanced.preferGPURenderer).wrappedValue = false
+        store.binding(\.advanced.metalBufferingMode).wrappedValue = .perFrameAggregated
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        let latest = try #require(engine.appliedRendererSettings.last)
+        #expect(!latest.useMetalRenderer)
+        #expect(latest.metalBufferingMode == .perFrameAggregated)
     }
 
     @Test("Startup-only settings do not live-apply to running sessions")
@@ -305,6 +350,8 @@ struct TerminalManagerTests {
         store.binding(\.advanced.cursorStyle).wrappedValue = .steadyUnderline
         store.binding(\.advanced.tabWidth).wrappedValue = 4
         store.binding(\.advanced.sixelSupportEnabled).wrappedValue = false
+        store.binding(\.advanced.preferGPURenderer).wrappedValue = false
+        store.binding(\.advanced.metalBufferingMode).wrappedValue = .perFrameAggregated
 
         _ = manager.makeSession(
             request: TerminalLaunchRequest(
@@ -321,5 +368,8 @@ struct TerminalManagerTests {
         #expect(launchedStartupSettings.cursorStyle == .steadyUnderline)
         #expect(launchedStartupSettings.tabWidth == 4)
         #expect(!launchedStartupSettings.sixelSupportEnabled)
+        let launchedRendererSettings = try #require(launcher.lastRendererSettings)
+        #expect(!launchedRendererSettings.useMetalRenderer)
+        #expect(launchedRendererSettings.metalBufferingMode == .perFrameAggregated)
     }
 }

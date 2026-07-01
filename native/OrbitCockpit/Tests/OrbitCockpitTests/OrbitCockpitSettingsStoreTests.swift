@@ -30,6 +30,8 @@ struct OrbitCockpitSettingsStoreTests {
         store.binding(\.advanced.screenReaderMode).wrappedValue = true
         store.binding(\.advanced.sixelSupportEnabled).wrappedValue = false
         store.binding(\.advanced.ansi256PaletteStrategy).wrappedValue = .xterm
+        store.binding(\.advanced.preferGPURenderer).wrappedValue = false
+        store.binding(\.advanced.metalBufferingMode).wrappedValue = .perFrameAggregated
 
         let reloaded = OrbitCockpitSettingsStore(defaults: defaults)
 
@@ -43,6 +45,8 @@ struct OrbitCockpitSettingsStoreTests {
         #expect(reloaded.settings.advanced.screenReaderMode)
         #expect(!reloaded.settings.advanced.sixelSupportEnabled)
         #expect(reloaded.settings.advanced.ansi256PaletteStrategy == .xterm)
+        #expect(!reloaded.settings.advanced.preferGPURenderer)
+        #expect(reloaded.settings.advanced.metalBufferingMode == .perFrameAggregated)
     }
 
     @Test("Reset to defaults restores canonical values")
