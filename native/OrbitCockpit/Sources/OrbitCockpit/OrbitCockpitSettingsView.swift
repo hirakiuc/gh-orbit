@@ -94,6 +94,11 @@ struct OrbitCockpitSettingsView: View {
                     Toggle(
                         "Prefer GPU rendering when available", isOn: settingsStore.binding(\.advanced.preferGPURenderer)
                     )
+                } header: {
+                    Text("Rendering")
+                }
+
+                Section {
 
                     Stepper(
                         value: settingsStore.binding(\.advanced.scrollbackLineLimit), in: 1_000...50_000, step: 1_000
@@ -105,11 +110,46 @@ struct OrbitCockpitSettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+
+                    Picker("Cursor Style", selection: settingsStore.binding(\.advanced.cursorStyle)) {
+                        ForEach(TerminalCursorStylePreference.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
+
+                    HStack {
+                        Text("TERM Value")
+                        TextField("xterm-256color", text: settingsStore.binding(\.advanced.termName))
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Stepper(value: settingsStore.binding(\.advanced.tabWidth), in: 2...16, step: 1) {
+                        HStack {
+                            Text("Tab Width")
+                            Spacer()
+                            Text("\(settingsStore.settings.advanced.tabWidth)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Toggle(
+                        "Enable screen reader mode", isOn: settingsStore.binding(\.advanced.screenReaderMode))
+                    Toggle(
+                        "Advertise Sixel support", isOn: settingsStore.binding(\.advanced.sixelSupportEnabled))
+
+                    Picker(
+                        "ANSI 256 Palette",
+                        selection: settingsStore.binding(\.advanced.ansi256PaletteStrategy)
+                    ) {
+                        ForEach(TerminalAnsi256PaletteStrategyPreference.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
                 } header: {
-                    Text("Advanced")
+                    Text("New Session Startup")
                 } footer: {
                     Text(
-                        "Advanced values are persisted behind the native settings model so future engine-specific work stays decoupled from raw storage."
+                        "These settings apply to new terminal sessions only. Existing panes keep their current startup configuration."
                     )
                 }
             }

@@ -455,6 +455,7 @@ protocol TerminalSessionLaunching {
     func launchSession(
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
+        startupSettings: TerminalStartupSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
@@ -466,11 +467,16 @@ struct SwiftTermSessionLauncher: TerminalSessionLaunching {
     func launchSession(
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
+        startupSettings: TerminalStartupSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
     ) -> TerminalProcessSession {
-        let adapter = SwiftTermAdapter(settings: settings, onLog: onLog, onTerminate: onTerminate)
+        let adapter = SwiftTermAdapter(
+            settings: settings,
+            startupSettings: startupSettings,
+            onLog: onLog,
+            onTerminate: onTerminate)
         adapter.isDarkMode(isDark)
         adapter.startProcess(request: request)
         return adapter
@@ -518,8 +524,10 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
             .store(in: &cancellables)
 
         settingsStore.$settings
+            .map(\.terminalSessionSettings)
+            .removeDuplicates()
             .sink { [weak self] settings in
-                self?.applySettingsToRunningSessions(settings.terminalSessionSettings)
+                self?.applySettingsToRunningSessions(settings)
             }
             .store(in: &cancellables)
 
@@ -556,6 +564,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
         sessionLauncher.launchSession(
             request: request,
             settings: settingsStore.terminalSessionSettings,
+            startupSettings: settingsStore.terminalStartupSettings,
             isDark: isDark,
             onLog: onLog,
             onTerminate: onTerminate

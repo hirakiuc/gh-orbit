@@ -24,6 +24,12 @@ struct OrbitCockpitSettingsStoreTests {
         store.binding(\.appearance.showDebugLogsByDefault).wrappedValue = true
         store.binding(\.linksAndInput.optionKeySendsMeta).wrappedValue = false
         store.binding(\.advanced.scrollbackLineLimit).wrappedValue = 20_000
+        store.binding(\.advanced.cursorStyle).wrappedValue = .steadyBar
+        store.binding(\.advanced.termName).wrappedValue = "xterm-gh-orbit"
+        store.binding(\.advanced.tabWidth).wrappedValue = 4
+        store.binding(\.advanced.screenReaderMode).wrappedValue = true
+        store.binding(\.advanced.sixelSupportEnabled).wrappedValue = false
+        store.binding(\.advanced.ansi256PaletteStrategy).wrappedValue = .xterm
 
         let reloaded = OrbitCockpitSettingsStore(defaults: defaults)
 
@@ -31,6 +37,12 @@ struct OrbitCockpitSettingsStoreTests {
         #expect(reloaded.settings.appearance.showDebugLogsByDefault)
         #expect(!reloaded.settings.linksAndInput.optionKeySendsMeta)
         #expect(reloaded.settings.advanced.scrollbackLineLimit == 20_000)
+        #expect(reloaded.settings.advanced.cursorStyle == .steadyBar)
+        #expect(reloaded.settings.advanced.termName == "xterm-gh-orbit")
+        #expect(reloaded.settings.advanced.tabWidth == 4)
+        #expect(reloaded.settings.advanced.screenReaderMode)
+        #expect(!reloaded.settings.advanced.sixelSupportEnabled)
+        #expect(reloaded.settings.advanced.ansi256PaletteStrategy == .xterm)
     }
 
     @Test("Reset to defaults restores canonical values")

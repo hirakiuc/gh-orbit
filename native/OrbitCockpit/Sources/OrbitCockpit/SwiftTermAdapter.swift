@@ -6,6 +6,7 @@ import SwiftTerm
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
     private var settings: TerminalSessionSettings
+    private let startupSettings: TerminalStartupSettings
     private let processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)?
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
@@ -16,19 +17,36 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
 
     init(
         settings: TerminalSessionSettings = .defaults,
+        startupSettings: TerminalStartupSettings = .defaults,
         terminalView: LocalProcessTerminalView = LocalProcessTerminalView(frame: .zero),
         processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)? = nil,
         onLog: ((String, LogLevel) -> Void)? = nil,
         onTerminate: ((Int32?) -> Void)? = nil
     ) {
         self.settings = settings
+        self.startupSettings = startupSettings
         self.processStarter = processStarter
         self.onLog = onLog
         self.onTerminate = onTerminate
         self.terminalView = terminalView
         super.init()
         self.terminalView.processDelegate = self
+        applyStartupTerminalOptions()
         applyTerminalSettings(settings, isDark: false)
+    }
+
+    private func applyStartupTerminalOptions() {
+        let terminal = terminalView.getTerminal()
+        var options = terminal.options
+        options.scrollback = startupSettings.scrollbackLineLimit
+        options.termName = startupSettings.termName
+        options.cursorStyle = startupSettings.cursorStyle.swiftTermCursorStyle
+        options.screenReaderMode = startupSettings.screenReaderMode
+        options.tabStopWidth = startupSettings.tabWidth
+        options.enableSixelReported = startupSettings.sixelSupportEnabled
+        options.ansi256PaletteStrategy = startupSettings.ansi256PaletteStrategy.swiftTermStrategy
+        terminal.options = options
+        terminal.setup(isReset: true)
     }
 
     private func setupFont() {
@@ -180,5 +198,35 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
 
     func terminateProcess() {
         terminalView.terminate()
+    }
+}
+
+extension TerminalCursorStylePreference {
+    fileprivate var swiftTermCursorStyle: CursorStyle {
+        switch self {
+        case .blinkBlock:
+            .blinkBlock
+        case .steadyBlock:
+            .steadyBlock
+        case .blinkUnderline:
+            .blinkUnderline
+        case .steadyUnderline:
+            .steadyUnderline
+        case .blinkBar:
+            .blinkBar
+        case .steadyBar:
+            .steadyBar
+        }
+    }
+}
+
+extension TerminalAnsi256PaletteStrategyPreference {
+    fileprivate var swiftTermStrategy: Ansi256PaletteStrategy {
+        switch self {
+        case .xterm:
+            .xterm
+        case .base16Lab:
+            .base16Lab
+        }
     }
 }
