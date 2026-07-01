@@ -517,14 +517,18 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
             }
             .store(in: &cancellables)
 
+        settingsStore.$settings
+            .sink { [weak self] settings in
+                self?.applySettingsToRunningSessions(settings.terminalSessionSettings)
+            }
+            .store(in: &cancellables)
+
         self.engineManager = newManager
     }
 
     func updateTheme(isDark: Bool) {
         self.isDark = isDark
-        for pane in panes.values {
-            pane.session?.engine.isDarkMode(isDark)
-        }
+        applySettingsToRunningSessions(settingsStore.terminalSessionSettings)
     }
 
     func state(for name: String) -> TerminalPaneState? {
@@ -561,6 +565,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
         guard !name.hasPrefix(Self.workspacePanePrefix) else { return }
         panes[name] = TerminalPaneSession(state: state, session: session)
+        session.engine.applyTerminalSettings(settingsStore.terminalSessionSettings, isDark: isDark)
     }
 
     func reserveWorkspacePane(_ name: String) -> Bool {
@@ -572,7 +577,14 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     func installWorkspaceSession(_ session: TerminalProcessSession, for name: String) -> Bool {
         guard name.hasPrefix(Self.workspacePanePrefix), panes[name] != nil else { return false }
         panes[name] = TerminalPaneSession(state: .running, session: session)
+        session.engine.applyTerminalSettings(settingsStore.terminalSessionSettings, isDark: isDark)
         return true
+    }
+
+    private func applySettingsToRunningSessions(_ settings: TerminalSessionSettings) {
+        for pane in panes.values {
+            pane.session?.engine.applyTerminalSettings(settings, isDark: isDark)
+        }
     }
 
     func terminateWorkspacePane(_ name: String) { panes[name]?.session?.terminateProcess() }

@@ -18,10 +18,19 @@ struct OrbitCockpitSettingsView: View {
                     }
 
                     Toggle("Prefer Nerd Font", isOn: settingsStore.binding(\.terminal.usesNerdFont))
+                    Toggle(
+                        "Bright colors for bold text",
+                        isOn: settingsStore.binding(\.terminal.useBrightColorsForBoldText))
+                    Toggle("Custom block glyphs", isOn: settingsStore.binding(\.terminal.useCustomBlockGlyphs))
+                    Toggle(
+                        "Anti-aliased custom block glyphs",
+                        isOn: settingsStore.binding(\.terminal.antiAliasCustomBlockGlyphs))
                 } header: {
                     Text("Terminal Defaults")
                 } footer: {
-                    Text("These defaults are consumed when Orbit Cockpit launches new terminal sessions.")
+                    Text(
+                        "These settings apply to running SwiftTerm panes immediately and are also used for new terminal sessions."
+                    )
                 }
             }
             .formStyle(.grouped)
@@ -62,10 +71,16 @@ struct OrbitCockpitSettingsView: View {
                     Toggle(
                         "Open detected links directly", isOn: settingsStore.binding(\.linksAndInput.openLinksDirectly))
                     Toggle("Treat Option as Meta", isOn: settingsStore.binding(\.linksAndInput.optionKeySendsMeta))
+                    Toggle("Enable mouse reporting", isOn: settingsStore.binding(\.linksAndInput.mouseReportingEnabled))
+                    Toggle(
+                        "Backspace sends Control-H", isOn: settingsStore.binding(\.linksAndInput.backspaceSendsControlH)
+                    )
                 } header: {
                     Text("Links & Input")
                 } footer: {
-                    Text("This section establishes typed native ownership for later SwiftTerm input behavior.")
+                    Text(
+                        "Only the controls SwiftTerm can update safely on existing panes are exposed here as live-applied settings."
+                    )
                 }
             }
             .formStyle(.grouped)
