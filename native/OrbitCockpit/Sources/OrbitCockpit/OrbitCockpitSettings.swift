@@ -18,6 +18,46 @@ enum TerminalColorSchemePreference: String, CaseIterable, Codable, Sendable {
     }
 }
 
+enum TerminalCursorStylePreference: String, CaseIterable, Codable, Sendable {
+    case blinkBlock
+    case steadyBlock
+    case blinkUnderline
+    case steadyUnderline
+    case blinkBar
+    case steadyBar
+
+    var label: String {
+        switch self {
+        case .blinkBlock:
+            "Blinking Block"
+        case .steadyBlock:
+            "Steady Block"
+        case .blinkUnderline:
+            "Blinking Underline"
+        case .steadyUnderline:
+            "Steady Underline"
+        case .blinkBar:
+            "Blinking Bar"
+        case .steadyBar:
+            "Steady Bar"
+        }
+    }
+}
+
+enum TerminalAnsi256PaletteStrategyPreference: String, CaseIterable, Codable, Sendable {
+    case xterm
+    case base16Lab
+
+    var label: String {
+        switch self {
+        case .xterm:
+            "xterm"
+        case .base16Lab:
+            "Base16 LAB"
+        }
+    }
+}
+
 struct OrbitCockpitSettings: Equatable, Codable, Sendable {
     struct Terminal: Equatable, Codable, Sendable {
         var fontSize: Double = 12
@@ -42,6 +82,12 @@ struct OrbitCockpitSettings: Equatable, Codable, Sendable {
     struct Advanced: Equatable, Codable, Sendable {
         var preferGPURenderer: Bool = true
         var scrollbackLineLimit: Int = 10_000
+        var cursorStyle: TerminalCursorStylePreference = .blinkBlock
+        var termName: String = "xterm-256color"
+        var tabWidth: Int = 8
+        var screenReaderMode: Bool = false
+        var sixelSupportEnabled: Bool = true
+        var ansi256PaletteStrategy: TerminalAnsi256PaletteStrategyPreference = .base16Lab
     }
 
     var terminal: Terminal = .init()
@@ -75,6 +121,25 @@ struct TerminalSessionSettings: Equatable, Sendable {
         backspaceSendsControlH: OrbitCockpitSettings.defaults.linksAndInput.backspaceSendsControlH)
 }
 
+struct TerminalStartupSettings: Equatable, Sendable {
+    var scrollbackLineLimit: Int
+    var cursorStyle: TerminalCursorStylePreference
+    var termName: String
+    var tabWidth: Int
+    var screenReaderMode: Bool
+    var sixelSupportEnabled: Bool
+    var ansi256PaletteStrategy: TerminalAnsi256PaletteStrategyPreference
+
+    static let defaults = TerminalStartupSettings(
+        scrollbackLineLimit: OrbitCockpitSettings.defaults.advanced.scrollbackLineLimit,
+        cursorStyle: OrbitCockpitSettings.defaults.advanced.cursorStyle,
+        termName: OrbitCockpitSettings.defaults.advanced.termName,
+        tabWidth: OrbitCockpitSettings.defaults.advanced.tabWidth,
+        screenReaderMode: OrbitCockpitSettings.defaults.advanced.screenReaderMode,
+        sixelSupportEnabled: OrbitCockpitSettings.defaults.advanced.sixelSupportEnabled,
+        ansi256PaletteStrategy: OrbitCockpitSettings.defaults.advanced.ansi256PaletteStrategy)
+}
+
 extension OrbitCockpitSettings {
     /// The explicit subset of terminal settings that Orbit Cockpit supports
     /// both for new sessions and live application to running SwiftTerm views.
@@ -89,6 +154,18 @@ extension OrbitCockpitSettings {
             optionKeySendsMeta: linksAndInput.optionKeySendsMeta,
             mouseReportingEnabled: linksAndInput.mouseReportingEnabled,
             backspaceSendsControlH: linksAndInput.backspaceSendsControlH)
+    }
+
+    /// Startup-only SwiftTerm configuration that applies when creating a new session.
+    var terminalStartupSettings: TerminalStartupSettings {
+        TerminalStartupSettings(
+            scrollbackLineLimit: advanced.scrollbackLineLimit,
+            cursorStyle: advanced.cursorStyle,
+            termName: advanced.termName,
+            tabWidth: advanced.tabWidth,
+            screenReaderMode: advanced.screenReaderMode,
+            sixelSupportEnabled: advanced.sixelSupportEnabled,
+            ansi256PaletteStrategy: advanced.ansi256PaletteStrategy)
     }
 }
 
@@ -114,6 +191,10 @@ final class OrbitCockpitSettingsStore: ObservableObject {
 
     var terminalSessionSettings: TerminalSessionSettings {
         settings.terminalSessionSettings
+    }
+
+    var terminalStartupSettings: TerminalStartupSettings {
+        settings.terminalStartupSettings
     }
 
     func binding<Value>(_ keyPath: WritableKeyPath<OrbitCockpitSettings, Value>) -> Binding<Value> {

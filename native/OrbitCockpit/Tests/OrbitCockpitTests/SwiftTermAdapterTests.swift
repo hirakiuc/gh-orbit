@@ -8,6 +8,20 @@ import Testing
 @Suite("SwiftTermAdapter Tests")
 struct SwiftTermAdapterTests {
 
+    private static func isSteadyBar(_ style: CursorStyle) -> Bool {
+        if case .steadyBar = style {
+            return true
+        }
+        return false
+    }
+
+    private static func isXtermPalette(_ strategy: Ansi256PaletteStrategy) -> Bool {
+        if case .xterm = strategy {
+            return true
+        }
+        return false
+    }
+
     @Test("Font initialization")
     @MainActor
     func testFontInitialization() async throws {
@@ -45,6 +59,34 @@ struct SwiftTermAdapterTests {
         }
 
         #expect(terminalView.font.pointSize == 16)
+    }
+
+    @Test("Startup-only SwiftTerm settings are configured on the terminal")
+    @MainActor
+    func testStartupSettingsAreAppliedOnInitialization() async throws {
+        let startupSettings = TerminalStartupSettings(
+            scrollbackLineLimit: 20_000,
+            cursorStyle: .steadyBar,
+            termName: "xterm-gh-orbit",
+            tabWidth: 4,
+            screenReaderMode: true,
+            sixelSupportEnabled: false,
+            ansi256PaletteStrategy: .xterm)
+        let adapter = SwiftTermAdapter(startupSettings: startupSettings, onLog: nil)
+
+        guard let terminalView = adapter.view as? LocalProcessTerminalView else {
+            Issue.record("adapter.view is not a LocalProcessTerminalView")
+            return
+        }
+
+        let options = terminalView.getTerminal().options
+        #expect(options.scrollback == 20_000)
+        #expect(Self.isSteadyBar(options.cursorStyle))
+        #expect(options.termName == "xterm-gh-orbit")
+        #expect(options.tabStopWidth == 4)
+        #expect(options.screenReaderMode)
+        #expect(!options.enableSixelReported)
+        #expect(Self.isXtermPalette(options.ansi256PaletteStrategy))
     }
 
     @Test("Live-applied SwiftTerm settings update an existing terminal view")

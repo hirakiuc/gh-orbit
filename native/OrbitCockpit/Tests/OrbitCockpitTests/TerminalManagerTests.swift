@@ -53,6 +53,7 @@ final class MockTerminalSession: TerminalProcessSession {
 final class RecordingSessionLauncher: TerminalSessionLaunching {
     var lastRequest: TerminalLaunchRequest?
     var lastSettings: TerminalSessionSettings?
+    var lastStartupSettings: TerminalStartupSettings?
     var lastIsDark: Bool?
     let session: TerminalProcessSession
 
@@ -63,12 +64,14 @@ final class RecordingSessionLauncher: TerminalSessionLaunching {
     func launchSession(
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
+        startupSettings: TerminalStartupSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
     ) -> TerminalProcessSession {
         lastRequest = request
         lastSettings = settings
+        lastStartupSettings = startupSettings
         lastIsDark = isDark
         return session
     }
@@ -184,6 +187,13 @@ struct TerminalManagerTests {
         configured.linksAndInput.optionKeySendsMeta = false
         configured.linksAndInput.mouseReportingEnabled = false
         configured.linksAndInput.backspaceSendsControlH = true
+        configured.advanced.scrollbackLineLimit = 20_000
+        configured.advanced.cursorStyle = .steadyBar
+        configured.advanced.termName = "xterm-gh-orbit"
+        configured.advanced.tabWidth = 4
+        configured.advanced.screenReaderMode = true
+        configured.advanced.sixelSupportEnabled = false
+        configured.advanced.ansi256PaletteStrategy = .xterm
         defaults.set(try JSONEncoder().encode(configured), forKey: OrbitCockpitSettingsStore.defaultStorageKey)
         let reloadedStore = OrbitCockpitSettingsStore(defaults: defaults)
 
@@ -213,6 +223,16 @@ struct TerminalManagerTests {
                     optionKeySendsMeta: false,
                     mouseReportingEnabled: false,
                     backspaceSendsControlH: true))
+        #expect(
+            launcher.lastStartupSettings
+                == TerminalStartupSettings(
+                    scrollbackLineLimit: 20_000,
+                    cursorStyle: .steadyBar,
+                    termName: "xterm-gh-orbit",
+                    tabWidth: 4,
+                    screenReaderMode: true,
+                    sixelSupportEnabled: false,
+                    ansi256PaletteStrategy: .xterm))
     }
 
     @Test("Running sessions receive live-applied terminal settings updates")
@@ -248,6 +268,27 @@ struct TerminalManagerTests {
         #expect(latest.0.backspaceSendsControlH)
     }
 
+    @Test("Startup-only settings do not live-apply to running sessions")
+    @MainActor
+    func testStartupSettingsDoNotUpdateRunningSessions() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.StartupOnly.\(UUID().uuidString)"))
+        let store = OrbitCockpitSettingsStore(defaults: defaults)
+        let manager = TerminalManager(monitor: ActivityMonitor(), settingsStore: store)
+        let engine = MockTerminalEngine()
+        let session = MockTerminalSession(engine: engine)
+
+        manager.installSession(session, for: "TUI")
+        #expect(engine.appliedSettings.count == 1)
+
+        store.binding(\.advanced.cursorStyle).wrappedValue = .steadyBar
+        store.binding(\.advanced.scrollbackLineLimit).wrappedValue = 20_000
+        store.binding(\.advanced.termName).wrappedValue = "xterm-gh-orbit"
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        #expect(engine.appliedSettings.count == 1)
+    }
+
     @Test("New sessions inherit updated settings snapshots")
     @MainActor
     func testNewSessionsInheritUpdatedSettings() async throws {
@@ -261,6 +302,9 @@ struct TerminalManagerTests {
 
         store.binding(\.terminal.fontSize).wrappedValue = 17
         store.binding(\.linksAndInput.mouseReportingEnabled).wrappedValue = false
+        store.binding(\.advanced.cursorStyle).wrappedValue = .steadyUnderline
+        store.binding(\.advanced.tabWidth).wrappedValue = 4
+        store.binding(\.advanced.sixelSupportEnabled).wrappedValue = false
 
         _ = manager.makeSession(
             request: TerminalLaunchRequest(
@@ -273,5 +317,9 @@ struct TerminalManagerTests {
         let launchedSettings = try #require(launcher.lastSettings)
         #expect(launchedSettings.fontSize == 17)
         #expect(!launchedSettings.mouseReportingEnabled)
+        let launchedStartupSettings = try #require(launcher.lastStartupSettings)
+        #expect(launchedStartupSettings.cursorStyle == .steadyUnderline)
+        #expect(launchedStartupSettings.tabWidth == 4)
+        #expect(!launchedStartupSettings.sixelSupportEnabled)
     }
 }
