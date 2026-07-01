@@ -3,28 +3,46 @@ import Foundation
 import SwiftTerm
 
 @MainActor
+protocol TerminalRendererControlling: AnyObject {
+    var metalBufferingMode: MetalBufferingMode { get set }
+    var isUsingMetalRenderer: Bool { get }
+    func setUseMetal(_ enabled: Bool) throws
+}
+
+extension LocalProcessTerminalView: TerminalRendererControlling {}
+
+@MainActor
 class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProcessTerminalViewDelegate {
     private let terminalView: LocalProcessTerminalView
     private var settings: TerminalSessionSettings
     private let startupSettings: TerminalStartupSettings
+    private let rendererController: any TerminalRendererControlling
     private let processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)?
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
+    private var currentRendererStatus = TerminalRendererStatus.defaults
 
     var view: NSView {
         return terminalView
     }
 
+    var rendererStatus: TerminalRendererStatus {
+        currentRendererStatus
+    }
+
     init(
         settings: TerminalSessionSettings = .defaults,
         startupSettings: TerminalStartupSettings = .defaults,
+        rendererSettings: TerminalRendererSettings = .defaults,
         terminalView: LocalProcessTerminalView = LocalProcessTerminalView(frame: .zero),
+        rendererController: (any TerminalRendererControlling)? = nil,
         processStarter: ((LocalProcessTerminalView, TerminalLaunchRequest) -> Void)? = nil,
         onLog: ((String, LogLevel) -> Void)? = nil,
         onTerminate: ((Int32?) -> Void)? = nil
     ) {
         self.settings = settings
         self.startupSettings = startupSettings
+        self.rendererController = rendererController ?? terminalView
         self.processStarter = processStarter
         self.onLog = onLog
         self.onTerminate = onTerminate
@@ -32,6 +50,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         super.init()
         self.terminalView.processDelegate = self
         applyStartupTerminalOptions()
+        applyRendererSettings(rendererSettings)
         applyTerminalSettings(settings, isDark: false)
     }
 
@@ -154,6 +173,32 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         refreshDisplay()
     }
 
+    func applyRendererSettings(_ settings: TerminalRendererSettings) {
+        rendererController.metalBufferingMode = settings.metalBufferingMode.swiftTermMode
+        do {
+            try rendererController.setUseMetal(settings.useMetalRenderer)
+            currentRendererStatus = TerminalRendererStatus(
+                preferredMetalRenderer: settings.useMetalRenderer,
+                isUsingMetalRenderer: rendererController.isUsingMetalRenderer,
+                lastRendererError: nil)
+        } catch let error as MetalError {
+            try? rendererController.setUseMetal(false)
+            currentRendererStatus = TerminalRendererStatus(
+                preferredMetalRenderer: settings.useMetalRenderer,
+                isUsingMetalRenderer: rendererController.isUsingMetalRenderer,
+                lastRendererError: error.description)
+            onLog?("Metal renderer fallback engaged: \(error.description)", .warning)
+        } catch {
+            try? rendererController.setUseMetal(false)
+            currentRendererStatus = TerminalRendererStatus(
+                preferredMetalRenderer: settings.useMetalRenderer,
+                isUsingMetalRenderer: rendererController.isUsingMetalRenderer,
+                lastRendererError: error.localizedDescription)
+            onLog?("Metal renderer fallback engaged: \(error.localizedDescription)", .warning)
+        }
+        refreshDisplay()
+    }
+
     func isDarkMode(_ isDark: Bool) {
         applyTheme(isDark: isDark)
     }
@@ -216,6 +261,17 @@ extension TerminalCursorStylePreference {
             .blinkBar
         case .steadyBar:
             .steadyBar
+        }
+    }
+}
+
+extension TerminalMetalBufferingModePreference {
+    fileprivate var swiftTermMode: MetalBufferingMode {
+        switch self {
+        case .perRowPersistent:
+            .perRowPersistent
+        case .perFrameAggregated:
+            .perFrameAggregated
         }
     }
 }

@@ -58,6 +58,20 @@ enum TerminalAnsi256PaletteStrategyPreference: String, CaseIterable, Codable, Se
     }
 }
 
+enum TerminalMetalBufferingModePreference: String, CaseIterable, Codable, Sendable {
+    case perRowPersistent
+    case perFrameAggregated
+
+    var label: String {
+        switch self {
+        case .perRowPersistent:
+            "Per Row Persistent"
+        case .perFrameAggregated:
+            "Per Frame Aggregated"
+        }
+    }
+}
+
 struct OrbitCockpitSettings: Equatable, Codable, Sendable {
     struct Terminal: Equatable, Codable, Sendable {
         var fontSize: Double = 12
@@ -81,6 +95,7 @@ struct OrbitCockpitSettings: Equatable, Codable, Sendable {
 
     struct Advanced: Equatable, Codable, Sendable {
         var preferGPURenderer: Bool = true
+        var metalBufferingMode: TerminalMetalBufferingModePreference = .perRowPersistent
         var scrollbackLineLimit: Int = 10_000
         var cursorStyle: TerminalCursorStylePreference = .blinkBlock
         var termName: String = "xterm-256color"
@@ -140,6 +155,26 @@ struct TerminalStartupSettings: Equatable, Sendable {
         ansi256PaletteStrategy: OrbitCockpitSettings.defaults.advanced.ansi256PaletteStrategy)
 }
 
+struct TerminalRendererSettings: Equatable, Sendable {
+    var useMetalRenderer: Bool
+    var metalBufferingMode: TerminalMetalBufferingModePreference
+
+    static let defaults = TerminalRendererSettings(
+        useMetalRenderer: OrbitCockpitSettings.defaults.advanced.preferGPURenderer,
+        metalBufferingMode: OrbitCockpitSettings.defaults.advanced.metalBufferingMode)
+}
+
+struct TerminalRendererStatus: Equatable, Sendable {
+    var preferredMetalRenderer: Bool
+    var isUsingMetalRenderer: Bool
+    var lastRendererError: String?
+
+    static let defaults = TerminalRendererStatus(
+        preferredMetalRenderer: TerminalRendererSettings.defaults.useMetalRenderer,
+        isUsingMetalRenderer: false,
+        lastRendererError: nil)
+}
+
 extension OrbitCockpitSettings {
     /// The explicit subset of terminal settings that Orbit Cockpit supports
     /// both for new sessions and live application to running SwiftTerm views.
@@ -166,6 +201,13 @@ extension OrbitCockpitSettings {
             screenReaderMode: advanced.screenReaderMode,
             sixelSupportEnabled: advanced.sixelSupportEnabled,
             ansi256PaletteStrategy: advanced.ansi256PaletteStrategy)
+    }
+
+    /// Runtime-safe renderer settings that can be applied to existing SwiftTerm views.
+    var terminalRendererSettings: TerminalRendererSettings {
+        TerminalRendererSettings(
+            useMetalRenderer: advanced.preferGPURenderer,
+            metalBufferingMode: advanced.metalBufferingMode)
     }
 }
 
@@ -195,6 +237,10 @@ final class OrbitCockpitSettingsStore: ObservableObject {
 
     var terminalStartupSettings: TerminalStartupSettings {
         settings.terminalStartupSettings
+    }
+
+    var terminalRendererSettings: TerminalRendererSettings {
+        settings.terminalRendererSettings
     }
 
     func binding<Value>(_ keyPath: WritableKeyPath<OrbitCockpitSettings, Value>) -> Binding<Value> {

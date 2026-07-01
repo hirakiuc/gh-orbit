@@ -456,6 +456,7 @@ protocol TerminalSessionLaunching {
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
         startupSettings: TerminalStartupSettings,
+        rendererSettings: TerminalRendererSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
@@ -468,6 +469,7 @@ struct SwiftTermSessionLauncher: TerminalSessionLaunching {
         request: TerminalLaunchRequest,
         settings: TerminalSessionSettings,
         startupSettings: TerminalStartupSettings,
+        rendererSettings: TerminalRendererSettings,
         isDark: Bool,
         onLog: ((String, LogLevel) -> Void)?,
         onTerminate: @escaping (Int32?) -> Void
@@ -475,6 +477,7 @@ struct SwiftTermSessionLauncher: TerminalSessionLaunching {
         let adapter = SwiftTermAdapter(
             settings: settings,
             startupSettings: startupSettings,
+            rendererSettings: rendererSettings,
             onLog: onLog,
             onTerminate: onTerminate)
         adapter.isDarkMode(isDark)
@@ -531,6 +534,14 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
             }
             .store(in: &cancellables)
 
+        settingsStore.$settings
+            .map(\.terminalRendererSettings)
+            .removeDuplicates()
+            .sink { [weak self] settings in
+                self?.applyRendererSettingsToRunningSessions(settings)
+            }
+            .store(in: &cancellables)
+
         self.engineManager = newManager
     }
 
@@ -565,6 +576,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
             request: request,
             settings: settingsStore.terminalSessionSettings,
             startupSettings: settingsStore.terminalStartupSettings,
+            rendererSettings: settingsStore.terminalRendererSettings,
             isDark: isDark,
             onLog: onLog,
             onTerminate: onTerminate
@@ -574,6 +586,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     func installSession(_ session: TerminalProcessSession, for name: String, state: TerminalPaneState = .running) {
         guard !name.hasPrefix(Self.workspacePanePrefix) else { return }
         panes[name] = TerminalPaneSession(state: state, session: session)
+        session.engine.applyRendererSettings(settingsStore.terminalRendererSettings)
         session.engine.applyTerminalSettings(settingsStore.terminalSessionSettings, isDark: isDark)
     }
 
@@ -586,6 +599,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     func installWorkspaceSession(_ session: TerminalProcessSession, for name: String) -> Bool {
         guard name.hasPrefix(Self.workspacePanePrefix), panes[name] != nil else { return false }
         panes[name] = TerminalPaneSession(state: .running, session: session)
+        session.engine.applyRendererSettings(settingsStore.terminalRendererSettings)
         session.engine.applyTerminalSettings(settingsStore.terminalSessionSettings, isDark: isDark)
         return true
     }
@@ -593,6 +607,12 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
     private func applySettingsToRunningSessions(_ settings: TerminalSessionSettings) {
         for pane in panes.values {
             pane.session?.engine.applyTerminalSettings(settings, isDark: isDark)
+        }
+    }
+
+    private func applyRendererSettingsToRunningSessions(_ settings: TerminalRendererSettings) {
+        for pane in panes.values {
+            pane.session?.engine.applyRendererSettings(settings)
         }
     }
 

@@ -92,10 +92,24 @@ struct OrbitCockpitSettingsView: View {
             Form {
                 Section {
                     Toggle(
-                        "Prefer GPU rendering when available", isOn: settingsStore.binding(\.advanced.preferGPURenderer)
+                        "Use Metal renderer when available",
+                        isOn: settingsStore.binding(\.advanced.preferGPURenderer)
                     )
+
+                    Picker(
+                        "Metal Buffering Mode",
+                        selection: settingsStore.binding(\.advanced.metalBufferingMode)
+                    ) {
+                        ForEach(TerminalMetalBufferingModePreference.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
                 } header: {
                     Text("Rendering")
+                } footer: {
+                    Text(
+                        "Renderer settings apply to running panes immediately when SwiftTerm can switch safely. If Metal activation fails, the pane stays usable on the CoreGraphics fallback path."
+                    )
                 }
 
                 Section {

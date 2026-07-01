@@ -23,6 +23,12 @@ protocol OrbitTerminalEngine: AnyObject {
     /// Applies the live-supported terminal settings to an existing terminal view.
     func applyTerminalSettings(_ settings: TerminalSessionSettings, isDark: Bool)
 
+    /// Applies runtime-safe renderer settings to an existing terminal view.
+    func applyRendererSettings(_ settings: TerminalRendererSettings)
+
+    /// Reports the observed renderer status for this terminal view.
+    var rendererStatus: TerminalRendererStatus { get }
+
     /// Sets the terminal theme (e.g., Light or Dark).
     func isDarkMode(_ isDark: Bool)
 }
