@@ -518,8 +518,8 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
             .store(in: &cancellables)
 
         settingsStore.$settings
-            .sink { [weak self] _ in
-                self?.applySettingsToRunningSessions()
+            .sink { [weak self] settings in
+                self?.applySettingsToRunningSessions(settings.terminalSessionSettings)
             }
             .store(in: &cancellables)
 
@@ -528,7 +528,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
 
     func updateTheme(isDark: Bool) {
         self.isDark = isDark
-        applySettingsToRunningSessions()
+        applySettingsToRunningSessions(settingsStore.terminalSessionSettings)
     }
 
     func state(for name: String) -> TerminalPaneState? {
@@ -581,8 +581,7 @@ class TerminalManager: ObservableObject, TerminalSessionCreating {
         return true
     }
 
-    private func applySettingsToRunningSessions() {
-        let settings = settingsStore.terminalSessionSettings
+    private func applySettingsToRunningSessions(_ settings: TerminalSessionSettings) {
         for pane in panes.values {
             pane.session?.engine.applyTerminalSettings(settings, isDark: isDark)
         }
