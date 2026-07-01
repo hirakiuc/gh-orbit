@@ -21,6 +21,8 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     private let onLog: ((String, LogLevel) -> Void)?
     private let onTerminate: ((Int32?) -> Void)?
     private var currentRendererStatus = TerminalRendererStatus.defaults
+    private var rendererSettings: TerminalRendererSettings
+    private var isAttachedToWindow = false
 
     var view: NSView {
         return terminalView
@@ -42,6 +44,7 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     ) {
         self.settings = settings
         self.startupSettings = startupSettings
+        self.rendererSettings = rendererSettings
         self.rendererController = rendererController ?? terminalView
         self.processStarter = processStarter
         self.onLog = onLog
@@ -50,7 +53,6 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
         super.init()
         self.terminalView.processDelegate = self
         applyStartupTerminalOptions()
-        applyRendererSettings(rendererSettings)
         applyTerminalSettings(settings, isDark: false)
     }
 
@@ -174,7 +176,15 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
     }
 
     func applyRendererSettings(_ settings: TerminalRendererSettings) {
+        rendererSettings = settings
         rendererController.metalBufferingMode = settings.metalBufferingMode.swiftTermMode
+        guard isAttachedToWindow || !settings.useMetalRenderer else {
+            currentRendererStatus = TerminalRendererStatus(
+                preferredMetalRenderer: settings.useMetalRenderer,
+                isUsingMetalRenderer: rendererController.isUsingMetalRenderer,
+                lastRendererError: nil)
+            return
+        }
         do {
             try rendererController.setUseMetal(settings.useMetalRenderer)
             currentRendererStatus = TerminalRendererStatus(
@@ -197,6 +207,12 @@ class SwiftTermAdapter: NSObject, OrbitTerminalEngine, @preconcurrency LocalProc
             onLog?("Metal renderer fallback engaged: \(error.localizedDescription)", .warning)
         }
         refreshDisplay()
+    }
+
+    func didAttachToWindow() {
+        guard !isAttachedToWindow else { return }
+        isAttachedToWindow = true
+        applyRendererSettings(rendererSettings)
     }
 
     func isDarkMode(_ isDark: Bool) {

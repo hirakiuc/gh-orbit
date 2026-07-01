@@ -162,13 +162,20 @@ struct SwiftTermAdapterTests {
                 metalBufferingMode: .perFrameAggregated))
 
         #expect(Self.isPerFrameAggregated(rendererController.metalBufferingMode))
-        #expect(rendererController.setUseMetalCalls == [false, true])
+        #expect(rendererController.setUseMetalCalls.isEmpty)
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(!adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == nil)
+
+        adapter.didAttachToWindow()
+
+        #expect(rendererController.setUseMetalCalls == [true])
         #expect(adapter.rendererStatus.preferredMetalRenderer)
         #expect(adapter.rendererStatus.isUsingMetalRenderer)
         #expect(adapter.rendererStatus.lastRendererError == nil)
     }
 
-    @Test("Renderer settings preserve fallback when Metal activation fails")
+    @Test("Renderer settings preserve fallback when Metal activation fails after attachment")
     @MainActor
     func testApplyRendererSettingsFallbackOnMetalError() async throws {
         let rendererController = StubRendererController()
@@ -186,7 +193,14 @@ struct SwiftTermAdapterTests {
                 metalBufferingMode: .perFrameAggregated))
 
         #expect(Self.isPerFrameAggregated(rendererController.metalBufferingMode))
-        #expect(rendererController.setUseMetalCalls == [false, true, false])
+        #expect(rendererController.setUseMetalCalls.isEmpty)
+        #expect(adapter.rendererStatus.preferredMetalRenderer)
+        #expect(!adapter.rendererStatus.isUsingMetalRenderer)
+        #expect(adapter.rendererStatus.lastRendererError == nil)
+
+        adapter.didAttachToWindow()
+
+        #expect(rendererController.setUseMetalCalls == [true, false])
         #expect(adapter.rendererStatus.preferredMetalRenderer)
         #expect(!adapter.rendererStatus.isUsingMetalRenderer)
         #expect(adapter.rendererStatus.lastRendererError == MetalError.deviceUnavailable.description)

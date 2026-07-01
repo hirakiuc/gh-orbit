@@ -76,6 +76,7 @@ class ThrottledContainerView: NSView {
     }
 
     private func resumeRendering() {
+        engine.didAttachToWindow()
         engine.view.isHidden = false
     }
 }

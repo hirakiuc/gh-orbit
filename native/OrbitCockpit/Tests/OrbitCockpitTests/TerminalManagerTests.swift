@@ -35,6 +35,8 @@ final class MockTerminalEngine: OrbitTerminalEngine {
             lastRendererError: nil)
     }
 
+    func didAttachToWindow() {}
+
     func isDarkMode(_ isDark: Bool) {
         isDarkModeCalls.append(isDark)
     }
