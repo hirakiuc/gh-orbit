@@ -66,4 +66,18 @@ struct OrbitCockpitSettingsStoreTests {
         let reloaded = OrbitCockpitSettingsStore(defaults: defaults)
         #expect(reloaded.settings == .defaults)
     }
+
+    @Test("Behavior-oriented settings projections stay distinct")
+    func testSettingsProjectionsReflectBehaviorBoundaries() throws {
+        let defaults = try #require(UserDefaults(suiteName: "OrbitCockpitTests.Settings.\(UUID().uuidString)"))
+        let store = OrbitCockpitSettingsStore(defaults: defaults)
+
+        store.binding(\.terminal.fontSize).wrappedValue = 16
+        store.binding(\.advanced.cursorStyle).wrappedValue = .steadyUnderline
+        store.binding(\.advanced.preferGPURenderer).wrappedValue = false
+
+        #expect(store.terminalSessionSettings.fontSize == 16)
+        #expect(store.terminalStartupSettings.cursorStyle == .steadyUnderline)
+        #expect(!store.terminalRendererSettings.useMetalRenderer)
+    }
 }

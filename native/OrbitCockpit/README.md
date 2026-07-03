@@ -12,6 +12,16 @@ The Cockpit is designed to be a "host" for terminal-based workflows. It uses a p
 - **SwiftUI Wrapper**: The native navigation, notifications, and windowing logic.
 - **SwiftTerm**: The initial high-fidelity terminal emulator engine.
 
+## Settings Semantics
+
+Orbit Cockpit’s native settings are documented by application behavior rather than by raw SwiftTerm option names.
+
+- Live-applied settings update already-running panes immediately.
+- Startup settings apply to new terminal sessions only.
+- Renderer settings apply to running panes when SwiftTerm can switch safely, with CoreGraphics fallback preserved if Metal activation fails.
+
+See [Docs/SettingsBehavior.md](Docs/SettingsBehavior.md) for the current supported settings surface and its application semantics.
+
 ## Development
 
 ### Prerequisites
