@@ -1,11 +1,26 @@
 import SwiftUI
 
+enum OrbitCockpitSettingsSection: Hashable, CaseIterable {
+    case terminal
+    case appearance
+    case linksAndInput
+    case advanced
+}
+
 @MainActor
 struct OrbitCockpitSettingsView: View {
+    static let minimumWindowWidth: CGFloat = 700
+    static let minimumWindowHeight: CGFloat = 420
+
     @EnvironmentObject private var settingsStore: OrbitCockpitSettingsStore
+    @State var selectedSection: OrbitCockpitSettingsSection
+
+    init(initialSection: OrbitCockpitSettingsSection = .terminal) {
+        _selectedSection = State(initialValue: initialSection)
+    }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedSection) {
             Form {
                 Section {
                     Stepper(value: settingsStore.binding(\.terminal.fontSize), in: 10...24, step: 1) {
@@ -38,6 +53,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Terminal", systemImage: "terminal")
             }
+            .tag(OrbitCockpitSettingsSection.terminal)
 
             Form {
                 Section {
@@ -65,6 +81,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Appearance", systemImage: "paintpalette")
             }
+            .tag(OrbitCockpitSettingsSection.appearance)
 
             Form {
                 Section {
@@ -88,6 +105,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Links & Input", systemImage: "link")
             }
+            .tag(OrbitCockpitSettingsSection.linksAndInput)
 
             Form {
                 Section {
@@ -172,14 +190,19 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Advanced", systemImage: "gearshape.2")
             }
+            .tag(OrbitCockpitSettingsSection.advanced)
         }
-        .frame(minWidth: 560, minHeight: 360)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+        .frame(minWidth: Self.minimumWindowWidth, minHeight: Self.minimumWindowHeight)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
                 Button("Reset to Defaults") {
                     settingsStore.resetToDefaults()
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.bar)
         }
     }
 }
