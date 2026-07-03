@@ -2,10 +2,18 @@ import SwiftUI
 
 @MainActor
 struct OrbitCockpitSettingsView: View {
+    private enum SettingsSection: Hashable {
+        case terminal
+        case appearance
+        case linksAndInput
+        case advanced
+    }
+
     @EnvironmentObject private var settingsStore: OrbitCockpitSettingsStore
+    @State private var selectedSection: SettingsSection = .terminal
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedSection) {
             Form {
                 Section {
                     Stepper(value: settingsStore.binding(\.terminal.fontSize), in: 10...24, step: 1) {
@@ -38,6 +46,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Terminal", systemImage: "terminal")
             }
+            .tag(SettingsSection.terminal)
 
             Form {
                 Section {
@@ -65,6 +74,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Appearance", systemImage: "paintpalette")
             }
+            .tag(SettingsSection.appearance)
 
             Form {
                 Section {
@@ -88,6 +98,7 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Links & Input", systemImage: "link")
             }
+            .tag(SettingsSection.linksAndInput)
 
             Form {
                 Section {
@@ -172,14 +183,19 @@ struct OrbitCockpitSettingsView: View {
             .tabItem {
                 Label("Advanced", systemImage: "gearshape.2")
             }
+            .tag(SettingsSection.advanced)
         }
-        .frame(minWidth: 560, minHeight: 360)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+        .frame(minWidth: 700, minHeight: 420)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
                 Button("Reset to Defaults") {
                     settingsStore.resetToDefaults()
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.bar)
         }
     }
 }
