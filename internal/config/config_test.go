@@ -205,7 +205,7 @@ keys:
 			{name: "absent inherits default", want: []string{"x"}},
 			{name: "explicit empty disables", binding: "  toggle_handled: []\n", want: []string{}},
 			{name: "explicit custom", binding: "  toggle_handled: [\"h\"]\n", want: []string{"h"}},
-			{name: "existing binding wins collision", binding: "  toggle_handled: [\"m\"]\n", want: []string{}},
+			{name: "explicit collision preserves configured intent", binding: "  toggle_handled: [\"m\"]\n", want: []string{"m"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -215,6 +215,20 @@ keys:
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, cfg.Keys.ToggleHandled)
 			})
+		}
+	})
+
+	t.Run("Handled Binding Collisions Round Trip Exactly", func(t *testing.T) {
+		for _, binding := range []string{"[\"m\"]", "[\"m\", \"h\"]"} {
+			content := "version: 1\nkeys:\n  toggle_handled: " + binding + "\n"
+			require.NoError(t, os.WriteFile(expectedPath, []byte(content), 0o600))
+			cfg, err := Load()
+			require.NoError(t, err)
+			want := append([]string(nil), cfg.Keys.ToggleHandled...)
+			require.NoError(t, cfg.Save())
+			reloaded, err := Load()
+			require.NoError(t, err)
+			assert.Equal(t, want, reloaded.Keys.ToggleHandled)
 		}
 	})
 }

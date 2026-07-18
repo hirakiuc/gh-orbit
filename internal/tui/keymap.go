@@ -35,6 +35,7 @@ type KeyMap struct {
 // NewKeyMap returns keybindings initialized from configuration.
 func NewKeyMap(cfg *config.Config) KeyMap {
 	k := cfg.Keys
+	handledKeys := availableHandledKeys(k)
 	return KeyMap{
 		Sync: key.NewBinding(
 			key.WithKeys(k.Sync...),
@@ -72,7 +73,7 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 			key.WithKeys(k.ToggleRead...),
 			key.WithHelp(k.ToggleRead[0], "mark read/unread"),
 		),
-		ToggleHandled: optionalBinding(k.ToggleHandled, "mark handled/unhandled"),
+		ToggleHandled: optionalBinding(handledKeys, "mark handled/unhandled"),
 		NextTab: key.NewBinding(
 			key.WithKeys(k.NextTab...),
 			key.WithHelp(k.NextTab[0], "next tab"),
@@ -126,6 +127,30 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 			key.WithHelp(k.Help[0], "help"),
 		),
 	}
+}
+
+func availableHandledKeys(keys config.KeyMapConfig) []string {
+	used := make(map[string]struct{})
+	existing := [][]string{
+		keys.Sync, keys.PriorityUp, keys.PriorityDown, keys.PriorityNone,
+		keys.Inbox, keys.Unread, keys.Triaged, keys.All, keys.CopyURL,
+		keys.ToggleRead, keys.NextTab, keys.PrevTab, keys.CheckoutPR,
+		keys.StartReviewWorkspace, keys.ViewContextual, keys.OpenBrowser,
+		keys.ToggleDetail, keys.Back, keys.Quit, keys.FilterPR,
+		keys.FilterIssue, keys.FilterDiscussion, keys.Help,
+	}
+	for _, bindings := range existing {
+		for _, binding := range bindings {
+			used[binding] = struct{}{}
+		}
+	}
+	filtered := make([]string, 0, len(keys.ToggleHandled))
+	for _, binding := range keys.ToggleHandled {
+		if _, collision := used[binding]; !collision {
+			filtered = append(filtered, binding)
+		}
+	}
+	return filtered
 }
 
 func optionalBinding(keys []string, description string) key.Binding {

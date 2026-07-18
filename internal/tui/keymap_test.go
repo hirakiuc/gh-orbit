@@ -21,4 +21,13 @@ func TestKeyMap_HandledBindingHelpAndDisablement(t *testing.T) {
 	disabled := NewKeyMap(cfg)
 	assert.False(t, disabled.ToggleHandled.Enabled())
 	assert.Empty(t, disabled.ToggleHandled.Keys())
+
+	cfg.Keys.ToggleHandled = []string{"m", "h"}
+	partialCollision := NewKeyMap(cfg)
+	assert.Equal(t, []string{"h"}, partialCollision.ToggleHandled.Keys())
+	assert.Equal(t, []string{"m", "h"}, cfg.Keys.ToggleHandled, "runtime collision filtering must not mutate persisted intent")
+
+	cfg.Keys.ToggleHandled = []string{"m"}
+	fullyCollided := NewKeyMap(cfg)
+	assert.False(t, fullyCollided.ToggleHandled.Enabled())
 }

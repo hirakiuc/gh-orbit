@@ -359,11 +359,12 @@ func runTUI() error {
 
 			if err == nil {
 				env.logger.Info("connected to headless engine", "server", initResp.ServerInfo.Name)
-				if err := requireIndependentMutationTools(connectCtx, mcpClient); err != nil {
-					_ = mcpClient.Close()
-					return fmt.Errorf("connected engine is incompatible; restart or upgrade the engine: %w", err)
+				var adapter *engine.MCPAdapter
+				if err := prepareConnectedMutationClient(connectCtx, mcpClient, mcpClient.Close, func() {
+					adapter = engine.NewMCPAdapter(mcpClient)
+				}); err != nil {
+					return err
 				}
-				adapter := engine.NewMCPAdapter(mcpClient)
 
 				user, err := adapter.ResolveUserID(connectCtx)
 				if err != nil {
@@ -407,6 +408,20 @@ func runTUI() error {
 
 type toolCapabilityClient interface {
 	ListTools(context.Context, mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+}
+
+func prepareConnectedMutationClient(
+	ctx context.Context,
+	capabilityClient toolCapabilityClient,
+	closeClient func() error,
+	onCompatible func(),
+) error {
+	if err := requireIndependentMutationTools(ctx, capabilityClient); err != nil {
+		_ = closeClient()
+		return fmt.Errorf("connected engine is incompatible; restart or upgrade the engine: %w", err)
+	}
+	onCompatible()
+	return nil
 }
 
 func requireIndependentMutationTools(ctx context.Context, capabilityClient toolCapabilityClient) error {

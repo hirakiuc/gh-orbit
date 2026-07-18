@@ -52,6 +52,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 // SetHandledByID changes only the local triage state and immediately reconciles
 // list/detail identity if the active filter removes the target.
 func (m *Model) SetHandledByID(id string, handled bool, previousIndex int) tea.Cmd {
+	before := append([]triage.NotificationWithState(nil), m.allNotifications...)
 	for idx, n := range m.allNotifications {
 		if n.GitHubID == id {
 			m.allNotifications[idx].IsHandledLocally = handled
@@ -65,7 +66,18 @@ func (m *Model) SetHandledByID(id string, handled bool, previousIndex int) tea.C
 	return m.submitMutationTask("handled:"+id, func(ctx context.Context) (mutationAppliedMsg, error) {
 		result, err := m.backend.SetHandled(ctx, id, handled)
 		if err != nil {
-			return mutationAppliedMsg{}, err
+			notifications, reloadErr := m.backend.ListNotifications(ctx)
+			if reloadErr != nil {
+				notifications = before
+			}
+			return mutationAppliedMsg{
+				notifications: notifications,
+				toast:         "Failed to update handled state",
+				err:           err,
+				targetID:      id,
+				previousIndex: previousIndex,
+				reconcileItem: true,
+			}, nil
 		}
 		return mutationAppliedMsg{
 			notifications: result.Notifications,

@@ -405,6 +405,15 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		t.Helper()
 		return readJSONLine(t, conn, reader, timeout)
 	}
+	assertNoNotification := func(t *testing.T, conn net.Conn, reader *bufio.Reader) {
+		t.Helper()
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+		_, err := reader.ReadString('\n')
+		var netErr net.Error
+		require.ErrorAs(t, err, &netErr)
+		assert.True(t, netErr.Timeout())
+		require.NoError(t, conn.SetReadDeadline(time.Time{}))
+	}
 
 	t.Run("direct notification events send coarse resource invalidation", func(t *testing.T) {
 		srv, _, _ := newTestServer(t)
@@ -458,6 +467,62 @@ func TestMCPServer_MutationToolsNotifyUDSClients(t *testing.T) {
 		notification := readNotification(t, clientConn, reader, time.Second)
 		require.Contains(t, response, "result")
 		assert.Equal(t, mcp.MethodNotificationResourcesListChanged, notification["method"])
+	})
+
+	t.Run("invalid independent requests do not call backend or notify", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			tool string
+			args map[string]any
+		}{
+			{name: "set_read missing boolean", tool: "set_read", args: map[string]any{"id": "1"}},
+			{name: "set_handled wrong boolean type", tool: "set_handled", args: map[string]any{"id": "1", "handled": "true"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				srv, mockRepo, _ := newTestServer(t)
+				sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+				defer cleanup()
+
+				response := callTool(t, srv, sessionCtx, 2, tc.tool, tc.args)
+				result, ok := response["result"].(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, true, result["isError"])
+				mockRepo.AssertNotCalled(t, "ListNotifications", mock.Anything)
+				mockRepo.AssertNotCalled(t, "SetReadLocally", mock.Anything, mock.Anything, mock.Anything)
+				mockRepo.AssertNotCalled(t, "SetHandledLocally", mock.Anything, mock.Anything, mock.Anything)
+				assertNoNotification(t, clientConn, reader)
+			})
+		}
+	})
+
+	t.Run("independent local failures do not notify", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			tool string
+			args map[string]any
+			set  func(*mocks.MockRepository)
+		}{
+			{name: "set_read unknown id", tool: "set_read", args: map[string]any{"id": "missing", "read": true}, set: func(repo *mocks.MockRepository) {
+				repo.EXPECT().SetReadLocally(mock.Anything, "missing", true).Return(types.ErrNotificationNotFound).Once()
+			}},
+			{name: "set_handled unknown id", tool: "set_handled", args: map[string]any{"id": "missing", "handled": true}, set: func(repo *mocks.MockRepository) {
+				repo.EXPECT().SetHandledLocally(mock.Anything, "missing", true).Return(types.ErrNotificationNotFound).Once()
+			}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				srv, mockRepo, _ := newTestServer(t)
+				sessionCtx, clientConn, reader, cleanup := newSession(t, srv)
+				defer cleanup()
+				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(nil, nil).Twice()
+				tc.set(mockRepo)
+
+				response := callTool(t, srv, sessionCtx, 2, tc.tool, tc.args)
+				result, ok := response["result"].(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, true, result["isError"])
+				assertNoNotification(t, clientConn, reader)
+			})
+		}
 	})
 
 	t.Run("mark_read remote failure still notifies after local commit", func(t *testing.T) {

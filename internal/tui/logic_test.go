@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +17,20 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type hardHandledErrorBackend struct {
+	types.TUIBackend
+	notifications []triage.NotificationWithState
+	reloadErr     error
+}
+
+func (b hardHandledErrorBackend) SetHandled(context.Context, string, bool) (types.HandledUpdateResult, error) {
+	return types.HandledUpdateResult{}, errors.New("connected transport failed")
+}
+
+func (b hardHandledErrorBackend) ListNotifications(context.Context) ([]triage.NotificationWithState, error) {
+	return append([]triage.NotificationWithState(nil), b.notifications...), b.reloadErr
+}
 
 // keyPress is a helper to create a KeyPressMsg for tests.
 func keyPress(s string) tea.KeyPressMsg {
@@ -712,6 +727,48 @@ func TestModel_SetHandledByID_OptimisticRemovalAndRollbackPreserveIdentity(t *te
 	require.True(t, ok)
 	assert.Equal(t, "target", selected.GitHubID, "rollback reselects the restored target")
 	assert.Equal(t, StateList, m.state, "rollback must not reopen detail")
+}
+
+func TestModel_SetHandledByID_HardTransportErrorRollsBackOptimisticRemoval(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		state       AppState
+		targetIndex int
+		reloadErr   error
+	}{
+		{name: "detail next-row selection with authoritative reload", state: StateDetail, targetIndex: 1},
+		{name: "list last-row selection with snapshot fallback", state: StateList, targetIndex: 2, reloadErr: errors.New("reload failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel(t)
+			m.traffic = nil
+			m.config.Notifications.MaxVisibleAgeDays = 0
+			persisted := []triage.NotificationWithState{
+				{Notification: triage.Notification{GitHubID: "first", UpdatedAt: time.Now()}},
+				{Notification: triage.Notification{GitHubID: "middle", UpdatedAt: time.Now()}, State: triage.State{IsReadLocally: true}},
+				{Notification: triage.Notification{GitHubID: "last", UpdatedAt: time.Now()}, State: triage.State{IsReadLocally: true}},
+			}
+			m.backend = hardHandledErrorBackend{notifications: persisted, reloadErr: tc.reloadErr}
+			m.allNotifications = append([]triage.NotificationWithState(nil), persisted...)
+			m.applyFilters()
+			m.listView.list.Select(tc.targetIndex)
+			m.state = tc.state
+			targetID := persisted[tc.targetIndex].GitHubID
+
+			msg, ok := executeCmd(m.SetHandledByID(targetID, true, tc.targetIndex)).(mutationAppliedMsg)
+			require.True(t, ok)
+			m.Transition(msg, tc.targetIndex)
+
+			selected, ok := m.selectedNotification()
+			require.True(t, ok)
+			assert.Equal(t, targetID, selected.GitHubID)
+			assert.True(t, selected.IsReadLocally, "handled rollback must preserve read state")
+			assert.False(t, selected.IsHandledLocally)
+			assert.Equal(t, StateList, m.state, "hard-error rollback must not reopen detail")
+			assert.Contains(t, msg.toast, "Failed to update handled state")
+			assert.Error(t, msg.err)
+		})
+	}
 }
 
 func TestModel_Transition_DetailRefreshStartsFetchingViaAction(t *testing.T) {

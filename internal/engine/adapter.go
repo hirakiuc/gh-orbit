@@ -250,21 +250,6 @@ func (a *MCPAdapter) SetHandled(ctx context.Context, id string, handled bool) (t
 	return types.HandledUpdateResult{Status: types.HandledUpdateSuccess, Notifications: notifications}, nil
 }
 
-func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
-	_, err := a.SetRead(ctx, id, isRead)
-	return err
-}
-
-func (a *MCPAdapter) SetReadLocally(ctx context.Context, id string, isRead bool) error {
-	_, err := a.SetRead(ctx, id, isRead)
-	return err
-}
-
-func (a *MCPAdapter) SetHandledLocally(ctx context.Context, id string, handled bool) error {
-	_, err := a.SetHandled(ctx, id, handled)
-	return err
-}
-
 func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) (types.PriorityUpdateResult, error) {
 	before, _ := a.ListNotifications(ctx)
 

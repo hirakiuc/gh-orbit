@@ -242,28 +242,6 @@ func normalizeKeyMap(keys *KeyMapConfig) {
 		keys.Triaged = []string{"2"}
 		keys.All = []string{"3"}
 	}
-
-	used := make(map[string]struct{})
-	existing := [][]string{
-		keys.Sync, keys.PriorityUp, keys.PriorityDown, keys.PriorityNone,
-		keys.Inbox, keys.Unread, keys.Triaged, keys.All, keys.CopyURL,
-		keys.ToggleRead, keys.NextTab, keys.PrevTab, keys.CheckoutPR,
-		keys.StartReviewWorkspace, keys.ViewContextual, keys.OpenBrowser,
-		keys.ToggleDetail, keys.Back, keys.Quit, keys.FilterPR,
-		keys.FilterIssue, keys.FilterDiscussion, keys.Help,
-	}
-	for _, bindings := range existing {
-		for _, binding := range bindings {
-			used[binding] = struct{}{}
-		}
-	}
-	filtered := keys.ToggleHandled[:0]
-	for _, binding := range keys.ToggleHandled {
-		if _, collision := used[binding]; !collision {
-			filtered = append(filtered, binding)
-		}
-	}
-	keys.ToggleHandled = filtered
 }
 
 func yamlMappingHasKey(data []byte, parent, key string) (bool, error) {
