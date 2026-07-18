@@ -40,11 +40,11 @@ func (_m *MockCommandExecutor) EXPECT() *MockCommandExecutor_Expecter {
 // Execute provides a mock function for the type MockCommandExecutor
 func (_mock *MockCommandExecutor) Execute(ctx context.Context, name string, args ...string) ([]byte, error) {
 	// string
-	_va := make([]interface{}, len(args))
+	_va := make([]any, len(args))
 	for _i := range args {
 		_va[_i] = args[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, name)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -82,9 +82,9 @@ type MockCommandExecutor_Execute_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - args ...string
-func (_e *MockCommandExecutor_Expecter) Execute(ctx interface{}, name interface{}, args ...interface{}) *MockCommandExecutor_Execute_Call {
+func (_e *MockCommandExecutor_Expecter) Execute(ctx any, name any, args ...any) *MockCommandExecutor_Execute_Call {
 	return &MockCommandExecutor_Execute_Call{Call: _e.mock.On("Execute",
-		append([]interface{}{ctx, name}, args...)...)}
+		append([]any{ctx, name}, args...)...)}
 }
 
 func (_c *MockCommandExecutor_Execute_Call) Run(run func(ctx context.Context, name string, args ...string)) *MockCommandExecutor_Execute_Call {
@@ -127,11 +127,11 @@ func (_c *MockCommandExecutor_Execute_Call) RunAndReturn(run func(ctx context.Co
 // Run provides a mock function for the type MockCommandExecutor
 func (_mock *MockCommandExecutor) Run(ctx context.Context, name string, args ...string) error {
 	// string
-	_va := make([]interface{}, len(args))
+	_va := make([]any, len(args))
 	for _i := range args {
 		_va[_i] = args[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, name)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -158,9 +158,9 @@ type MockCommandExecutor_Run_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - args ...string
-func (_e *MockCommandExecutor_Expecter) Run(ctx interface{}, name interface{}, args ...interface{}) *MockCommandExecutor_Run_Call {
+func (_e *MockCommandExecutor_Expecter) Run(ctx any, name any, args ...any) *MockCommandExecutor_Run_Call {
 	return &MockCommandExecutor_Run_Call{Call: _e.mock.On("Run",
-		append([]interface{}{ctx, name}, args...)...)}
+		append([]any{ctx, name}, args...)...)}
 }
 
 func (_c *MockCommandExecutor_Run_Call) Run(run func(ctx context.Context, name string, args ...string)) *MockCommandExecutor_Run_Call {

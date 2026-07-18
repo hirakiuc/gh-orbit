@@ -90,7 +90,7 @@ type MockFetcher_FetchNotifications_Call struct {
 //   - ctx context.Context
 //   - meta *models.SyncMeta
 //   - force bool
-func (_e *MockFetcher_Expecter) FetchNotifications(ctx interface{}, meta interface{}, force interface{}) *MockFetcher_FetchNotifications_Call {
+func (_e *MockFetcher_Expecter) FetchNotifications(ctx any, meta any, force any) *MockFetcher_FetchNotifications_Call {
 	return &MockFetcher_FetchNotifications_Call{Call: _e.mock.On("FetchNotifications", ctx, meta, force)}
 }
 

@@ -14,16 +14,22 @@ import (
 
 // CoreEngine coordinates all headless services of gh-orbit.
 type CoreEngine struct {
-	Config  *config.Config
-	Logger  *slog.Logger
-	Bus     *EventBus
-	DB      types.Repository
-	Client  github.Client
-	Backend types.TUIBackend
-	Sync    types.Syncer
-	Enrich  types.Enricher
-	Traffic types.TrafficController
-	Alert   api.Alerter
+	Config            *config.Config
+	Logger            *slog.Logger
+	Bus               *EventBus
+	DB                types.Repository
+	Client            github.Client
+	Backend           types.TUIBackend
+	legacyReadMutator legacyReadMutator
+	Sync              types.Syncer
+	Enrich            types.Enricher
+	Traffic           types.TrafficController
+	Alert             api.Alerter
+}
+
+// legacyReadMutator is consumed only by the deprecated MCP mark_read tool.
+type legacyReadMutator interface {
+	MarkReadLegacy(ctx context.Context, id string, read bool) (types.ReadUpdateResult, error)
 }
 
 type options struct {
@@ -164,16 +170,17 @@ func NewCoreEngine(
 	}
 
 	return &CoreEngine{
-		Config:  cfg,
-		Logger:  logger,
-		Bus:     bus,
-		DB:      database,
-		Client:  client,
-		Backend: appBackend,
-		Sync:    syncer,
-		Enrich:  enricher,
-		Traffic: traffic,
-		Alert:   alerter,
+		Config:            cfg,
+		Logger:            logger,
+		Bus:               bus,
+		DB:                database,
+		Client:            client,
+		Backend:           appBackend,
+		legacyReadMutator: appBackend,
+		Sync:              syncer,
+		Enrich:            enricher,
+		Traffic:           traffic,
+		Alert:             alerter,
 	}, nil
 }
 

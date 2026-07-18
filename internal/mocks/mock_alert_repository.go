@@ -74,7 +74,7 @@ type MockAlertRepository_GetBridgeHealth_Call struct {
 
 // GetBridgeHealth is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockAlertRepository_Expecter) GetBridgeHealth(ctx interface{}) *MockAlertRepository_GetBridgeHealth_Call {
+func (_e *MockAlertRepository_Expecter) GetBridgeHealth(ctx any) *MockAlertRepository_GetBridgeHealth_Call {
 	return &MockAlertRepository_GetBridgeHealth_Call{Call: _e.mock.On("GetBridgeHealth", ctx)}
 }
 
@@ -136,7 +136,7 @@ type MockAlertRepository_ListNotifications_Call struct {
 
 // ListNotifications is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockAlertRepository_Expecter) ListNotifications(ctx interface{}) *MockAlertRepository_ListNotifications_Call {
+func (_e *MockAlertRepository_Expecter) ListNotifications(ctx any) *MockAlertRepository_ListNotifications_Call {
 	return &MockAlertRepository_ListNotifications_Call{Call: _e.mock.On("ListNotifications", ctx)}
 }
 
@@ -188,7 +188,7 @@ type MockAlertRepository_UpdateBridgeHealth_Call struct {
 // UpdateBridgeHealth is a helper method to define mock.On call
 //   - ctx context.Context
 //   - h models.BridgeHealth
-func (_e *MockAlertRepository_Expecter) UpdateBridgeHealth(ctx interface{}, h interface{}) *MockAlertRepository_UpdateBridgeHealth_Call {
+func (_e *MockAlertRepository_Expecter) UpdateBridgeHealth(ctx any, h any) *MockAlertRepository_UpdateBridgeHealth_Call {
 	return &MockAlertRepository_UpdateBridgeHealth_Call{Call: _e.mock.On("UpdateBridgeHealth", ctx, h)}
 }
 

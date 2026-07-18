@@ -156,6 +156,10 @@ func (m *Model) transitionDetail(msg tea.Msg) []Action {
 					Force:       true,
 				})
 			}
+		case key.Matches(msg, m.keys.ToggleRead):
+			return m.handleToggleReadKey()
+		case key.Matches(msg, m.keys.ToggleHandled):
+			return m.handleToggleHandledKey()
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
 			m.help.ShowAll = m.showHelp
@@ -423,6 +427,46 @@ func (m *Model) restoreSelection(selectedID string) {
 	}
 }
 
+func (m *Model) selectNotificationByID(id string) bool {
+	for index, li := range m.listView.list.Items() {
+		if i, ok := li.(item); ok && i.notification.GitHubID == id {
+			m.listView.list.Select(index)
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) selectClosestIndex(previousIndex int) {
+	items := m.listView.list.Items()
+	if len(items) == 0 {
+		return
+	}
+	if previousIndex < 0 {
+		previousIndex = 0
+	}
+	if previousIndex >= len(items) {
+		previousIndex = len(items) - 1
+	}
+	m.listView.list.Select(previousIndex)
+}
+
+func (m *Model) reconcileHandledTarget(id string, previousIndex int, optimistic bool) {
+	if m.selectNotificationByID(id) {
+		if m.state == StateDetail {
+			m.refreshDetailView()
+		}
+		return
+	}
+
+	if m.state == StateDetail {
+		m.state = StateList
+	}
+	if optimistic || id != "" {
+		m.selectClosestIndex(previousIndex)
+	}
+}
+
 func (m *Model) isNotificationWithinVisibleAge(n triage.NotificationWithState, now time.Time) bool {
 	maxVisibleAgeDays := m.maxVisibleNotificationAgeDays()
 	if maxVisibleAgeDays == 0 || n.UpdatedAt.IsZero() {
@@ -551,6 +595,9 @@ func (m *Model) filterSelectedDetailRefreshCandidate(notifications []triage.Noti
 func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {
 	m.allNotifications = msg.notifications
 	m.applyFilters()
+	if msg.reconcileItem {
+		m.reconcileHandledTarget(msg.targetID, msg.previousIndex, false)
+	}
 	m.err = msg.err
 	if msg.toast == "" {
 		return nil
@@ -731,6 +778,8 @@ func (m *Model) handleNavigationKeys(msg tea.KeyMsg) []Action {
 		return m.handleToggleDetailKey()
 	case key.Matches(msg, m.keys.ToggleRead):
 		return m.handleToggleReadKey()
+	case key.Matches(msg, m.keys.ToggleHandled):
+		return m.handleToggleHandledKey()
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
 		m.help.ShowAll = m.showHelp
@@ -834,6 +883,24 @@ func (m *Model) handleToggleReadKey() []Action {
 
 	return []Action{
 		ActionMarkRead{ID: n.GitHubID, Read: newState},
+		ActionShowToast{Message: toast},
+	}
+}
+
+func (m *Model) handleToggleHandledKey() []Action {
+	n, ok := m.selectedNotification()
+	if !ok {
+		return nil
+	}
+
+	newState := !n.IsHandledLocally
+	toast := "Marked as unhandled"
+	if newState {
+		toast = "Marked as handled"
+	}
+
+	return []Action{
+		ActionSetHandled{ID: n.GitHubID, Handled: newState, PreviousIndex: m.listView.list.Index()},
 		ActionShowToast{Message: toast},
 	}
 }

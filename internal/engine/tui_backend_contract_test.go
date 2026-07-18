@@ -23,7 +23,7 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 		{Notification: triage.Notification{GitHubID: "notif-1"}},
 	}
 	after := []triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
+		{Notification: triage.Notification{GitHubID: "notif-1"}, State: triage.State{IsReadLocally: true}},
 	}
 
 	testCases := []struct {
@@ -39,7 +39,7 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 				mockClient := mocks.NewMockClient(t)
 
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(before, nil).Once()
-				mockRepo.EXPECT().MarkReadLocally(mock.Anything, "notif-1", true).Return(nil).Once()
+				mockRepo.EXPECT().SetReadLocally(mock.Anything, "notif-1", true).Return(nil).Once()
 				mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif-1").Return(nil).Once()
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
 
@@ -83,7 +83,7 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 						}, nil
 					},
 					callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-						require.Equal(t, "mark_read", request.Params.Name)
+						require.Equal(t, "set_read", request.Params.Name)
 						return mcp.NewToolResultText("Notification read state updated"), nil
 					},
 				})
@@ -93,7 +93,7 @@ func TestTUIBackendContract_MarkReadSuccess(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.backend(t).MarkRead(context.Background(), "notif-1", true)
+			result, err := tc.backend(t).SetRead(context.Background(), "notif-1", true)
 			require.NoError(t, err)
 			assert.Equal(t, types.MarkReadSuccess, result.Status)
 			assert.Equal(t, after, result.Notifications)
@@ -108,7 +108,7 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 		{Notification: triage.Notification{GitHubID: "notif-2"}},
 	}
 	after := []triage.NotificationWithState{
-		{Notification: triage.Notification{GitHubID: "notif-2"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}},
+		{Notification: triage.Notification{GitHubID: "notif-2"}, State: triage.State{IsReadLocally: true}},
 	}
 	remoteErr := errors.New("boom")
 
@@ -125,7 +125,7 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 				mockClient := mocks.NewMockClient(t)
 
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(before, nil).Once()
-				mockRepo.EXPECT().MarkReadLocally(mock.Anything, "notif-2", true).Return(nil).Once()
+				mockRepo.EXPECT().SetReadLocally(mock.Anything, "notif-2", true).Return(nil).Once()
 				mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif-2").Return(remoteErr).Once()
 				mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
 
@@ -169,7 +169,7 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 						}, nil
 					},
 					callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-						require.Equal(t, "mark_read", request.Params.Name)
+						require.Equal(t, "set_read", request.Params.Name)
 						return &mcp.CallToolResult{
 							IsError: true,
 							Content: []mcp.Content{
@@ -184,12 +184,63 @@ func TestTUIBackendContract_MarkReadRemoteFailure(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.backend(t).MarkRead(context.Background(), "notif-2", true)
+			result, err := tc.backend(t).SetRead(context.Background(), "notif-2", true)
 			require.NoError(t, err)
 			assert.Equal(t, types.MarkReadRemoteFailure, result.Status)
 			assert.Equal(t, after, result.Notifications)
 			assert.Equal(t, "Marked read locally; GitHub sync failed", result.Toast)
 			require.Error(t, result.Err)
+		})
+	}
+}
+
+func TestTUIBackendContract_SetHandledSuccess(t *testing.T) {
+	before := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "handled"}, State: triage.State{IsReadLocally: true}}}
+	after := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "handled"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}}}
+
+	testCases := []struct {
+		name    string
+		backend func(*testing.T) types.TUIBackend
+	}{
+		{name: "app backend", backend: func(t *testing.T) types.TUIBackend {
+			repo := mocks.NewMockRepository(t)
+			repo.EXPECT().ListNotifications(mock.Anything).Return(before, nil).Once()
+			repo.EXPECT().SetHandledLocally(mock.Anything, "handled", true).Return(nil).Once()
+			repo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
+			backend, err := api.NewAppBackend(api.AppBackendParams{
+				UserID: "user", Store: repo, Syncer: mocks.NewMockSyncer(t), Enricher: mocks.NewMockEnricher(t),
+			})
+			require.NoError(t, err)
+			return backend
+		}},
+		{name: "mcp adapter", backend: func(t *testing.T) types.TUIBackend {
+			readCount := 0
+			return NewMCPAdapter(&blockingMCPClient{
+				readResource: func(_ context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+					snapshot := before
+					if readCount > 0 {
+						snapshot = after
+					}
+					readCount++
+					payload, err := json.Marshal(snapshot)
+					require.NoError(t, err)
+					return &mcp.ReadResourceResult{Contents: []mcp.ResourceContents{mcp.TextResourceContents{URI: request.Params.URI, Text: string(payload)}}}, nil
+				},
+				callTool: func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					require.Equal(t, "set_handled", request.Params.Name)
+					return mcp.NewToolResultText("updated"), nil
+				},
+			})
+		}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := tc.backend(t).SetHandled(context.Background(), "handled", true)
+			require.NoError(t, err)
+			assert.Equal(t, types.HandledUpdateSuccess, result.Status)
+			assert.Equal(t, after, result.Notifications)
+			assert.True(t, result.Notifications[0].IsReadLocally)
 		})
 	}
 }

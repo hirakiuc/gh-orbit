@@ -64,7 +64,7 @@ type MockGraphQLClient_DoWithContext_Call struct {
 //   - query string
 //   - variables map[string]any
 //   - response any
-func (_e *MockGraphQLClient_Expecter) DoWithContext(ctx interface{}, query interface{}, variables interface{}, response interface{}) *MockGraphQLClient_DoWithContext_Call {
+func (_e *MockGraphQLClient_Expecter) DoWithContext(ctx any, query any, variables any, response any) *MockGraphQLClient_DoWithContext_Call {
 	return &MockGraphQLClient_DoWithContext_Call{Call: _e.mock.On("DoWithContext", ctx, query, variables, response)}
 }
 

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hirakiuc/gh-orbit/internal/buildinfo"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/engine/transport"
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -39,7 +40,7 @@ type MCPServer struct {
 func NewMCPServer(engine *CoreEngine, socketPath string, insecure bool, verbose bool) *MCPServer {
 	s := server.NewMCPServer(
 		"gh-orbit",
-		"0.1.0",
+		buildinfo.Version,
 		server.WithResourceCapabilities(true, false),
 		server.WithToolCapabilities(true),
 	)
@@ -336,6 +337,32 @@ func markReadToolResult(result types.MarkReadResult, err error) (*mcp.CallToolRe
 	}
 }
 
+func handledToolResult(result types.HandledUpdateResult, err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mutationToolFailureResult("failed to set handled state: %v", err)
+	}
+	if result.Err != nil {
+		return mutationToolFailureResult("failed to set handled state: %v", result.Err)
+	}
+	return mutationToolSuccessResult("Notification handled state updated")
+}
+
+func requiredStateMutationArgs(request mcp.CallToolRequest, stateKey string) (string, bool, error) {
+	args, ok := request.Params.Arguments.(map[string]any)
+	if !ok {
+		return "", false, errors.New("invalid arguments format")
+	}
+	id, ok := args["id"].(string)
+	if !ok || strings.TrimSpace(id) == "" {
+		return "", false, errors.New("id must be a non-empty string")
+	}
+	state, ok := args[stateKey].(bool)
+	if !ok {
+		return "", false, fmt.Errorf("%s must be a boolean", stateKey)
+	}
+	return strings.TrimSpace(id), state, nil
+}
+
 func priorityToolResult(result types.PriorityUpdateResult, err error) (*mcp.CallToolResult, error) {
 	if err != nil {
 		return mutationToolFailureResult("failed to set priority: %v", err)
@@ -425,8 +452,41 @@ func (s *MCPServer) registerTools() {
 			read = r
 		}
 
-		result, err := s.engine.Backend.MarkRead(ctx, id, read)
+		if s.engine.legacyReadMutator == nil {
+			return mcp.NewToolResultError("legacy mark_read backend is unavailable"), nil
+		}
+		result, err := s.engine.legacyReadMutator.MarkReadLegacy(ctx, id, read)
 		return markReadToolResult(result, err)
+	})
+
+	setReadTool := mcp.NewTool(
+		"set_read",
+		mcp.WithDescription("Set a notification's read state without changing local handled state"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The GitHub notification ID")),
+		mcp.WithBoolean("read", mcp.Required(), mcp.Description("The desired read state")),
+	)
+	s.server.AddTool(setReadTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, read, err := requiredStateMutationArgs(request, "read")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := s.engine.Backend.SetRead(ctx, id, read)
+		return markReadToolResult(result, err)
+	})
+
+	setHandledTool := mcp.NewTool(
+		"set_handled",
+		mcp.WithDescription("Set a notification's local handled state without changing read state"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The GitHub notification ID")),
+		mcp.WithBoolean("handled", mcp.Required(), mcp.Description("The desired local handled state")),
+	)
+	s.server.AddTool(setHandledTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, handled, err := requiredStateMutationArgs(request, "handled")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := s.engine.Backend.SetHandled(ctx, id, handled)
+		return handledToolResult(result, err)
 	})
 
 	// 3. Set Priority Tool

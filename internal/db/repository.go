@@ -9,6 +9,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
 // EnrichNotification updates a notification with detailed content (body, author).
@@ -235,6 +236,40 @@ func (db *DB) MarkReadLocally(ctx context.Context, id string, isRead bool) error
 		WHERE notification_id = ?
 	`, isRead, isRead, id)
 	return err
+}
+
+// SetReadLocally updates only the local read state of a notification.
+func (db *DB) SetReadLocally(ctx context.Context, id string, isRead bool) error {
+	result, err := db.ExecContext(ctx, `
+		UPDATE orbit_state
+		SET is_read_locally = ?
+		WHERE notification_id = ?
+	`, isRead, id)
+	return requireUpdatedNotification(result, err)
+}
+
+// SetHandledLocally updates only the local handled state of a notification.
+func (db *DB) SetHandledLocally(ctx context.Context, id string, isHandled bool) error {
+	result, err := db.ExecContext(ctx, `
+		UPDATE orbit_state
+		SET is_handled_locally = ?
+		WHERE notification_id = ?
+	`, isHandled, id)
+	return requireUpdatedNotification(result, err)
+}
+
+func requireUpdatedNotification(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking updated notification: %w", err)
+	}
+	if rows == 0 {
+		return types.ErrNotificationNotFound
+	}
+	return nil
 }
 
 // ArchiveThread moves a thread to the archived state.

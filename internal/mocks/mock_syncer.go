@@ -96,7 +96,7 @@ type MockSyncer_Shutdown_Call struct {
 
 // Shutdown is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockSyncer_Expecter) Shutdown(ctx interface{}) *MockSyncer_Shutdown_Call {
+func (_e *MockSyncer_Expecter) Shutdown(ctx any) *MockSyncer_Shutdown_Call {
 	return &MockSyncer_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 
@@ -158,7 +158,7 @@ type MockSyncer_Sync_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - force bool
-func (_e *MockSyncer_Expecter) Sync(ctx interface{}, userID interface{}, force interface{}) *MockSyncer_Sync_Call {
+func (_e *MockSyncer_Expecter) Sync(ctx any, userID any, force any) *MockSyncer_Sync_Call {
 	return &MockSyncer_Sync_Call{Call: _e.mock.On("Sync", ctx, userID, force)}
 }
 

@@ -161,7 +161,7 @@ type MockAlerter_Notify_Call struct {
 // Notify is a helper method to define mock.On call
 //   - ctx context.Context
 //   - n github.Notification
-func (_e *MockAlerter_Expecter) Notify(ctx interface{}, n interface{}) *MockAlerter_Notify_Call {
+func (_e *MockAlerter_Expecter) Notify(ctx any, n any) *MockAlerter_Notify_Call {
 	return &MockAlerter_Notify_Call{Call: _e.mock.On("Notify", ctx, n)}
 }
 
@@ -206,7 +206,7 @@ type MockAlerter_Shutdown_Call struct {
 
 // Shutdown is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockAlerter_Expecter) Shutdown(ctx interface{}) *MockAlerter_Shutdown_Call {
+func (_e *MockAlerter_Expecter) Shutdown(ctx any) *MockAlerter_Shutdown_Call {
 	return &MockAlerter_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 
@@ -246,7 +246,7 @@ type MockAlerter_SyncStart_Call struct {
 
 // SyncStart is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockAlerter_Expecter) SyncStart(ctx interface{}) *MockAlerter_SyncStart_Call {
+func (_e *MockAlerter_Expecter) SyncStart(ctx any) *MockAlerter_SyncStart_Call {
 	return &MockAlerter_SyncStart_Call{Call: _e.mock.On("SyncStart", ctx)}
 }
 
@@ -300,7 +300,7 @@ type MockAlerter_TestNotify_Call struct {
 //   - title string
 //   - subtitle string
 //   - body string
-func (_e *MockAlerter_Expecter) TestNotify(ctx interface{}, title interface{}, subtitle interface{}, body interface{}) *MockAlerter_TestNotify_Call {
+func (_e *MockAlerter_Expecter) TestNotify(ctx any, title any, subtitle any, body any) *MockAlerter_TestNotify_Call {
 	return &MockAlerter_TestNotify_Call{Call: _e.mock.On("TestNotify", ctx, title, subtitle, body)}
 }
 

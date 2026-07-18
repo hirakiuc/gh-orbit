@@ -66,7 +66,7 @@ type MockRESTClient_DoWithContext_Call struct {
 //   - path string
 //   - body io.Reader
 //   - response any
-func (_e *MockRESTClient_Expecter) DoWithContext(ctx interface{}, method interface{}, path interface{}, body interface{}, response interface{}) *MockRESTClient_DoWithContext_Call {
+func (_e *MockRESTClient_Expecter) DoWithContext(ctx any, method any, path any, body any, response any) *MockRESTClient_DoWithContext_Call {
 	return &MockRESTClient_DoWithContext_Call{Call: _e.mock.On("DoWithContext", ctx, method, path, body, response)}
 }
 

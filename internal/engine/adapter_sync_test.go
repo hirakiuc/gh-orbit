@@ -243,7 +243,7 @@ func TestMCPAdapter_SyncRejectsInvalidStructuredContract(t *testing.T) {
 func TestMCPAdapter_MarkRead_ClassifiesRemoteFailureFromToolResult(t *testing.T) {
 	adapter := NewMCPAdapter(&blockingMCPClient{
 		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			require.Equal(t, "mark_read", request.Params.Name)
+			require.Equal(t, "set_read", request.Params.Name)
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -253,7 +253,7 @@ func TestMCPAdapter_MarkRead_ClassifiesRemoteFailureFromToolResult(t *testing.T)
 		},
 	})
 
-	result, err := adapter.MarkRead(context.Background(), "123", true)
+	result, err := adapter.SetRead(context.Background(), "123", true)
 	require.NoError(t, err)
 	assert.Equal(t, types.MarkReadRemoteFailure, result.Status)
 	require.Error(t, result.Err)
@@ -263,7 +263,7 @@ func TestMCPAdapter_MarkRead_ClassifiesRemoteFailureFromToolResult(t *testing.T)
 func TestMCPAdapter_MarkRead_TreatsLocalToolFailureAsError(t *testing.T) {
 	adapter := NewMCPAdapter(&blockingMCPClient{
 		callTool: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			require.Equal(t, "mark_read", request.Params.Name)
+			require.Equal(t, "set_read", request.Params.Name)
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -273,7 +273,7 @@ func TestMCPAdapter_MarkRead_TreatsLocalToolFailureAsError(t *testing.T) {
 		},
 	})
 
-	result, err := adapter.MarkRead(context.Background(), "123", true)
+	result, err := adapter.SetRead(context.Background(), "123", true)
 	require.NoError(t, err)
 	assert.Equal(t, types.MarkReadLocalFailure, result.Status)
 	require.Error(t, result.Err)

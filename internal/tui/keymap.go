@@ -16,6 +16,7 @@ type KeyMap struct {
 	Tab3                 key.Binding
 	CopyURL              key.Binding
 	ToggleRead           key.Binding
+	ToggleHandled        key.Binding
 	NextTab              key.Binding
 	PrevTab              key.Binding
 	CheckoutPR           key.Binding
@@ -71,6 +72,7 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 			key.WithKeys(k.ToggleRead...),
 			key.WithHelp(k.ToggleRead[0], "mark read/unread"),
 		),
+		ToggleHandled: optionalBinding(k.ToggleHandled, "mark handled/unhandled"),
 		NextTab: key.NewBinding(
 			key.WithKeys(k.NextTab...),
 			key.WithHelp(k.NextTab[0], "next tab"),
@@ -126,12 +128,23 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 	}
 }
 
+func optionalBinding(keys []string, description string) key.Binding {
+	if len(keys) == 0 {
+		return key.NewBinding(key.WithDisabled())
+	}
+	return key.NewBinding(
+		key.WithKeys(keys...),
+		key.WithHelp(keys[0], description),
+	)
+}
+
 // ShortHelp returns the keybindings to be displayed in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.Help,
 		k.Sync,
 		k.ToggleRead,
+		k.ToggleHandled,
 		k.ToggleDetail,
 		k.Quit,
 	}
@@ -141,7 +154,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
-		{k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
+		{k.ToggleRead, k.ToggleHandled, k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
 		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
 		{k.Tab1, k.Tab2, k.Tab3},
 		{k.NextTab, k.PrevTab, k.CheckoutPR, k.StartReviewWorkspace, k.Help, k.Quit},

@@ -75,7 +75,7 @@ type MockSyncRepository_GetNotification_Call struct {
 // GetNotification is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockSyncRepository_Expecter) GetNotification(ctx interface{}, id interface{}) *MockSyncRepository_GetNotification_Call {
+func (_e *MockSyncRepository_Expecter) GetNotification(ctx any, id any) *MockSyncRepository_GetNotification_Call {
 	return &MockSyncRepository_GetNotification_Call{Call: _e.mock.On("GetNotification", ctx, id)}
 }
 
@@ -144,7 +144,7 @@ type MockSyncRepository_GetSyncMeta_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - key string
-func (_e *MockSyncRepository_Expecter) GetSyncMeta(ctx interface{}, userID interface{}, key interface{}) *MockSyncRepository_GetSyncMeta_Call {
+func (_e *MockSyncRepository_Expecter) GetSyncMeta(ctx any, userID any, key any) *MockSyncRepository_GetSyncMeta_Call {
 	return &MockSyncRepository_GetSyncMeta_Call{Call: _e.mock.On("GetSyncMeta", ctx, userID, key)}
 }
 
@@ -206,7 +206,7 @@ type MockSyncRepository_MarkNotifiedBatch_Call struct {
 // MarkNotifiedBatch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ids []string
-func (_e *MockSyncRepository_Expecter) MarkNotifiedBatch(ctx interface{}, ids interface{}) *MockSyncRepository_MarkNotifiedBatch_Call {
+func (_e *MockSyncRepository_Expecter) MarkNotifiedBatch(ctx any, ids any) *MockSyncRepository_MarkNotifiedBatch_Call {
 	return &MockSyncRepository_MarkNotifiedBatch_Call{Call: _e.mock.On("MarkNotifiedBatch", ctx, ids)}
 }
 
@@ -263,7 +263,7 @@ type MockSyncRepository_UpdateSyncMeta_Call struct {
 // UpdateSyncMeta is a helper method to define mock.On call
 //   - ctx context.Context
 //   - s models.SyncMeta
-func (_e *MockSyncRepository_Expecter) UpdateSyncMeta(ctx interface{}, s interface{}) *MockSyncRepository_UpdateSyncMeta_Call {
+func (_e *MockSyncRepository_Expecter) UpdateSyncMeta(ctx any, s any) *MockSyncRepository_UpdateSyncMeta_Call {
 	return &MockSyncRepository_UpdateSyncMeta_Call{Call: _e.mock.On("UpdateSyncMeta", ctx, s)}
 }
 
@@ -320,7 +320,7 @@ type MockSyncRepository_UpsertNotifications_Call struct {
 // UpsertNotifications is a helper method to define mock.On call
 //   - ctx context.Context
 //   - notifications []triage.Notification
-func (_e *MockSyncRepository_Expecter) UpsertNotifications(ctx interface{}, notifications interface{}) *MockSyncRepository_UpsertNotifications_Call {
+func (_e *MockSyncRepository_Expecter) UpsertNotifications(ctx any, notifications any) *MockSyncRepository_UpsertNotifications_Call {
 	return &MockSyncRepository_UpsertNotifications_Call{Call: _e.mock.On("UpsertNotifications", ctx, notifications)}
 }
 

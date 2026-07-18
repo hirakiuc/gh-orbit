@@ -28,7 +28,6 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 	for idx, n := range m.allNotifications {
 		if n.GitHubID == id {
 			m.allNotifications[idx].IsReadLocally = read
-			m.allNotifications[idx].IsHandledLocally = read
 			break
 		}
 	}
@@ -37,7 +36,7 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 
 	// 2. Persistent Local & Remote Update via Traffic Controller
 	return m.submitMutationTask("read:"+id, func(ctx context.Context) (mutationAppliedMsg, error) {
-		result, err := m.backend.MarkRead(ctx, id, read)
+		result, err := m.backend.SetRead(ctx, id, read)
 		if err != nil {
 			return mutationAppliedMsg{}, err
 		}
@@ -46,6 +45,35 @@ func (m *Model) MarkReadByID(id string, read bool) tea.Cmd {
 			notifications: result.Notifications,
 			err:           result.Err,
 			toast:         result.Toast,
+		}, nil
+	})
+}
+
+// SetHandledByID changes only the local triage state and immediately reconciles
+// list/detail identity if the active filter removes the target.
+func (m *Model) SetHandledByID(id string, handled bool, previousIndex int) tea.Cmd {
+	for idx, n := range m.allNotifications {
+		if n.GitHubID == id {
+			m.allNotifications[idx].IsHandledLocally = handled
+			break
+		}
+	}
+
+	m.applyFilters()
+	m.reconcileHandledTarget(id, previousIndex, true)
+
+	return m.submitMutationTask("handled:"+id, func(ctx context.Context) (mutationAppliedMsg, error) {
+		result, err := m.backend.SetHandled(ctx, id, handled)
+		if err != nil {
+			return mutationAppliedMsg{}, err
+		}
+		return mutationAppliedMsg{
+			notifications: result.Notifications,
+			toast:         result.Toast,
+			err:           result.Err,
+			targetID:      id,
+			previousIndex: previousIndex,
+			reconcileItem: true,
 		}, nil
 	})
 }

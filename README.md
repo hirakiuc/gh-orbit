@@ -47,6 +47,7 @@ gh orbit
 | :--- | :--- |
 | `r` | Sync notifications (Manual) |
 | `m` | Toggle Read/Unread state |
+| `x` | Toggle local Handled/Unhandled state |
 | `enter` | View notification details (Description/Body) |
 | `o` | Open in default browser |
 | `c` | Checkout PR locally (`gh pr checkout`) |
@@ -56,6 +57,14 @@ gh orbit
 | `tab` | Cycle through tabs (Inbox, Unread, Triaged, All) |
 | `?` | Toggle detailed help menu |
 | `q` / `esc` | Back to list / Quit |
+
+Read state and local handled (triaged) state are independent. The `m` binding
+changes GitHub/local read state, while `x` changes only Inbox triage state.
+`keys.toggle_handled` is configurable; existing bindings take precedence over
+the inherited `x` default, and `[]` disables the action. If you explicitly add
+`toggle_handled` to your config and later downgrade to a version from before
+Issue #473, remove that one line first because older versions strictly reject
+unknown configuration keys.
 
 ---
 

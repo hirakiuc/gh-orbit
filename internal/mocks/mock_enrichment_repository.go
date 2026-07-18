@@ -68,7 +68,7 @@ type MockEnrichmentRepository_EnrichNotification_Call struct {
 //   - htmlURL string
 //   - resourceState string
 //   - resourceSubState string
-func (_e *MockEnrichmentRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, nodeID interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockEnrichmentRepository_EnrichNotification_Call {
+func (_e *MockEnrichmentRepository_Expecter) EnrichNotification(ctx any, id any, nodeID any, body any, author any, htmlURL any, resourceState any, resourceSubState any) *MockEnrichmentRepository_EnrichNotification_Call {
 	return &MockEnrichmentRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)}
 }
 
@@ -157,7 +157,7 @@ type MockEnrichmentRepository_UpdateResourceStateByNodeID_Call struct {
 //   - nodeID string
 //   - state string
 //   - resourceSubState string
-func (_e *MockEnrichmentRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}, resourceSubState interface{}) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
+func (_e *MockEnrichmentRepository_Expecter) UpdateResourceStateByNodeID(ctx any, nodeID any, state any, resourceSubState any) *MockEnrichmentRepository_UpdateResourceStateByNodeID_Call {
 	return &MockEnrichmentRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state, resourceSubState)}
 }
 
