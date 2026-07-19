@@ -149,6 +149,68 @@ func (a *MCPAdapter) ResolveUserID(ctx context.Context) (string, error) {
 	return payload.Login, nil
 }
 
+func (a *MCPAdapter) ApplyNotificationBatch(ctx context.Context, request types.NotificationBatchRequest) (types.NotificationBatchResult, error) {
+	normalized, err := types.NormalizeNotificationBatchRequest(request)
+	if err != nil {
+		return types.NotificationBatchResult{Status: types.NotificationBatchRejected, Request: request, Err: err}, nil
+	}
+	before, _ := a.ListNotifications(ctx)
+	resp, callErr := a.client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+		Name: "batch_set_state",
+		Arguments: map[string]any{
+			"ids":       normalized.IDs,
+			"operation": string(normalized.Operation),
+		},
+	}})
+	if callErr != nil || resp == nil {
+		if callErr == nil {
+			callErr = errors.New("batch_set_state returned nil result")
+		}
+		return types.NotificationBatchResult{
+			Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
+			Request: normalized, Notifications: before, Err: callErr,
+		}, nil
+	}
+	if resp.IsError {
+		return types.NotificationBatchResult{
+			Status: types.NotificationBatchRejected, Reconciliation: types.NotificationBatchAuthoritative,
+			Request: normalized, Notifications: before, Err: decodeToolResultError("batch_set_state", resp),
+		}, nil
+	}
+
+	result, ok := decodeNotificationBatchToolResult(resp)
+	if !ok || (result.Status != types.NotificationBatchCommitted && result.Status != types.NotificationBatchRejected) {
+		return types.NotificationBatchResult{
+			Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
+			Request: normalized, Notifications: before, Err: errors.New("batch_set_state returned an untrustworthy result"),
+		}, nil
+	}
+	result.Request = normalized
+	result.Reconciliation = types.NotificationBatchAuthoritative
+	result.Notifications, err = a.ListNotifications(ctx)
+	if err != nil {
+		result.Reconciliation = types.NotificationBatchReconciliationPending
+		result.Notifications = applyBatchState(before, normalized)
+		result.Err = err
+	}
+	return result, nil
+}
+
+func decodeNotificationBatchToolResult(resp *mcp.CallToolResult) (types.NotificationBatchResult, bool) {
+	if resp == nil || resp.StructuredContent == nil {
+		return types.NotificationBatchResult{}, false
+	}
+	raw, err := json.Marshal(resp.StructuredContent)
+	if err != nil {
+		return types.NotificationBatchResult{}, false
+	}
+	var result types.NotificationBatchResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return types.NotificationBatchResult{}, false
+	}
+	return result, true
+}
+
 func (a *MCPAdapter) SetRead(ctx context.Context, id string, isRead bool) (types.ReadUpdateResult, error) {
 	before, _ := a.ListNotifications(ctx)
 
@@ -438,6 +500,30 @@ func applyHandledState(notifications []triage.NotificationWithState, id string, 
 		if cloned[idx].GitHubID == id {
 			cloned[idx].IsHandledLocally = handled
 			break
+		}
+	}
+	return cloned
+}
+
+func applyBatchState(notifications []triage.NotificationWithState, request types.NotificationBatchRequest) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	selected := make(map[string]struct{}, len(request.IDs))
+	for _, id := range request.IDs {
+		selected[id] = struct{}{}
+	}
+	for index := range cloned {
+		if _, ok := selected[cloned[index].GitHubID]; !ok {
+			continue
+		}
+		switch request.Operation {
+		case types.NotificationBatchRead:
+			cloned[index].IsReadLocally = true
+		case types.NotificationBatchUnread:
+			cloned[index].IsReadLocally = false
+		case types.NotificationBatchHandled:
+			cloned[index].IsHandledLocally = true
+		case types.NotificationBatchUnhandled:
+			cloned[index].IsHandledLocally = false
 		}
 	}
 	return cloned

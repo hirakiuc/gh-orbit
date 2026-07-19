@@ -11,10 +11,11 @@ import (
 )
 
 type RenderContext struct {
-	Styles     Styles
-	Width      int
-	IsFetching bool
-	IsSelected bool
+	Styles          Styles
+	Width           int
+	IsFetching      bool
+	IsSelected      bool
+	IsMultiSelected bool
 }
 
 // RenderNotificationRow provides a consistent, high-density Repo-First row layout.
@@ -58,7 +59,7 @@ func RenderNotificationRow(ctx RenderContext, n triage.NotificationWithState) st
 	titleWidth := flexibleSpace - repoWidth
 
 	// 3. Prepare cells with fixed widths and strict truncation
-	indicator := renderSelectionIndicator(ctx.Styles, ctx.IsSelected)
+	indicator := renderSelectionIndicator(ctx.Styles, ctx.IsSelected, ctx.IsMultiSelected)
 	icon := renderNotificationIcon(n.SubjectType)
 	unread := renderUnreadIndicator(ctx.Styles, n.IsReadLocally)
 	indicatorCell := renderCell(indicator+icon+unread, indicatorCellWidth, false)
@@ -162,11 +163,16 @@ func renderUnreadIndicator(styles Styles, isRead bool) string {
 	return styles.Unread.Render("• ")
 }
 
-func renderSelectionIndicator(styles Styles, isSelected bool) string {
+func renderSelectionIndicator(styles Styles, isSelected, isMultiSelected bool) string {
+	cursor := " "
 	if isSelected {
-		return styles.Cursor.Render("▌ ")
+		cursor = styles.Cursor.Render("▌")
 	}
-	return "  "
+	membership := " "
+	if isMultiSelected {
+		membership = styles.Assign.Render("✓")
+	}
+	return cursor + membership
 }
 
 func renderNotificationIcon(subjectType triage.SubjectType) string {

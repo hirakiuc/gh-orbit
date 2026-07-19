@@ -68,12 +68,13 @@ func newBackendPublishHooks(bus *EventBus) backendPublishHooks {
 	}
 }
 
-func newAppBackend(database types.Repository, client github.Client, syncer types.Syncer, enricher types.Enricher, hooks backendPublishHooks) (*api.AppBackend, error) {
+func newAppBackend(database types.Repository, client github.Client, syncer types.Syncer, enricher types.Enricher, traffic *api.APITrafficController, hooks backendPublishHooks) (*api.AppBackend, error) {
 	return api.NewAppBackend(api.AppBackendParams{
 		Store:                       database,
 		Client:                      client,
 		Syncer:                      syncer,
 		Enricher:                    enricher,
+		BatchExecutor:               traffic,
 		ResolveUserID:               currentUserResolver(client),
 		PublishNotificationsChanged: hooks.notificationsChanged,
 		PublishEnrichmentUpdated:    hooks.enrichmentChanged,
@@ -120,6 +121,7 @@ func NewCoreEngine(
 	bus := NewEventBus()
 	hooks := newBackendPublishHooks(bus)
 	traffic := api.NewAPITrafficController(ctx, logger)
+	client.SetRateLimitReporter(traffic.ReportRateLimit)
 
 	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
 		Client: client,
@@ -163,7 +165,7 @@ func NewCoreEngine(
 	}
 	syncer.OnMutation = hooks.notificationsChanged
 
-	appBackend, err := newAppBackend(database, client, syncer, enricher, hooks)
+	appBackend, err := newAppBackend(database, client, syncer, enricher, traffic, hooks)
 	if err != nil {
 		_ = database.Close()
 		return nil, err

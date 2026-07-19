@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +12,70 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
+
+func (m *Model) ApplyNotificationBatch(request types.NotificationBatchRequest) tea.Cmd {
+	normalized, err := types.NormalizeNotificationBatchRequest(request)
+	before := append([]triage.NotificationWithState(nil), m.allNotifications...)
+	if err != nil {
+		return func() tea.Msg {
+			return batchMutationAppliedMsg{before: before, result: types.NotificationBatchResult{
+				Status: types.NotificationBatchRejected, Request: request, Notifications: before, Err: err,
+			}}
+		}
+	}
+
+	m.pendingBatchRequest = normalized
+	m.batchPending = true
+	m.allNotifications = applyBatchOptimistically(m.allNotifications, normalized)
+	m.applyFilters()
+
+	return m.submitBackendTask("notification-batch", 0, func(ctx context.Context) any {
+		result, callErr := m.backend.ApplyNotificationBatch(ctx, normalized)
+		if callErr != nil {
+			result = types.NotificationBatchResult{
+				Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
+				Request: normalized, Notifications: before, Err: callErr,
+			}
+		}
+		return batchMutationAppliedMsg{result: result, before: before}
+	})
+}
+
+func applyBatchOptimistically(notifications []triage.NotificationWithState, request types.NotificationBatchRequest) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	selected := make(map[string]struct{}, len(request.IDs))
+	for _, id := range request.IDs {
+		selected[id] = struct{}{}
+	}
+	for index := range cloned {
+		if _, ok := selected[cloned[index].GitHubID]; !ok {
+			continue
+		}
+		switch request.Operation {
+		case types.NotificationBatchRead:
+			cloned[index].IsReadLocally = true
+		case types.NotificationBatchUnread:
+			cloned[index].IsReadLocally = false
+		case types.NotificationBatchHandled:
+			cloned[index].IsHandledLocally = true
+		case types.NotificationBatchUnhandled:
+			cloned[index].IsHandledLocally = false
+		}
+	}
+	return cloned
+}
+
+func (m *Model) selectedBatchRequest(operation types.NotificationBatchOperation) (types.NotificationBatchRequest, bool) {
+	if len(m.selectedIDs) == 0 {
+		return types.NotificationBatchRequest{}, false
+	}
+	ids := make([]string, 0, len(m.selectedIDs))
+	for id := range m.selectedIDs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return types.NotificationBatchRequest{Operation: operation, IDs: ids}, true
+}
 
 var _ = slog.LevelInfo
 

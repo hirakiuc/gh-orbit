@@ -390,6 +390,41 @@ func TestRepository_IndependentReadAndHandledMutations(t *testing.T) {
 	assert.ErrorIs(t, db.SetHandledLocally(ctx, "missing", true), types.ErrNotificationNotFound)
 }
 
+func TestRepository_ApplyNotificationBatchLocally(t *testing.T) {
+	ctx := context.Background()
+	database, err := OpenInMemory(ctx, slog.Default())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+
+	for _, id := range []string{"batch-a", "batch-b"} {
+		require.NoError(t, database.UpsertNotifications(ctx, []triage.Notification{{GitHubID: id, UpdatedAt: time.Now()}}))
+	}
+	require.NoError(t, database.SetHandledLocally(ctx, "batch-a", true))
+
+	require.NoError(t, database.ApplyNotificationBatchLocally(ctx, types.NotificationBatchRequest{
+		Operation: types.NotificationBatchRead,
+		IDs:       []string{"batch-b", "batch-a", "batch-a"},
+	}))
+	for _, id := range []string{"batch-a", "batch-b"} {
+		state, getErr := database.GetNotification(ctx, id)
+		require.NoError(t, getErr)
+		assert.True(t, state.IsReadLocally)
+	}
+	state, err := database.GetNotification(ctx, "batch-a")
+	require.NoError(t, err)
+	assert.True(t, state.IsHandledLocally, "read batch must preserve handled state")
+
+	err = database.ApplyNotificationBatchLocally(ctx, types.NotificationBatchRequest{
+		Operation: types.NotificationBatchUnhandled,
+		IDs:       []string{"batch-a", "missing"},
+	})
+	assert.ErrorIs(t, err, types.ErrNotificationNotFound)
+	state, err = database.GetNotification(ctx, "batch-a")
+	require.NoError(t, err)
+	assert.True(t, state.IsHandledLocally, "missing target must roll back the entire batch")
+	assert.True(t, state.IsReadLocally, "handled batch must preserve read state")
+}
+
 func TestRepository_MetadataAndEnrichment(t *testing.T) {
 	logger := slog.Default()
 	ctx := context.Background()

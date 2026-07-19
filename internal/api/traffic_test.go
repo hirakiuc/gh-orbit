@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -95,6 +96,52 @@ func TestTrafficController_UserPriorityPreemption(t *testing.T) {
 
 		cancel()
 	})
+}
+
+func TestTrafficController_NotificationBatchRunsBeforeQueuedScalarAtLimitOne(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tc := NewAPITrafficController(ctx, slog.Default())
+	atomic.StoreInt32(&tc.workerLimit, 1)
+	t.Cleanup(func() { tc.Shutdown(context.Background()) })
+
+	prepared := make(chan struct{})
+	childStarted := make(chan struct{})
+	releaseChild := make(chan struct{})
+	batchDone := make(chan notificationBatchExecution, 1)
+	go func() {
+		result, _ := tc.RunNotificationBatch(ctx, notificationBatchPlan{
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"1"}},
+			Prepare: func(context.Context) error { close(prepared); return nil },
+			Remote: func(context.Context, string) error {
+				close(childStarted)
+				<-releaseChild
+				return nil
+			},
+		})
+		batchDone <- result
+	}()
+	<-prepared
+	<-childStarted
+
+	scalarStarted := make(chan struct{})
+	scalarResult, err := tc.Submit(ctx, PriorityUser, func(context.Context) any {
+		close(scalarStarted)
+		return "scalar"
+	})
+	assert.NoError(t, err)
+	select {
+	case <-scalarStarted:
+		t.Fatal("scalar user work acquired capacity while the batch owned serialization")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(releaseChild)
+	result := <-batchDone
+	assert.True(t, result.Committed)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&tc.activeWorkersCount))
+	assert.Equal(t, "scalar", <-scalarResult)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&tc.activeWorkersCount))
 }
 
 func TestTrafficController_RateLimitAtomic(t *testing.T) {

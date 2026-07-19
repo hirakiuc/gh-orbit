@@ -31,3 +31,16 @@ func TestKeyMap_HandledBindingHelpAndDisablement(t *testing.T) {
 	fullyCollided := NewKeyMap(cfg)
 	assert.False(t, fullyCollided.ToggleHandled.Enabled())
 }
+
+func TestKeyMap_BatchBindingsRespectEstablishedCollisions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	keys := NewKeyMap(cfg)
+	assert.True(t, keys.SelectionMode.Enabled())
+	assert.True(t, keys.SelectNotification.Enabled())
+	assert.True(t, keys.BatchRead.Enabled())
+	assert.Contains(t, keys.FullHelp()[2], keys.BatchHandled)
+
+	cfg.Keys.SelectionMode = []string{"m"}
+	collided := NewKeyMap(cfg)
+	assert.False(t, collided.SelectionMode.Enabled(), "existing scalar binding must win")
+}

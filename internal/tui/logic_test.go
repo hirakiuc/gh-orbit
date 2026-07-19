@@ -831,6 +831,60 @@ func TestModel_Transition_Tabs(t *testing.T) {
 	assert.Equal(t, TabAll, m.listView.activeTab)
 }
 
+func TestModel_Transition_MultipleSelectionAndBatchAction(t *testing.T) {
+	m := newTestModel(t)
+	m.allNotifications = []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "a", UpdatedAt: time.Now()}},
+		{Notification: triage.Notification{GitHubID: "b", UpdatedAt: time.Now()}},
+	}
+	m.listView.activeTab = TabAll
+	m.applyFilters()
+
+	assert.Empty(t, m.Transition(keyPress("S"), 0))
+	assert.True(t, m.selectionMode)
+	assert.Empty(t, m.Transition(keyPress("s"), 0))
+	assert.Contains(t, m.selectedIDs, "a")
+
+	actions := m.Transition(keyPress("R"), 0)
+	require.Len(t, actions, 1)
+	batch, ok := actions[0].(ActionApplyNotificationBatch)
+	require.True(t, ok)
+	assert.Equal(t, types.NotificationBatchRead, batch.Request.Operation)
+	assert.Equal(t, []string{"a"}, batch.Request.IDs)
+
+	_ = m.Transition(keyPress("tab"), 0)
+	assert.False(t, m.selectionMode)
+	assert.Empty(t, m.selectedIDs)
+}
+
+func TestModel_HandleBatchMutationAppliedRetainsFailedIDsAndReloadsUnknown(t *testing.T) {
+	m := newTestModel(t)
+	m.selectedIDs["a"] = struct{}{}
+	m.selectedIDs["b"] = struct{}{}
+	m.selectionMode = true
+	m.batchPending = true
+
+	actions := m.handleBatchMutationApplied(batchMutationAppliedMsg{result: types.NotificationBatchResult{
+		Status: types.NotificationBatchCommitted, Reconciliation: types.NotificationBatchAuthoritative,
+		Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}},
+		Outcomes: []types.NotificationBatchItemResult{
+			{ID: "a", Status: types.NotificationRemoteSucceeded},
+			{ID: "b", Status: types.NotificationRemoteFailed},
+		},
+	}})
+	assert.False(t, m.batchPending)
+	assert.Equal(t, map[string]struct{}{"b": {}}, m.selectedIDs)
+	assert.True(t, m.selectionMode)
+	assert.NotEmpty(t, actions)
+
+	actions = m.handleBatchMutationApplied(batchMutationAppliedMsg{result: types.NotificationBatchResult{
+		Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
+		Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a"}},
+	}})
+	assert.Contains(t, actions, ActionLoadNotifications{})
+	assert.True(t, m.batchUncertain)
+}
+
 func TestModel_ApplyFilters_ActiveTriageTabs(t *testing.T) {
 	m := newTestModel(t)
 	m.config.Notifications.MaxVisibleAgeDays = 0

@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hirakiuc/gh-orbit/internal/config"
@@ -63,6 +65,39 @@ func TestAppBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	assert.Equal(t, 1, published)
 	assert.Equal(t, types.MarkReadSuccess, result.Status)
 	assert.Equal(t, snapshot, result.Notifications)
+}
+
+func TestAppBackend_ApplyNotificationBatchPublishesOnceAndReportsPartialRemoteFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	traffic := NewAPITrafficController(ctx, slog.Default())
+	t.Cleanup(func() { traffic.Shutdown(context.Background()) })
+
+	mockRepo := mocks.NewMockRepository(t)
+	mockSyncer := mocks.NewMockSyncer(t)
+	mockEnricher := mocks.NewMockEnricher(t)
+	mockClient := mocks.NewMockClient(t)
+	before := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "a"}}, {Notification: triage.Notification{GitHubID: "b"}}}
+	after := applyNotificationBatchFallback(before, types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}})
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(before, nil).Once()
+	mockRepo.EXPECT().ApplyNotificationBatchLocally(mock.Anything, types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}}).Return(nil).Once()
+	mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "a").Return(nil).Once()
+	mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "b").Return(errors.New("remote unavailable")).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(after, nil).Once()
+
+	var published atomic.Int32
+	backend, err := NewAppBackend(AppBackendParams{
+		UserID: "user", Store: mockRepo, Client: mockClient, Syncer: mockSyncer, Enricher: mockEnricher,
+		BatchExecutor: traffic, PublishNotificationsChanged: func() { published.Add(1) },
+	})
+	require.NoError(t, err)
+	result, err := backend.ApplyNotificationBatch(ctx, types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"b", "a"}})
+	require.NoError(t, err)
+	assert.Equal(t, types.NotificationBatchCommitted, result.Status)
+	assert.Equal(t, int32(1), published.Load())
+	require.Len(t, result.Outcomes, 2)
+	assert.Equal(t, types.NotificationRemoteSucceeded, result.Outcomes[0].Status)
+	assert.Equal(t, types.NotificationRemoteFailed, result.Outcomes[1].Status)
 }
 
 func TestAppBackend_IndependentReadAndHandledMutations(t *testing.T) {

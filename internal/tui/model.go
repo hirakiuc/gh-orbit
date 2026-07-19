@@ -57,30 +57,36 @@ type Model struct {
 	detailView DetailModel
 
 	// Shared State & Services (Interfaces)
-	backend          types.TUIBackend
-	traffic          types.TrafficController
-	alerter          api.Alerter
-	ui               UIController
-	config           *config.Config
-	logger           *slog.Logger
-	userID           string
-	version          string
-	styles           Styles
-	keys             KeyMap
-	help             *help.Model
-	showHelp         bool
-	allNotifications []triage.NotificationWithState
-	err              error
-	state            AppState
-	isDark           bool
-	markdownRenderer *glamour.TermRenderer
-	width            int
-	height           int
-	headerHeight     int
-	footerHeight     int
-	bridgeStatus     types.BridgeStatus
-	focusMode        string
-	interpreter      *Interpreter
+	backend             types.TUIBackend
+	traffic             types.TrafficController
+	alerter             api.Alerter
+	ui                  UIController
+	config              *config.Config
+	logger              *slog.Logger
+	userID              string
+	version             string
+	styles              Styles
+	keys                KeyMap
+	help                *help.Model
+	showHelp            bool
+	allNotifications    []triage.NotificationWithState
+	selectionMode       bool
+	selectedIDs         map[string]struct{}
+	batchPending        bool
+	batchUncertain      bool
+	batchRefreshPending bool
+	pendingBatchRequest types.NotificationBatchRequest
+	err                 error
+	state               AppState
+	isDark              bool
+	markdownRenderer    *glamour.TermRenderer
+	width               int
+	height              int
+	headerHeight        int
+	footerHeight        int
+	bridgeStatus        types.BridgeStatus
+	focusMode           string
+	interpreter         *Interpreter
 
 	// Connection Mode
 	ConnectionMode string // "Standalone" or "Connected"
@@ -192,7 +198,8 @@ func NewModel(p ModelParams) (*Model, error) {
 
 	styles := DefaultStyles(true)
 	keys := NewKeyMap(p.Config)
-	delegate := newItemDelegate(styles, keys)
+	selectedIDs := make(map[string]struct{})
+	delegate := newItemDelegate(styles, keys, selectedIDs)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.Title = "GitHub Orbit"
@@ -226,6 +233,7 @@ func NewModel(p ModelParams) (*Model, error) {
 		styles:       styles,
 		keys:         keys,
 		help:         &h,
+		selectedIDs:  selectedIDs,
 		state:        StateList,
 		PollInterval: p.Config.Notifications.SyncInterval,
 		// Default intervals
@@ -321,6 +329,14 @@ func (m *Model) submitTask(scope string, timeout time.Duration, priority int, fn
 			return types.ErrMsg{Err: err}
 		}
 		return <-resChan
+	}
+}
+
+func (m *Model) submitBackendTask(scope string, timeout time.Duration, fn types.TaskFunc) tea.Cmd {
+	return func() tea.Msg {
+		ctx, release := m.newTaskContext(scope, timeout)
+		defer release()
+		return fn(ctx)
 	}
 }
 
@@ -427,6 +443,11 @@ type mutationAppliedMsg struct {
 	targetID      string
 	previousIndex int
 	reconcileItem bool
+}
+
+type batchMutationAppliedMsg struct {
+	result types.NotificationBatchResult
+	before []triage.NotificationWithState
 }
 
 type reviewWorkspaceStartedMsg struct {

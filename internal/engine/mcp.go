@@ -347,6 +347,53 @@ func handledToolResult(result types.HandledUpdateResult, err error) (*mcp.CallTo
 	return mutationToolSuccessResult("Notification handled state updated")
 }
 
+func notificationBatchToolResult(result types.NotificationBatchResult, err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mcp.NewToolResultError("notification batch failed"), nil
+	}
+	if result.Status == types.NotificationBatchRejected {
+		return mcp.NewToolResultError("notification batch rejected"), nil
+	}
+	payload := struct {
+		Status         types.NotificationBatchStatus         `json:"status"`
+		Reconciliation types.NotificationBatchReconciliation `json:"reconciliation"`
+		Request        types.NotificationBatchRequest        `json:"request"`
+		Outcomes       []types.NotificationBatchItemResult   `json:"outcomes"`
+	}{
+		Status: result.Status, Reconciliation: result.Reconciliation,
+		Request: result.Request, Outcomes: result.Outcomes,
+	}
+	data, _ := json.Marshal(payload)
+	return mcp.NewToolResultStructured(payload, string(data)), nil
+}
+
+func requiredNotificationBatchArgs(request mcp.CallToolRequest) (types.NotificationBatchRequest, error) {
+	args, ok := request.Params.Arguments.(map[string]any)
+	if !ok {
+		return types.NotificationBatchRequest{}, errors.New("invalid arguments format")
+	}
+	operation, ok := args["operation"].(string)
+	if !ok {
+		return types.NotificationBatchRequest{}, errors.New("operation must be a string")
+	}
+	rawIDs, ok := args["ids"].([]any)
+	if !ok {
+		if ids, stringsOK := args["ids"].([]string); stringsOK {
+			return types.NormalizeNotificationBatchRequest(types.NotificationBatchRequest{Operation: types.NotificationBatchOperation(operation), IDs: ids})
+		}
+		return types.NotificationBatchRequest{}, errors.New("ids must be an array")
+	}
+	ids := make([]string, len(rawIDs))
+	for index, rawID := range rawIDs {
+		id, stringOK := rawID.(string)
+		if !stringOK {
+			return types.NotificationBatchRequest{}, fmt.Errorf("id at position %d must be a string", index)
+		}
+		ids[index] = id
+	}
+	return types.NormalizeNotificationBatchRequest(types.NotificationBatchRequest{Operation: types.NotificationBatchOperation(operation), IDs: ids})
+}
+
 func requiredStateMutationArgs(request mcp.CallToolRequest, stateKey string) (string, bool, error) {
 	args, ok := request.Params.Arguments.(map[string]any)
 	if !ok {
@@ -487,6 +534,21 @@ func (s *MCPServer) registerTools() {
 		}
 		result, err := s.engine.Backend.SetHandled(ctx, id, handled)
 		return handledToolResult(result, err)
+	})
+
+	batchSetStateTool := mcp.NewTool(
+		"batch_set_state",
+		mcp.WithDescription("Set one explicit read or handled state for up to 100 notifications"),
+		mcp.WithArray("ids", mcp.Required(), mcp.WithStringItems(), mcp.Description("GitHub notification IDs")),
+		mcp.WithString("operation", mcp.Required(), mcp.Enum("read", "unread", "handled", "unhandled")),
+	)
+	s.server.AddTool(batchSetStateTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		batchRequest, err := requiredNotificationBatchArgs(request)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := s.engine.Backend.ApplyNotificationBatch(ctx, batchRequest)
+		return notificationBatchToolResult(result, err)
 	})
 
 	// 3. Set Priority Tool

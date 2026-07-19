@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -16,11 +17,12 @@ import (
 // operations. It composes narrower services but owns direct mutation semantics
 // and their corresponding event publication.
 type AppBackend struct {
-	UserID   string
-	Store    types.NotificationStore
-	Client   github.Client
-	Syncer   types.Syncer
-	Enricher types.Enricher
+	UserID        string
+	Store         types.NotificationStore
+	Client        github.Client
+	Syncer        types.Syncer
+	Enricher      types.Enricher
+	batchExecutor notificationBatchExecutor
 
 	resolveUserID func(context.Context) (string, error)
 	userMu        sync.RWMutex
@@ -33,11 +35,12 @@ type AppBackend struct {
 // the in-process AppBackend owner without introducing a broader builder
 // abstraction.
 type AppBackendParams struct {
-	UserID   string
-	Store    types.NotificationStore
-	Client   github.Client
-	Syncer   types.Syncer
-	Enricher types.Enricher
+	UserID        string
+	Store         types.NotificationStore
+	Client        github.Client
+	Syncer        types.Syncer
+	Enricher      types.Enricher
+	BatchExecutor notificationBatchExecutor
 
 	ResolveUserID func(context.Context) (string, error)
 
@@ -71,6 +74,7 @@ func NewAppBackend(params AppBackendParams) (*AppBackend, error) {
 		Client:                      params.Client,
 		Syncer:                      params.Syncer,
 		Enricher:                    params.Enricher,
+		batchExecutor:               params.BatchExecutor,
 		resolveUserID:               params.ResolveUserID,
 		publishNotificationsChanged: params.PublishNotificationsChanged,
 		publishEnrichmentUpdated:    params.PublishEnrichmentUpdated,
@@ -98,6 +102,61 @@ func NewTUIBackendClient(
 
 func (b *AppBackend) ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error) {
 	return b.Store.ListNotifications(ctx)
+}
+
+func (b *AppBackend) ApplyNotificationBatch(ctx context.Context, request types.NotificationBatchRequest) (types.NotificationBatchResult, error) {
+	normalized, err := types.NormalizeNotificationBatchRequest(request)
+	if err != nil {
+		return types.NotificationBatchResult{Status: types.NotificationBatchRejected, Request: request, Err: err}, nil
+	}
+	before, _ := b.Store.ListNotifications(ctx)
+	if b.batchExecutor == nil {
+		err := errors.New("notification batch executor is unavailable")
+		return types.NotificationBatchResult{Status: types.NotificationBatchRejected, Request: normalized, Notifications: before, Err: err}, nil
+	}
+
+	execution, runErr := b.batchExecutor.RunNotificationBatch(ctx, notificationBatchPlan{
+		Request: normalized,
+		Prepare: func(prepareCtx context.Context) error {
+			if err := b.Store.ApplyNotificationBatchLocally(prepareCtx, normalized); err != nil {
+				return err
+			}
+			b.publishNotificationsChanged()
+			return nil
+		},
+		Remote: func(remoteCtx context.Context, id string) error {
+			if b.Client == nil {
+				return errors.New("GitHub client is unavailable")
+			}
+			return b.Client.MarkThreadAsRead(remoteCtx, id)
+		},
+	})
+	if runErr != nil || !execution.Committed {
+		if runErr == nil {
+			runErr = execution.Err
+		}
+		return types.NotificationBatchResult{
+			Status:         types.NotificationBatchRejected,
+			Reconciliation: types.NotificationBatchAuthoritative,
+			Request:        normalized,
+			Notifications:  before,
+			Err:            runErr,
+		}, nil
+	}
+
+	result := types.NotificationBatchResult{
+		Status:         types.NotificationBatchCommitted,
+		Reconciliation: types.NotificationBatchAuthoritative,
+		Request:        normalized,
+		Outcomes:       execution.Outcomes,
+	}
+	result.Notifications, err = b.Store.ListNotifications(ctx)
+	if err != nil {
+		result.Reconciliation = types.NotificationBatchReconciliationPending
+		result.Notifications = applyNotificationBatchFallback(before, normalized)
+		result.Err = err
+	}
+	return result, nil
 }
 
 func (b *AppBackend) Sync(ctx context.Context, force bool) (models.RateLimitInfo, error) {
@@ -337,6 +396,30 @@ func withReadState(notifications []triage.NotificationWithState, id string, read
 		if cloned[idx].GitHubID == id {
 			cloned[idx].IsReadLocally = read
 			break
+		}
+	}
+	return cloned
+}
+
+func applyNotificationBatchFallback(notifications []triage.NotificationWithState, request types.NotificationBatchRequest) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	selected := make(map[string]struct{}, len(request.IDs))
+	for _, id := range request.IDs {
+		selected[id] = struct{}{}
+	}
+	for index := range cloned {
+		if _, ok := selected[cloned[index].GitHubID]; !ok {
+			continue
+		}
+		switch request.Operation {
+		case types.NotificationBatchRead:
+			cloned[index].IsReadLocally = true
+		case types.NotificationBatchUnread:
+			cloned[index].IsReadLocally = false
+		case types.NotificationBatchHandled:
+			cloned[index].IsHandledLocally = true
+		case types.NotificationBatchUnhandled:
+			cloned[index].IsHandledLocally = false
 		}
 	}
 	return cloned

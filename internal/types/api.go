@@ -3,6 +3,9 @@ package types
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
@@ -24,6 +27,108 @@ var (
 // ConnectedSyncTimeout bounds connected/native sync requests so stalled MCP calls
 // surface a recoverable error instead of leaving the UI in a permanent syncing state.
 var ConnectedSyncTimeout = 15 * time.Second
+
+const MaxBatchNotifications = 100
+
+// NotificationBatchOperation is an explicit desired state for a notification batch.
+type NotificationBatchOperation string
+
+const (
+	NotificationBatchRead      NotificationBatchOperation = "read"
+	NotificationBatchUnread    NotificationBatchOperation = "unread"
+	NotificationBatchHandled   NotificationBatchOperation = "handled"
+	NotificationBatchUnhandled NotificationBatchOperation = "unhandled"
+)
+
+func (o NotificationBatchOperation) Valid() bool {
+	switch o {
+	case NotificationBatchRead, NotificationBatchUnread, NotificationBatchHandled, NotificationBatchUnhandled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (o NotificationBatchOperation) RequiresRemoteRead() bool {
+	return o == NotificationBatchRead
+}
+
+type NotificationBatchRequest struct {
+	Operation NotificationBatchOperation `json:"operation"`
+	IDs       []string                   `json:"ids"`
+}
+
+// NormalizeNotificationBatchRequest validates, deduplicates, and sorts a batch
+// without echoing malformed values in returned errors.
+func NormalizeNotificationBatchRequest(request NotificationBatchRequest) (NotificationBatchRequest, error) {
+	if !request.Operation.Valid() {
+		return NotificationBatchRequest{}, fmt.Errorf("unsupported notification batch operation")
+	}
+	if len(request.IDs) == 0 {
+		return NotificationBatchRequest{}, fmt.Errorf("notification batch IDs are required")
+	}
+
+	seen := make(map[string]struct{}, len(request.IDs))
+	ids := make([]string, 0, len(request.IDs))
+	for index, rawID := range request.IDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			return NotificationBatchRequest{}, fmt.Errorf("notification batch ID at position %d is empty", index)
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) > MaxBatchNotifications {
+		return NotificationBatchRequest{}, fmt.Errorf("notification batch has %d distinct IDs; maximum is %d", len(ids), MaxBatchNotifications)
+	}
+	sort.Strings(ids)
+	return NotificationBatchRequest{Operation: request.Operation, IDs: ids}, nil
+}
+
+type NotificationBatchStatus string
+
+const (
+	NotificationBatchRejected      NotificationBatchStatus = "rejected"
+	NotificationBatchCommitted     NotificationBatchStatus = "committed"
+	NotificationBatchCommitUnknown NotificationBatchStatus = "commit_unknown"
+)
+
+type NotificationBatchReconciliation string
+
+const (
+	NotificationBatchAuthoritative         NotificationBatchReconciliation = "authoritative"
+	NotificationBatchReconciliationPending NotificationBatchReconciliation = "pending"
+)
+
+type NotificationRemoteStatus string
+
+const (
+	NotificationRemoteNotRequired  NotificationRemoteStatus = "not_required"
+	NotificationRemoteSucceeded    NotificationRemoteStatus = "succeeded"
+	NotificationRemoteFailed       NotificationRemoteStatus = "failed"
+	NotificationRemoteCanceled     NotificationRemoteStatus = "canceled"
+	NotificationRemoteNotAttempted NotificationRemoteStatus = "not_attempted"
+)
+
+type NotificationBatchItemResult struct {
+	ID        string                   `json:"id"`
+	Status    NotificationRemoteStatus `json:"status"`
+	ErrorCode string                   `json:"error_code,omitempty"`
+	Err       error                    `json:"-"`
+}
+
+type NotificationBatchResult struct {
+	Status         NotificationBatchStatus         `json:"status"`
+	Reconciliation NotificationBatchReconciliation `json:"reconciliation"`
+	Request        NotificationBatchRequest        `json:"request"`
+	Outcomes       []NotificationBatchItemResult   `json:"outcomes"`
+	Notifications  []triage.NotificationWithState  `json:"-"`
+	Toast          string                          `json:"toast,omitempty"`
+	Err            error                           `json:"-"`
+}
 
 // BridgeStatus represents the functional state of the native system bridge.
 type BridgeStatus string
@@ -192,6 +297,7 @@ type PriorityUpdateResult struct {
 type TUIBackend interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
 	Sync(ctx context.Context, force bool) (models.RateLimitInfo, error)
+	ApplyNotificationBatch(ctx context.Context, request NotificationBatchRequest) (NotificationBatchResult, error)
 	SetRead(ctx context.Context, id string, read bool) (ReadUpdateResult, error)
 	SetHandled(ctx context.Context, id string, handled bool) (HandledUpdateResult, error)
 	SetPriority(ctx context.Context, id string, priority int) (PriorityUpdateResult, error)
@@ -210,6 +316,7 @@ type TUIBackend interface {
 // standalone and connected mode.
 type NotificationStore interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
+	ApplyNotificationBatchLocally(ctx context.Context, request NotificationBatchRequest) error
 	SetReadLocally(ctx context.Context, id string, isRead bool) error
 	SetHandledLocally(ctx context.Context, id string, isHandled bool) error
 	// MarkReadLocally preserves the deprecated coupled read/handled mutation for legacy MCP clients.

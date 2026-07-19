@@ -80,6 +80,12 @@ type ActionSetHandled struct {
 
 func (a ActionSetHandled) Type() string { return "set_handled" }
 
+type ActionApplyNotificationBatch struct {
+	Request types.NotificationBatchRequest
+}
+
+func (a ActionApplyNotificationBatch) Type() string { return "apply_notification_batch" }
+
 type ActionArchive struct {
 	ID string
 }

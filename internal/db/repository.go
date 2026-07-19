@@ -258,6 +258,59 @@ func (db *DB) SetHandledLocally(ctx context.Context, id string, isHandled bool) 
 	return requireUpdatedNotification(result, err)
 }
 
+// ApplyNotificationBatchLocally updates one independent local-state column for
+// every requested notification in one all-or-nothing transaction.
+func (db *DB) ApplyNotificationBatchLocally(ctx context.Context, request types.NotificationBatchRequest) error {
+	normalized, err := types.NormalizeNotificationBatchRequest(request)
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin notification batch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, id := range normalized.IDs {
+		var exists int
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM orbit_state WHERE notification_id = ?", id).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return types.ErrNotificationNotFound
+			}
+			return fmt.Errorf("verify notification batch target: %w", err)
+		}
+	}
+
+	query, value := notificationBatchUpdate(normalized.Operation)
+	for _, id := range normalized.IDs {
+		result, err := tx.ExecContext(ctx, query, value, id)
+		if err := requireUpdatedNotification(result, err); err != nil {
+			return fmt.Errorf("update notification batch target: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit notification batch: %w", err)
+	}
+	return nil
+}
+
+func notificationBatchUpdate(operation types.NotificationBatchOperation) (string, bool) {
+	switch operation {
+	case types.NotificationBatchRead:
+		return "UPDATE orbit_state SET is_read_locally = ? WHERE notification_id = ?", true
+	case types.NotificationBatchUnread:
+		return "UPDATE orbit_state SET is_read_locally = ? WHERE notification_id = ?", false
+	case types.NotificationBatchHandled:
+		return "UPDATE orbit_state SET is_handled_locally = ? WHERE notification_id = ?", true
+	case types.NotificationBatchUnhandled:
+		return "UPDATE orbit_state SET is_handled_locally = ? WHERE notification_id = ?", false
+	default:
+		panic("notification batch operation must be normalized")
+	}
+}
+
 func requireUpdatedNotification(result sql.Result, err error) error {
 	if err != nil {
 		return err
