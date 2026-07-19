@@ -18,6 +18,7 @@ var (
 	ErrNetworkTimeout                = errors.New("github: network timeout")
 	ErrReviewWorkspaceUnsupported    = errors.New("review workspace start is unavailable in this session")
 	ErrInvalidReviewWorkspaceRequest = errors.New("review workspace request is invalid")
+	ErrNotificationNotFound          = errors.New("notification not found")
 )
 
 // ConnectedSyncTimeout bounds connected/native sync requests so stalled MCP calls
@@ -129,17 +130,43 @@ type CommandExecutor interface {
 type ErrMsg struct{ Err error }
 
 // MarkReadStatus describes the outcome of a backend-owned mark-read mutation.
-type MarkReadStatus uint8
+type ReadUpdateStatus uint8
 
 const (
-	MarkReadSuccess MarkReadStatus = iota
-	MarkReadLocalFailure
-	MarkReadRemoteFailure
+	ReadUpdateSuccess ReadUpdateStatus = iota
+	ReadUpdateLocalFailure
+	ReadUpdateRemoteFailure
 )
 
-// MarkReadResult captures the backend-visible outcome of a mark-read mutation.
-type MarkReadResult struct {
-	Status        MarkReadStatus
+// ReadUpdateResult captures the backend-visible outcome of a read-state mutation.
+type ReadUpdateResult struct {
+	Status        ReadUpdateStatus
+	Notifications []triage.NotificationWithState
+	Toast         string
+	Err           error
+}
+
+// Deprecated compatibility names for the legacy mark_read transport contract.
+type (
+	MarkReadStatus = ReadUpdateStatus
+	MarkReadResult = ReadUpdateResult
+)
+
+const (
+	MarkReadSuccess       = ReadUpdateSuccess
+	MarkReadLocalFailure  = ReadUpdateLocalFailure
+	MarkReadRemoteFailure = ReadUpdateRemoteFailure
+)
+
+type HandledUpdateStatus uint8
+
+const (
+	HandledUpdateSuccess HandledUpdateStatus = iota
+	HandledUpdateFailure
+)
+
+type HandledUpdateResult struct {
+	Status        HandledUpdateStatus
 	Notifications []triage.NotificationWithState
 	Toast         string
 	Err           error
@@ -165,7 +192,8 @@ type PriorityUpdateResult struct {
 type TUIBackend interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
 	Sync(ctx context.Context, force bool) (models.RateLimitInfo, error)
-	MarkRead(ctx context.Context, id string, read bool) (MarkReadResult, error)
+	SetRead(ctx context.Context, id string, read bool) (ReadUpdateResult, error)
+	SetHandled(ctx context.Context, id string, handled bool) (HandledUpdateResult, error)
 	SetPriority(ctx context.Context, id string, priority int) (PriorityUpdateResult, error)
 	StartReviewWorkspace(ctx context.Context, request ReviewWorkspaceStartRequest) error
 	FetchDetail(ctx context.Context, u string, subjectType string, force bool) (models.EnrichmentResult, error)
@@ -182,6 +210,9 @@ type TUIBackend interface {
 // standalone and connected mode.
 type NotificationStore interface {
 	ListNotifications(ctx context.Context) ([]triage.NotificationWithState, error)
+	SetReadLocally(ctx context.Context, id string, isRead bool) error
+	SetHandledLocally(ctx context.Context, id string, isHandled bool) error
+	// MarkReadLocally preserves the deprecated coupled read/handled mutation for legacy MCP clients.
 	MarkReadLocally(ctx context.Context, id string, isRead bool) error
 	SetPriority(ctx context.Context, id string, priority int) error
 	EnrichNotification(ctx context.Context, id, nodeID, body, author, htmlURL, resourceState, resourceSubState string) error

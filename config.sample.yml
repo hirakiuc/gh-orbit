@@ -60,16 +60,21 @@ keys:
   back: ["esc", "backspace"]
   copy_url: ["y"]
   toggle_read: ["m"]
+  # Local triage state is independent from GitHub read/unread state.
+  # Existing bindings win collisions; use [] to disable this action.
+  # Remove this line before downgrading to a version that predates Issue #473.
+  toggle_handled: ["x"]
   toggle_detail: [" ", "space"]
   open_browser: ["enter"]
   checkout_pr: ["c"]
+  start_review_workspace: ["w"]
   view_contextual: ["v"]
 
   # Tab Navigation
   inbox: ["1"]
-  unread: ["2"]
-  triaged: ["3"]
-  all: ["4"]
+  unread: []
+  triaged: ["2"]
+  all: ["3"]
   next_tab: ["]", "tab"]
   prev_tab: ["[", "shift+tab"]
 

@@ -96,7 +96,7 @@ type MockTrafficController_ReportRateLimit_Call struct {
 
 // ReportRateLimit is a helper method to define mock.On call
 //   - info models.RateLimitInfo
-func (_e *MockTrafficController_Expecter) ReportRateLimit(info interface{}) *MockTrafficController_ReportRateLimit_Call {
+func (_e *MockTrafficController_Expecter) ReportRateLimit(info any) *MockTrafficController_ReportRateLimit_Call {
 	return &MockTrafficController_ReportRateLimit_Call{Call: _e.mock.On("ReportRateLimit", info)}
 }
 
@@ -136,7 +136,7 @@ type MockTrafficController_Shutdown_Call struct {
 
 // Shutdown is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockTrafficController_Expecter) Shutdown(ctx interface{}) *MockTrafficController_Shutdown_Call {
+func (_e *MockTrafficController_Expecter) Shutdown(ctx any) *MockTrafficController_Shutdown_Call {
 	return &MockTrafficController_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 
@@ -200,7 +200,7 @@ type MockTrafficController_Submit_Call struct {
 //   - ctx context.Context
 //   - priority int
 //   - fn types.TaskFunc
-func (_e *MockTrafficController_Expecter) Submit(ctx interface{}, priority interface{}, fn interface{}) *MockTrafficController_Submit_Call {
+func (_e *MockTrafficController_Expecter) Submit(ctx any, priority any, fn any) *MockTrafficController_Submit_Call {
 	return &MockTrafficController_Submit_Call{Call: _e.mock.On("Submit", ctx, priority, fn)}
 }
 
@@ -251,7 +251,7 @@ type MockTrafficController_UpdateRateLimit_Call struct {
 // UpdateRateLimit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - info models.RateLimitInfo
-func (_e *MockTrafficController_Expecter) UpdateRateLimit(ctx interface{}, info interface{}) *MockTrafficController_UpdateRateLimit_Call {
+func (_e *MockTrafficController_Expecter) UpdateRateLimit(ctx any, info any) *MockTrafficController_UpdateRateLimit_Call {
 	return &MockTrafficController_UpdateRateLimit_Call{Call: _e.mock.On("UpdateRateLimit", ctx, info)}
 }
 

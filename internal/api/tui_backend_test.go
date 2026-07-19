@@ -65,6 +65,40 @@ func TestAppBackend_MarkReadPublishesNotificationsChanged(t *testing.T) {
 	assert.Equal(t, snapshot, result.Notifications)
 }
 
+func TestAppBackend_IndependentReadAndHandledMutations(t *testing.T) {
+	mockRepo := mocks.NewMockRepository(t)
+	mockSyncer := mocks.NewMockSyncer(t)
+	mockEnricher := mocks.NewMockEnricher(t)
+	mockClient := mocks.NewMockClient(t)
+	before := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif"}, State: triage.State{IsHandledLocally: true}}}
+	afterRead := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif"}, State: triage.State{IsReadLocally: true, IsHandledLocally: true}}}
+	afterHandled := []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "notif"}, State: triage.State{IsReadLocally: true}}}
+
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(before, nil).Once()
+	mockRepo.EXPECT().SetReadLocally(mock.Anything, "notif", true).Return(nil).Once()
+	mockClient.EXPECT().MarkThreadAsRead(mock.Anything, "notif").Return(nil).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(afterRead, nil).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(afterRead, nil).Once()
+	mockRepo.EXPECT().SetHandledLocally(mock.Anything, "notif", false).Return(nil).Once()
+	mockRepo.EXPECT().ListNotifications(mock.Anything).Return(afterHandled, nil).Once()
+
+	published := 0
+	backend, err := NewAppBackend(AppBackendParams{
+		UserID: "user", Store: mockRepo, Client: mockClient, Syncer: mockSyncer, Enricher: mockEnricher,
+		PublishNotificationsChanged: func() { published++ },
+	})
+	require.NoError(t, err)
+
+	readResult, err := backend.SetRead(context.Background(), "notif", true)
+	require.NoError(t, err)
+	assert.True(t, readResult.Notifications[0].IsHandledLocally)
+	handledResult, err := backend.SetHandled(context.Background(), "notif", false)
+	require.NoError(t, err)
+	assert.True(t, handledResult.Notifications[0].IsReadLocally)
+	assert.False(t, handledResult.Notifications[0].IsHandledLocally)
+	assert.Equal(t, 2, published)
+}
+
 func TestAppBackend_SetPriorityPublishesNotificationsChanged(t *testing.T) {
 	mockRepo := mocks.NewMockRepository(t)
 	mockSyncer := mocks.NewMockSyncer(t)

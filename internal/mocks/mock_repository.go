@@ -64,7 +64,7 @@ type MockRepository_ArchiveThread_Call struct {
 // ArchiveThread is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) ArchiveThread(ctx interface{}, id interface{}) *MockRepository_ArchiveThread_Call {
+func (_e *MockRepository_Expecter) ArchiveThread(ctx any, id any) *MockRepository_ArchiveThread_Call {
 	return &MockRepository_ArchiveThread_Call{Call: _e.mock.On("ArchiveThread", ctx, id)}
 }
 
@@ -127,7 +127,7 @@ type MockRepository_EnrichNotification_Call struct {
 //   - htmlURL string
 //   - resourceState string
 //   - resourceSubState string
-func (_e *MockRepository_Expecter) EnrichNotification(ctx interface{}, id interface{}, nodeID interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockRepository_EnrichNotification_Call {
+func (_e *MockRepository_Expecter) EnrichNotification(ctx any, id any, nodeID any, body any, author any, htmlURL any, resourceState any, resourceSubState any) *MockRepository_EnrichNotification_Call {
 	return &MockRepository_EnrichNotification_Call{Call: _e.mock.On("EnrichNotification", ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)}
 }
 
@@ -224,7 +224,7 @@ type MockRepository_GetBridgeHealth_Call struct {
 
 // GetBridgeHealth is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockRepository_Expecter) GetBridgeHealth(ctx interface{}) *MockRepository_GetBridgeHealth_Call {
+func (_e *MockRepository_Expecter) GetBridgeHealth(ctx any) *MockRepository_GetBridgeHealth_Call {
 	return &MockRepository_GetBridgeHealth_Call{Call: _e.mock.On("GetBridgeHealth", ctx)}
 }
 
@@ -287,7 +287,7 @@ type MockRepository_GetNotification_Call struct {
 // GetNotification is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) GetNotification(ctx interface{}, id interface{}) *MockRepository_GetNotification_Call {
+func (_e *MockRepository_Expecter) GetNotification(ctx any, id any) *MockRepository_GetNotification_Call {
 	return &MockRepository_GetNotification_Call{Call: _e.mock.On("GetNotification", ctx, id)}
 }
 
@@ -356,7 +356,7 @@ type MockRepository_GetSyncMeta_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - key string
-func (_e *MockRepository_Expecter) GetSyncMeta(ctx interface{}, userID interface{}, key interface{}) *MockRepository_GetSyncMeta_Call {
+func (_e *MockRepository_Expecter) GetSyncMeta(ctx any, userID any, key any) *MockRepository_GetSyncMeta_Call {
 	return &MockRepository_GetSyncMeta_Call{Call: _e.mock.On("GetSyncMeta", ctx, userID, key)}
 }
 
@@ -428,7 +428,7 @@ type MockRepository_ListNotifications_Call struct {
 
 // ListNotifications is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockRepository_Expecter) ListNotifications(ctx interface{}) *MockRepository_ListNotifications_Call {
+func (_e *MockRepository_Expecter) ListNotifications(ctx any) *MockRepository_ListNotifications_Call {
 	return &MockRepository_ListNotifications_Call{Call: _e.mock.On("ListNotifications", ctx)}
 }
 
@@ -480,7 +480,7 @@ type MockRepository_MarkNotifiedBatch_Call struct {
 // MarkNotifiedBatch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ids []string
-func (_e *MockRepository_Expecter) MarkNotifiedBatch(ctx interface{}, ids interface{}) *MockRepository_MarkNotifiedBatch_Call {
+func (_e *MockRepository_Expecter) MarkNotifiedBatch(ctx any, ids any) *MockRepository_MarkNotifiedBatch_Call {
 	return &MockRepository_MarkNotifiedBatch_Call{Call: _e.mock.On("MarkNotifiedBatch", ctx, ids)}
 }
 
@@ -538,7 +538,7 @@ type MockRepository_MarkReadLocally_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - isRead bool
-func (_e *MockRepository_Expecter) MarkReadLocally(ctx interface{}, id interface{}, isRead interface{}) *MockRepository_MarkReadLocally_Call {
+func (_e *MockRepository_Expecter) MarkReadLocally(ctx any, id any, isRead any) *MockRepository_MarkReadLocally_Call {
 	return &MockRepository_MarkReadLocally_Call{Call: _e.mock.On("MarkReadLocally", ctx, id, isRead)}
 }
 
@@ -600,7 +600,7 @@ type MockRepository_MuteThread_Call struct {
 // MuteThread is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) MuteThread(ctx interface{}, id interface{}) *MockRepository_MuteThread_Call {
+func (_e *MockRepository_Expecter) MuteThread(ctx any, id any) *MockRepository_MuteThread_Call {
 	return &MockRepository_MuteThread_Call{Call: _e.mock.On("MuteThread", ctx, id)}
 }
 
@@ -632,6 +632,69 @@ func (_c *MockRepository_MuteThread_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// SetHandledLocally provides a mock function for the type MockRepository
+func (_mock *MockRepository) SetHandledLocally(ctx context.Context, id string, isHandled bool) error {
+	ret := _mock.Called(ctx, id, isHandled)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetHandledLocally")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = returnFunc(ctx, id, isHandled)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_SetHandledLocally_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetHandledLocally'
+type MockRepository_SetHandledLocally_Call struct {
+	*mock.Call
+}
+
+// SetHandledLocally is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - isHandled bool
+func (_e *MockRepository_Expecter) SetHandledLocally(ctx any, id any, isHandled any) *MockRepository_SetHandledLocally_Call {
+	return &MockRepository_SetHandledLocally_Call{Call: _e.mock.On("SetHandledLocally", ctx, id, isHandled)}
+}
+
+func (_c *MockRepository_SetHandledLocally_Call) Run(run func(ctx context.Context, id string, isHandled bool)) *MockRepository_SetHandledLocally_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetHandledLocally_Call) Return(err error) *MockRepository_SetHandledLocally_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_SetHandledLocally_Call) RunAndReturn(run func(ctx context.Context, id string, isHandled bool) error) *MockRepository_SetHandledLocally_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetPriority provides a mock function for the type MockRepository
 func (_mock *MockRepository) SetPriority(ctx context.Context, id string, priority int) error {
 	ret := _mock.Called(ctx, id, priority)
@@ -658,7 +721,7 @@ type MockRepository_SetPriority_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - priority int
-func (_e *MockRepository_Expecter) SetPriority(ctx interface{}, id interface{}, priority interface{}) *MockRepository_SetPriority_Call {
+func (_e *MockRepository_Expecter) SetPriority(ctx any, id any, priority any) *MockRepository_SetPriority_Call {
 	return &MockRepository_SetPriority_Call{Call: _e.mock.On("SetPriority", ctx, id, priority)}
 }
 
@@ -695,6 +758,69 @@ func (_c *MockRepository_SetPriority_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// SetReadLocally provides a mock function for the type MockRepository
+func (_mock *MockRepository) SetReadLocally(ctx context.Context, id string, isRead bool) error {
+	ret := _mock.Called(ctx, id, isRead)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetReadLocally")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = returnFunc(ctx, id, isRead)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_SetReadLocally_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetReadLocally'
+type MockRepository_SetReadLocally_Call struct {
+	*mock.Call
+}
+
+// SetReadLocally is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - isRead bool
+func (_e *MockRepository_Expecter) SetReadLocally(ctx any, id any, isRead any) *MockRepository_SetReadLocally_Call {
+	return &MockRepository_SetReadLocally_Call{Call: _e.mock.On("SetReadLocally", ctx, id, isRead)}
+}
+
+func (_c *MockRepository_SetReadLocally_Call) Run(run func(ctx context.Context, id string, isRead bool)) *MockRepository_SetReadLocally_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetReadLocally_Call) Return(err error) *MockRepository_SetReadLocally_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_SetReadLocally_Call) RunAndReturn(run func(ctx context.Context, id string, isRead bool) error) *MockRepository_SetReadLocally_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UnarchiveThread provides a mock function for the type MockRepository
 func (_mock *MockRepository) UnarchiveThread(ctx context.Context, id string) error {
 	ret := _mock.Called(ctx, id)
@@ -720,7 +846,7 @@ type MockRepository_UnarchiveThread_Call struct {
 // UnarchiveThread is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) UnarchiveThread(ctx interface{}, id interface{}) *MockRepository_UnarchiveThread_Call {
+func (_e *MockRepository_Expecter) UnarchiveThread(ctx any, id any) *MockRepository_UnarchiveThread_Call {
 	return &MockRepository_UnarchiveThread_Call{Call: _e.mock.On("UnarchiveThread", ctx, id)}
 }
 
@@ -777,7 +903,7 @@ type MockRepository_UnmuteThread_Call struct {
 // UnmuteThread is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *MockRepository_Expecter) UnmuteThread(ctx interface{}, id interface{}) *MockRepository_UnmuteThread_Call {
+func (_e *MockRepository_Expecter) UnmuteThread(ctx any, id any) *MockRepository_UnmuteThread_Call {
 	return &MockRepository_UnmuteThread_Call{Call: _e.mock.On("UnmuteThread", ctx, id)}
 }
 
@@ -834,7 +960,7 @@ type MockRepository_UpdateBridgeHealth_Call struct {
 // UpdateBridgeHealth is a helper method to define mock.On call
 //   - ctx context.Context
 //   - h models.BridgeHealth
-func (_e *MockRepository_Expecter) UpdateBridgeHealth(ctx interface{}, h interface{}) *MockRepository_UpdateBridgeHealth_Call {
+func (_e *MockRepository_Expecter) UpdateBridgeHealth(ctx any, h any) *MockRepository_UpdateBridgeHealth_Call {
 	return &MockRepository_UpdateBridgeHealth_Call{Call: _e.mock.On("UpdateBridgeHealth", ctx, h)}
 }
 
@@ -893,7 +1019,7 @@ type MockRepository_UpdateResourceStateByNodeID_Call struct {
 //   - nodeID string
 //   - state string
 //   - resourceSubState string
-func (_e *MockRepository_Expecter) UpdateResourceStateByNodeID(ctx interface{}, nodeID interface{}, state interface{}, resourceSubState interface{}) *MockRepository_UpdateResourceStateByNodeID_Call {
+func (_e *MockRepository_Expecter) UpdateResourceStateByNodeID(ctx any, nodeID any, state any, resourceSubState any) *MockRepository_UpdateResourceStateByNodeID_Call {
 	return &MockRepository_UpdateResourceStateByNodeID_Call{Call: _e.mock.On("UpdateResourceStateByNodeID", ctx, nodeID, state, resourceSubState)}
 }
 
@@ -960,7 +1086,7 @@ type MockRepository_UpdateSyncMeta_Call struct {
 // UpdateSyncMeta is a helper method to define mock.On call
 //   - ctx context.Context
 //   - s models.SyncMeta
-func (_e *MockRepository_Expecter) UpdateSyncMeta(ctx interface{}, s interface{}) *MockRepository_UpdateSyncMeta_Call {
+func (_e *MockRepository_Expecter) UpdateSyncMeta(ctx any, s any) *MockRepository_UpdateSyncMeta_Call {
 	return &MockRepository_UpdateSyncMeta_Call{Call: _e.mock.On("UpdateSyncMeta", ctx, s)}
 }
 
@@ -1017,7 +1143,7 @@ type MockRepository_UpsertNotifications_Call struct {
 // UpsertNotifications is a helper method to define mock.On call
 //   - ctx context.Context
 //   - notifications []triage.Notification
-func (_e *MockRepository_Expecter) UpsertNotifications(ctx interface{}, notifications interface{}) *MockRepository_UpsertNotifications_Call {
+func (_e *MockRepository_Expecter) UpsertNotifications(ctx any, notifications any) *MockRepository_UpsertNotifications_Call {
 	return &MockRepository_UpsertNotifications_Call{Call: _e.mock.On("UpsertNotifications", ctx, notifications)}
 }
 

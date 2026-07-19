@@ -13,6 +13,7 @@ import (
 
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/triage"
+	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"modernc.org/sqlite"
@@ -354,6 +355,39 @@ func TestRepository_Actions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ns)
 	assert.Equal(t, "tracking", ns.Status)
+}
+
+func TestRepository_IndependentReadAndHandledMutations(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenInMemory(ctx, slog.Default())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	const id = "independent-state"
+	require.NoError(t, db.UpsertNotifications(ctx, []triage.Notification{{GitHubID: id, UpdatedAt: time.Now()}}))
+	require.NoError(t, db.SetHandledLocally(ctx, id, true))
+	require.NoError(t, db.SetReadLocally(ctx, id, true))
+
+	state, err := db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	assert.True(t, state.IsReadLocally)
+	assert.True(t, state.IsHandledLocally)
+
+	require.NoError(t, db.SetReadLocally(ctx, id, false))
+	state, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	assert.False(t, state.IsReadLocally)
+	assert.True(t, state.IsHandledLocally, "read mutation must preserve handled state")
+
+	require.NoError(t, db.SetHandledLocally(ctx, id, false))
+	state, err = db.GetNotification(ctx, id)
+	require.NoError(t, err)
+	assert.False(t, state.IsReadLocally, "handled mutation must preserve read state")
+	assert.False(t, state.IsHandledLocally)
+
+	assert.ErrorIs(t, db.SetReadLocally(ctx, "missing", true), types.ErrNotificationNotFound)
+	assert.ErrorIs(t, db.SetHandledLocally(ctx, "missing", true), types.ErrNotificationNotFound)
 }
 
 func TestRepository_MetadataAndEnrichment(t *testing.T) {

@@ -119,7 +119,7 @@ type MockClient_CurrentUser_Call struct {
 
 // CurrentUser is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockClient_Expecter) CurrentUser(ctx interface{}) *MockClient_CurrentUser_Call {
+func (_e *MockClient_Expecter) CurrentUser(ctx any) *MockClient_CurrentUser_Call {
 	return &MockClient_CurrentUser_Call{Call: _e.mock.On("CurrentUser", ctx)}
 }
 
@@ -263,7 +263,7 @@ type MockClient_MarkThreadAsRead_Call struct {
 // MarkThreadAsRead is a helper method to define mock.On call
 //   - ctx context.Context
 //   - threadID string
-func (_e *MockClient_Expecter) MarkThreadAsRead(ctx interface{}, threadID interface{}) *MockClient_MarkThreadAsRead_Call {
+func (_e *MockClient_Expecter) MarkThreadAsRead(ctx any, threadID any) *MockClient_MarkThreadAsRead_Call {
 	return &MockClient_MarkThreadAsRead_Call{Call: _e.mock.On("MarkThreadAsRead", ctx, threadID)}
 }
 
@@ -354,7 +354,7 @@ type MockClient_ReportRateLimit_Call struct {
 
 // ReportRateLimit is a helper method to define mock.On call
 //   - info models.RateLimitInfo
-func (_e *MockClient_Expecter) ReportRateLimit(info interface{}) *MockClient_ReportRateLimit_Call {
+func (_e *MockClient_Expecter) ReportRateLimit(info any) *MockClient_ReportRateLimit_Call {
 	return &MockClient_ReportRateLimit_Call{Call: _e.mock.On("ReportRateLimit", info)}
 }
 
@@ -394,7 +394,7 @@ type MockClient_SetRateLimitReporter_Call struct {
 
 // SetRateLimitReporter is a helper method to define mock.On call
 //   - fn func(models.RateLimitInfo)
-func (_e *MockClient_Expecter) SetRateLimitReporter(fn interface{}) *MockClient_SetRateLimitReporter_Call {
+func (_e *MockClient_Expecter) SetRateLimitReporter(fn any) *MockClient_SetRateLimitReporter_Call {
 	return &MockClient_SetRateLimitReporter_Call{Call: _e.mock.On("SetRateLimitReporter", fn)}
 }
 

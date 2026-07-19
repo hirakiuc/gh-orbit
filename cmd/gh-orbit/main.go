@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -357,15 +359,17 @@ func runTUI() error {
 
 			if err == nil {
 				env.logger.Info("connected to headless engine", "server", initResp.ServerInfo.Name)
-				adapter := engine.NewMCPAdapter(mcpClient)
+				var adapter *engine.MCPAdapter
+				if err := prepareConnectedMutationClient(connectCtx, mcpClient, mcpClient.Close, func() {
+					adapter = engine.NewMCPAdapter(mcpClient)
+				}); err != nil {
+					return err
+				}
 
 				user, err := adapter.ResolveUserID(connectCtx)
 				if err != nil {
-					if requireEngine {
-						return fmt.Errorf("cockpit-managed launch requires connected engine user identity: %w", err)
-					}
-					env.logger.Warn("failed to resolve connected engine user identity, falling back to standalone", "error", err)
-					goto standalone
+					_ = mcpClient.Close()
+					return fmt.Errorf("connected engine user identity is unavailable; restart or upgrade the engine: %w", err)
 				}
 				return launchTUIMCP(ctx, env, cfg, adapter, user)
 			}
@@ -383,7 +387,6 @@ func runTUI() error {
 		return fmt.Errorf("cockpit-managed launch requires a running MCP engine at %s", socketPath)
 	}
 
-standalone:
 	// 2. Standalone Mode (Library access)
 	eng, err := engine.NewCoreEngine(ctx, cfg, env.logger, executor)
 	if err != nil {
@@ -401,6 +404,50 @@ standalone:
 	}
 
 	return launchTUIStandalone(ctx, env, eng, user.Login)
+}
+
+type toolCapabilityClient interface {
+	ListTools(context.Context, mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+}
+
+func prepareConnectedMutationClient(
+	ctx context.Context,
+	capabilityClient toolCapabilityClient,
+	closeClient func() error,
+	onCompatible func(),
+) error {
+	if err := requireIndependentMutationTools(ctx, capabilityClient); err != nil {
+		_ = closeClient()
+		return fmt.Errorf("connected engine is incompatible; restart or upgrade the engine: %w", err)
+	}
+	onCompatible()
+	return nil
+}
+
+func requireIndependentMutationTools(ctx context.Context, capabilityClient toolCapabilityClient) error {
+	result, err := capabilityClient.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		return fmt.Errorf("listing engine tools: %w", err)
+	}
+	if result == nil {
+		return errors.New("listing engine tools returned an empty response")
+	}
+	required := map[string]bool{"set_read": false, "set_handled": false}
+	for _, tool := range result.Tools {
+		if _, ok := required[tool.Name]; ok {
+			required[tool.Name] = true
+		}
+	}
+	var missing []string
+	for _, name := range []string{"set_read", "set_handled"} {
+		if !required[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("engine is missing required tool(s): %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, adapter *engine.MCPAdapter, userID string) error {

@@ -72,6 +72,14 @@ type ActionMarkRead struct {
 
 func (a ActionMarkRead) Type() string { return "mark_read" }
 
+type ActionSetHandled struct {
+	ID            string
+	Handled       bool
+	PreviousIndex int
+}
+
+func (a ActionSetHandled) Type() string { return "set_handled" }
+
 type ActionArchive struct {
 	ID string
 }

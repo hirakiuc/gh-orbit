@@ -34,6 +34,7 @@ type KeyMapConfig struct {
 	All                  []string `yaml:"all"`
 	CopyURL              []string `yaml:"copy_url"`
 	ToggleRead           []string `yaml:"toggle_read"`
+	ToggleHandled        []string `yaml:"toggle_handled"`
 	NextTab              []string `yaml:"next_tab"`
 	PrevTab              []string `yaml:"prev_tab"`
 	CheckoutPR           []string `yaml:"checkout_pr"`
@@ -47,6 +48,8 @@ type KeyMapConfig struct {
 	FilterIssue          []string `yaml:"filter_issue"`
 	FilterDiscussion     []string `yaml:"filter_discussion"`
 	Help                 []string `yaml:"help"`
+
+	toggleHandledExplicit bool
 }
 
 // TUIConfig represents settings for the Terminal UI.
@@ -106,6 +109,7 @@ func DefaultConfig() *Config {
 			All:                  []string{"3"},
 			CopyURL:              []string{"y"},
 			ToggleRead:           []string{"m"},
+			ToggleHandled:        []string{"x"},
 			NextTab:              []string{"]", "tab"},
 			PrevTab:              []string{"[", "shift+tab"},
 			CheckoutPR:           []string{"c"},
@@ -204,6 +208,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	toggleHandledExplicit, err := yamlMappingHasKey(data, "keys", "toggle_handled")
+	if err != nil {
+		return nil, fmt.Errorf("invalid config.yml: %w", err)
+	}
+
 	// Strict Schema Enforcement:
 	// 1. Initialize with defaults to handle missing fields
 	cfg := DefaultConfig()
@@ -215,6 +224,7 @@ func Load() (*Config, error) {
 	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("invalid config.yml (check for typos): %w", err)
 	}
+	cfg.Keys.toggleHandledExplicit = toggleHandledExplicit
 
 	normalizeKeyMap(&cfg.Keys)
 
@@ -234,6 +244,29 @@ func normalizeKeyMap(keys *KeyMapConfig) {
 	}
 }
 
+func yamlMappingHasKey(data []byte, parent, key string) (bool, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return false, err
+	}
+	if len(document.Content) == 0 {
+		return false, nil
+	}
+	root := document.Content[0]
+	for idx := 0; idx+1 < len(root.Content); idx += 2 {
+		if root.Content[idx].Value != parent {
+			continue
+		}
+		mapping := root.Content[idx+1]
+		for child := 0; child+1 < len(mapping.Content); child += 2 {
+			if mapping.Content[child].Value == key {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func isOldDefaultTabKeyMap(keys KeyMapConfig) bool {
 	return slices.Equal(keys.Inbox, []string{"1"}) &&
 		slices.Equal(keys.Unread, []string{"2"}) &&
@@ -248,12 +281,44 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	data, err := yaml.Marshal(c)
+	var document yaml.Node
+	if err := document.Encode(c); err != nil {
+		return fmt.Errorf("failed to encode config: %w", err)
+	}
+	if !c.Keys.toggleHandledExplicit {
+		removeYAMLMappingKey(&document, "keys", "toggle_handled")
+	}
+	data, err := yaml.Marshal(&document)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
 	return os.WriteFile(path, data, 0o600)
+}
+
+func removeYAMLMappingKey(document *yaml.Node, parent, key string) {
+	if document == nil {
+		return
+	}
+	root := document
+	if document.Kind == yaml.DocumentNode {
+		if len(document.Content) == 0 {
+			return
+		}
+		root = document.Content[0]
+	}
+	for idx := 0; idx+1 < len(root.Content); idx += 2 {
+		if root.Content[idx].Value != parent {
+			continue
+		}
+		mapping := root.Content[idx+1]
+		for child := 0; child+1 < len(mapping.Content); child += 2 {
+			if mapping.Content[child].Value == key {
+				mapping.Content = append(mapping.Content[:child], mapping.Content[child+2:]...)
+				return
+			}
+		}
+	}
 }
 
 // EnsurePrivateDir creates a directory with 0700 permissions if it doesn't exist.

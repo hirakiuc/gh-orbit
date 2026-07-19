@@ -149,12 +149,12 @@ func (a *MCPAdapter) ResolveUserID(ctx context.Context) (string, error) {
 	return payload.Login, nil
 }
 
-func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (types.MarkReadResult, error) {
+func (a *MCPAdapter) SetRead(ctx context.Context, id string, isRead bool) (types.ReadUpdateResult, error) {
 	before, _ := a.ListNotifications(ctx)
 
 	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name: "mark_read",
+			Name: "set_read",
 			Arguments: map[string]any{
 				"id":   id,
 				"read": isRead,
@@ -162,19 +162,19 @@ func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (type
 		},
 	})
 	if err != nil {
-		return types.MarkReadResult{}, err
+		return types.ReadUpdateResult{}, err
 	}
 	if resp == nil {
-		return types.MarkReadResult{}, errors.New("mark_read returned nil result")
+		return types.ReadUpdateResult{}, errors.New("set_read returned nil result")
 	}
 	if resp.IsError {
-		toolErr := decodeToolResultError("mark_read", resp)
+		toolErr := decodeToolResultError("set_read", resp)
 		if api.IsRemoteMarkReadFailure(toolErr) {
 			notifications, reloadErr := a.ListNotifications(ctx)
 			if reloadErr != nil {
 				notifications = applyReadState(before, id, isRead)
 			}
-			return types.MarkReadResult{
+			return types.ReadUpdateResult{
 				Status:        types.MarkReadRemoteFailure,
 				Notifications: notifications,
 				Toast:         "Marked read locally; GitHub sync failed",
@@ -184,16 +184,16 @@ func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (type
 		notifications, reloadErr := a.ListNotifications(ctx)
 		if reloadErr != nil {
 			if before != nil {
-				return types.MarkReadResult{
+				return types.ReadUpdateResult{
 					Status:        types.MarkReadLocalFailure,
 					Notifications: before,
 					Toast:         "Failed to update read state",
 					Err:           toolErr,
 				}, nil
 			}
-			return types.MarkReadResult{}, fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, toolErr)
+			return types.ReadUpdateResult{}, fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, toolErr)
 		}
-		return types.MarkReadResult{
+		return types.ReadUpdateResult{
 			Status:        types.MarkReadLocalFailure,
 			Notifications: notifications,
 			Toast:         "Failed to update read state",
@@ -205,18 +205,49 @@ func (a *MCPAdapter) MarkRead(ctx context.Context, id string, isRead bool) (type
 		if before != nil {
 			notifications = applyReadState(before, id, isRead)
 		} else {
-			return types.MarkReadResult{}, err
+			return types.ReadUpdateResult{}, err
 		}
 	}
-	return types.MarkReadResult{
+	return types.ReadUpdateResult{
 		Status:        types.MarkReadSuccess,
 		Notifications: notifications,
 	}, nil
 }
 
-func (a *MCPAdapter) MarkReadLocally(ctx context.Context, id string, isRead bool) error {
-	_, err := a.MarkRead(ctx, id, isRead)
-	return err
+func (a *MCPAdapter) SetHandled(ctx context.Context, id string, handled bool) (types.HandledUpdateResult, error) {
+	before, _ := a.ListNotifications(ctx)
+	resp, err := a.client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+		Name:      "set_handled",
+		Arguments: map[string]any{"id": id, "handled": handled},
+	}})
+	if err != nil {
+		return types.HandledUpdateResult{}, err
+	}
+	if resp == nil {
+		return types.HandledUpdateResult{}, errors.New("set_handled returned nil result")
+	}
+	if resp.IsError {
+		toolErr := decodeToolResultError("set_handled", resp)
+		notifications, reloadErr := a.ListNotifications(ctx)
+		if reloadErr != nil {
+			if before == nil {
+				return types.HandledUpdateResult{}, fmt.Errorf("reload notifications after local handled failure: %w (original error: %v)", reloadErr, toolErr)
+			}
+			notifications = before
+		}
+		return types.HandledUpdateResult{
+			Status: types.HandledUpdateFailure, Notifications: notifications,
+			Toast: "Failed to update handled state", Err: toolErr,
+		}, nil
+	}
+	notifications, err := a.ListNotifications(ctx)
+	if err != nil {
+		if before == nil {
+			return types.HandledUpdateResult{}, err
+		}
+		notifications = applyHandledState(before, id, handled)
+	}
+	return types.HandledUpdateResult{Status: types.HandledUpdateSuccess, Notifications: notifications}, nil
 }
 
 func (a *MCPAdapter) SetPriority(ctx context.Context, id string, priority int) (types.PriorityUpdateResult, error) {
@@ -395,7 +426,17 @@ func applyReadState(notifications []triage.NotificationWithState, id string, rea
 	for idx := range cloned {
 		if cloned[idx].GitHubID == id {
 			cloned[idx].IsReadLocally = read
-			cloned[idx].IsHandledLocally = read
+			break
+		}
+	}
+	return cloned
+}
+
+func applyHandledState(notifications []triage.NotificationWithState, id string, handled bool) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	for idx := range cloned {
+		if cloned[idx].GitHubID == id {
+			cloned[idx].IsHandledLocally = handled
 			break
 		}
 	}

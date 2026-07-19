@@ -67,7 +67,7 @@ type MockNotifier_Notify_Call struct {
 //   - body string
 //   - url string
 //   - priority int
-func (_e *MockNotifier_Expecter) Notify(ctx interface{}, title interface{}, subtitle interface{}, body interface{}, url interface{}, priority interface{}) *MockNotifier_Notify_Call {
+func (_e *MockNotifier_Expecter) Notify(ctx any, title any, subtitle any, body any, url any, priority any) *MockNotifier_Notify_Call {
 	return &MockNotifier_Notify_Call{Call: _e.mock.On("Notify", ctx, title, subtitle, body, url, priority)}
 }
 
@@ -132,7 +132,7 @@ type MockNotifier_Shutdown_Call struct {
 
 // Shutdown is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockNotifier_Expecter) Shutdown(ctx interface{}) *MockNotifier_Shutdown_Call {
+func (_e *MockNotifier_Expecter) Shutdown(ctx any) *MockNotifier_Shutdown_Call {
 	return &MockNotifier_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 

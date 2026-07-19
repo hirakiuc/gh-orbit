@@ -108,23 +108,43 @@ func (b *AppBackend) Sync(ctx context.Context, force bool) (models.RateLimitInfo
 	return b.Syncer.Sync(ctx, userID, force)
 }
 
-func (b *AppBackend) MarkRead(ctx context.Context, id string, read bool) (types.MarkReadResult, error) {
+func (b *AppBackend) SetRead(ctx context.Context, id string, read bool) (types.ReadUpdateResult, error) {
+	return b.updateRead(ctx, id, read, b.Store.SetReadLocally, withReadState)
+}
+
+// MarkReadLegacy preserves the coupled read/handled behavior required by old MCP clients.
+func (b *AppBackend) MarkReadLegacy(ctx context.Context, id string, read bool) (types.ReadUpdateResult, error) {
+	return b.updateRead(ctx, id, read, b.Store.MarkReadLocally, withLegacyReadState)
+}
+
+// MarkRead is retained for source compatibility outside the TUI-facing interface.
+func (b *AppBackend) MarkRead(ctx context.Context, id string, read bool) (types.ReadUpdateResult, error) {
+	return b.MarkReadLegacy(ctx, id, read)
+}
+
+func (b *AppBackend) updateRead(
+	ctx context.Context,
+	id string,
+	read bool,
+	persist func(context.Context, string, bool) error,
+	applyFallback func([]triage.NotificationWithState, string, bool) []triage.NotificationWithState,
+) (types.ReadUpdateResult, error) {
 	before, _ := b.Store.ListNotifications(ctx)
 
-	if err := b.Store.MarkReadLocally(ctx, id, read); err != nil {
+	if err := persist(ctx, id, read); err != nil {
 		notifications, reloadErr := b.Store.ListNotifications(ctx)
 		if reloadErr != nil {
 			if before != nil {
-				return types.MarkReadResult{
+				return types.ReadUpdateResult{
 					Status:        types.MarkReadLocalFailure,
 					Notifications: before,
 					Toast:         "Failed to update read state",
 					Err:           err,
 				}, nil
 			}
-			return types.MarkReadResult{}, fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, err)
+			return types.ReadUpdateResult{}, fmt.Errorf("reload notifications after local read failure: %w (original error: %v)", reloadErr, err)
 		}
-		return types.MarkReadResult{
+		return types.ReadUpdateResult{
 			Status:        types.MarkReadLocalFailure,
 			Notifications: notifications,
 			Toast:         "Failed to update read state",
@@ -138,9 +158,9 @@ func (b *AppBackend) MarkRead(ctx context.Context, id string, read bool) (types.
 		if err := b.Client.MarkThreadAsRead(ctx, id); err != nil {
 			notifications, reloadErr := b.Store.ListNotifications(ctx)
 			if reloadErr != nil {
-				notifications = withReadState(before, id, read)
+				notifications = applyFallback(before, id, read)
 			}
-			return types.MarkReadResult{
+			return types.ReadUpdateResult{
 				Status:        types.MarkReadRemoteFailure,
 				Notifications: notifications,
 				Toast:         "Marked read locally; GitHub sync failed",
@@ -152,14 +172,52 @@ func (b *AppBackend) MarkRead(ctx context.Context, id string, read bool) (types.
 	notifications, err := b.Store.ListNotifications(ctx)
 	if err != nil {
 		if before != nil {
-			notifications = withReadState(before, id, read)
+			notifications = applyFallback(before, id, read)
 		} else {
-			return types.MarkReadResult{}, err
+			return types.ReadUpdateResult{}, err
 		}
 	}
 
-	return types.MarkReadResult{
+	return types.ReadUpdateResult{
 		Status:        types.MarkReadSuccess,
+		Notifications: notifications,
+	}, nil
+}
+
+func (b *AppBackend) SetHandled(ctx context.Context, id string, handled bool) (types.HandledUpdateResult, error) {
+	before, _ := b.Store.ListNotifications(ctx)
+
+	if err := b.Store.SetHandledLocally(ctx, id, handled); err != nil {
+		notifications, reloadErr := b.Store.ListNotifications(ctx)
+		if reloadErr != nil {
+			if before != nil {
+				return types.HandledUpdateResult{
+					Status:        types.HandledUpdateFailure,
+					Notifications: before,
+					Toast:         "Failed to update handled state",
+					Err:           err,
+				}, nil
+			}
+			return types.HandledUpdateResult{}, fmt.Errorf("reload notifications after local handled failure: %w (original error: %v)", reloadErr, err)
+		}
+		return types.HandledUpdateResult{
+			Status:        types.HandledUpdateFailure,
+			Notifications: notifications,
+			Toast:         "Failed to update handled state",
+			Err:           err,
+		}, nil
+	}
+
+	b.publishNotificationsChanged()
+	notifications, err := b.Store.ListNotifications(ctx)
+	if err != nil {
+		if before == nil {
+			return types.HandledUpdateResult{}, err
+		}
+		notifications = withHandledState(before, id, handled)
+	}
+	return types.HandledUpdateResult{
+		Status:        types.HandledUpdateSuccess,
 		Notifications: notifications,
 	}, nil
 }
@@ -278,11 +336,26 @@ func withReadState(notifications []triage.NotificationWithState, id string, read
 	for idx := range cloned {
 		if cloned[idx].GitHubID == id {
 			cloned[idx].IsReadLocally = read
-			cloned[idx].IsHandledLocally = read
 			break
 		}
 	}
 	return cloned
+}
+
+func withHandledState(notifications []triage.NotificationWithState, id string, handled bool) []triage.NotificationWithState {
+	cloned := append([]triage.NotificationWithState(nil), notifications...)
+	for idx := range cloned {
+		if cloned[idx].GitHubID == id {
+			cloned[idx].IsHandledLocally = handled
+			break
+		}
+	}
+	return cloned
+}
+
+func withLegacyReadState(notifications []triage.NotificationWithState, id string, read bool) []triage.NotificationWithState {
+	cloned := withReadState(notifications, id, read)
+	return withHandledState(cloned, id, read)
 }
 
 func withPriority(notifications []triage.NotificationWithState, id string, priority int) []triage.NotificationWithState {

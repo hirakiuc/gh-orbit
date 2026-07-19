@@ -75,7 +75,7 @@ type MockEnricher_FetchDetail_Call struct {
 //   - u string
 //   - subjectType string
 //   - force bool
-func (_e *MockEnricher_Expecter) FetchDetail(ctx interface{}, u interface{}, subjectType interface{}, force interface{}) *MockEnricher_FetchDetail_Call {
+func (_e *MockEnricher_Expecter) FetchDetail(ctx any, u any, subjectType any, force any) *MockEnricher_FetchDetail_Call {
 	return &MockEnricher_FetchDetail_Call{Call: _e.mock.On("FetchDetail", ctx, u, subjectType, force)}
 }
 
@@ -145,7 +145,7 @@ type MockEnricher_FetchHybridBatch_Call struct {
 //   - ctx context.Context
 //   - notifications []triage.NotificationWithState
 //   - force bool
-func (_e *MockEnricher_Expecter) FetchHybridBatch(ctx interface{}, notifications interface{}, force interface{}) *MockEnricher_FetchHybridBatch_Call {
+func (_e *MockEnricher_Expecter) FetchHybridBatch(ctx any, notifications any, force any) *MockEnricher_FetchHybridBatch_Call {
 	return &MockEnricher_FetchHybridBatch_Call{Call: _e.mock.On("FetchHybridBatch", ctx, notifications, force)}
 }
 
@@ -190,11 +190,13 @@ func (_mock *MockEnricher) PersistFetchedDetail(ctx context.Context, id string, 
 		panic("no return value specified for PersistFetchedDetail")
 	}
 
+	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, models.EnrichmentResult) error); ok {
-		return returnFunc(ctx, id, sourceURL, res)
+		r0 = returnFunc(ctx, id, sourceURL, res)
+	} else {
+		r0 = ret.Error(0)
 	}
-
-	return ret.Error(0)
+	return r0
 }
 
 // MockEnricher_PersistFetchedDetail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PersistFetchedDetail'
@@ -203,7 +205,11 @@ type MockEnricher_PersistFetchedDetail_Call struct {
 }
 
 // PersistFetchedDetail is a helper method to define mock.On call
-func (_e *MockEnricher_Expecter) PersistFetchedDetail(ctx interface{}, id interface{}, sourceURL interface{}, res interface{}) *MockEnricher_PersistFetchedDetail_Call {
+//   - ctx context.Context
+//   - id string
+//   - sourceURL string
+//   - res models.EnrichmentResult
+func (_e *MockEnricher_Expecter) PersistFetchedDetail(ctx any, id any, sourceURL any, res any) *MockEnricher_PersistFetchedDetail_Call {
 	return &MockEnricher_PersistFetchedDetail_Call{Call: _e.mock.On("PersistFetchedDetail", ctx, id, sourceURL, res)}
 }
 
@@ -225,7 +231,12 @@ func (_c *MockEnricher_PersistFetchedDetail_Call) Run(run func(ctx context.Conte
 		if args[3] != nil {
 			arg3 = args[3].(models.EnrichmentResult)
 		}
-		run(arg0, arg1, arg2, arg3)
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
 	})
 	return _c
 }
@@ -248,11 +259,13 @@ func (_mock *MockEnricher) PersistIndependentDetail(ctx context.Context, id stri
 		panic("no return value specified for PersistIndependentDetail")
 	}
 
+	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, string) error); ok {
-		return returnFunc(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
+		r0 = returnFunc(ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)
+	} else {
+		r0 = ret.Error(0)
 	}
-
-	return ret.Error(0)
+	return r0
 }
 
 // MockEnricher_PersistIndependentDetail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PersistIndependentDetail'
@@ -261,7 +274,15 @@ type MockEnricher_PersistIndependentDetail_Call struct {
 }
 
 // PersistIndependentDetail is a helper method to define mock.On call
-func (_e *MockEnricher_Expecter) PersistIndependentDetail(ctx interface{}, id interface{}, nodeID interface{}, body interface{}, author interface{}, htmlURL interface{}, resourceState interface{}, resourceSubState interface{}) *MockEnricher_PersistIndependentDetail_Call {
+//   - ctx context.Context
+//   - id string
+//   - nodeID string
+//   - body string
+//   - author string
+//   - htmlURL string
+//   - resourceState string
+//   - resourceSubState string
+func (_e *MockEnricher_Expecter) PersistIndependentDetail(ctx any, id any, nodeID any, body any, author any, htmlURL any, resourceState any, resourceSubState any) *MockEnricher_PersistIndependentDetail_Call {
 	return &MockEnricher_PersistIndependentDetail_Call{Call: _e.mock.On("PersistIndependentDetail", ctx, id, nodeID, body, author, htmlURL, resourceState, resourceSubState)}
 }
 
@@ -299,7 +320,16 @@ func (_c *MockEnricher_PersistIndependentDetail_Call) Run(run func(ctx context.C
 		if args[7] != nil {
 			arg7 = args[7].(string)
 		}
-		run(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+			arg6,
+			arg7,
+		)
 	})
 	return _c
 }
@@ -327,7 +357,7 @@ type MockEnricher_Shutdown_Call struct {
 
 // Shutdown is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockEnricher_Expecter) Shutdown(ctx interface{}) *MockEnricher_Shutdown_Call {
+func (_e *MockEnricher_Expecter) Shutdown(ctx any) *MockEnricher_Shutdown_Call {
 	return &MockEnricher_Shutdown_Call{Call: _e.mock.On("Shutdown", ctx)}
 }
 

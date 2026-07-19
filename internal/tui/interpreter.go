@@ -39,6 +39,8 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.model.syncNotificationsWithForce(a.Force, a.IsManual)
 	case ActionMarkRead:
 		return i.model.MarkReadByID(a.ID, a.Read)
+	case ActionSetHandled:
+		return i.model.SetHandledByID(a.ID, a.Handled, a.PreviousIndex)
 	case ActionSetPriority:
 		return i.model.setPriorityByID(a.ID, a.Priority)
 	case ActionViewWeb:

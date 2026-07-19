@@ -424,6 +424,9 @@ type mutationAppliedMsg struct {
 	notifications []triage.NotificationWithState
 	toast         string
 	err           error
+	targetID      string
+	previousIndex int
+	reconcileItem bool
 }
 
 type reviewWorkspaceStartedMsg struct {
