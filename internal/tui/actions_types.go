@@ -147,6 +147,12 @@ type ActionLoadNotifications struct {
 
 func (a ActionLoadNotifications) Type() string { return "load_notifications" }
 
+type ActionLoadBatchReconciliation struct {
+	Generation uint64
+}
+
+func (a ActionLoadBatchReconciliation) Type() string { return "load_batch_reconciliation" }
+
 type ActionUpdateRateLimit struct {
 	Info models.RateLimitInfo
 }

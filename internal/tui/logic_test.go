@@ -109,6 +109,7 @@ func TestInterpreter_Execute(t *testing.T) {
 		},
 		ActionEnrichItems{Notifications: []triage.NotificationWithState{notif}},
 		ActionLoadNotifications{IsInitial: true, IsManual: false},
+		ActionLoadBatchReconciliation{Generation: 1},
 		ActionUpdateRateLimit{Info: models.RateLimitInfo{Remaining: 100}},
 		ActionScheduleTick{TickType: TickHeartbeat, Interval: time.Millisecond},
 		ActionScheduleTick{TickType: TickClock, Interval: time.Millisecond},
@@ -881,7 +882,7 @@ func TestModel_HandleBatchMutationAppliedRetainsFailedIDsAndReloadsUnknown(t *te
 		Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
 		Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a"}},
 	}})
-	assert.Contains(t, actions, ActionLoadNotifications{})
+	assert.Contains(t, actions, ActionLoadBatchReconciliation{Generation: m.batchRecovery.generation})
 	assert.True(t, m.batchUncertain)
 }
 
@@ -918,7 +919,16 @@ func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
 			Notifications: notifications,
 		}})
 		assert.True(t, m.batchRefreshPending)
+		generation := m.batchRecovery.generation
+
+		// A generic load queued before the batch result is not causal proof of
+		// post-mutation state and must leave recovery pending.
 		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		assert.True(t, m.batchRefreshPending)
+		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation - 1})
+		assert.True(t, m.batchRefreshPending)
+
+		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
 		assert.False(t, m.batchRefreshPending)
 		assert.Contains(t, m.selectedIDs, "a")
 	})
@@ -932,12 +942,17 @@ func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
 		}})
 		assert.True(t, m.batchUncertain)
 		assert.Equal(t, request, m.pendingBatchRequest)
+		generation := m.batchRecovery.generation
 
 		// A failed load produces no notificationsLoadedMsg, so recovery remains.
 		assert.True(t, m.batchRecovery.awaitingAuthoritative)
 		assert.True(t, m.batchUncertain)
 
 		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		assert.True(t, m.batchUncertain, "an older generic load cannot complete recovery")
+		assert.True(t, m.batchRecovery.awaitingAuthoritative)
+
+		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
 		assert.False(t, m.batchUncertain)
 		assert.False(t, m.batchRecovery.awaitingAuthoritative)
 		assert.Equal(t, request, m.pendingBatchRequest)
@@ -947,6 +962,33 @@ func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
 		assert.Equal(t, request, m.pendingBatchRequest)
 		assert.Equal(t, map[string]struct{}{"a": {}, "b": {}}, m.selectedIDs)
 	})
+}
+
+func TestModel_BatchRecoveryMembershipEditsSurviveReload(t *testing.T) {
+	m := newTestModel(t)
+	notifications := []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "a", UpdatedAt: time.Now()}},
+		{Notification: triage.Notification{GitHubID: "b", UpdatedAt: time.Now()}},
+	}
+	m.allNotifications = notifications
+	m.applyFilters()
+	m.listView.list.Select(0)
+	m.setBatchRecovery(
+		types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}},
+		[]string{"a", "b"},
+		types.NotificationBatchCommitUnknown,
+		true,
+	)
+
+	actions, handled := m.handleSelectionKeys(keyPress("s"))
+	assert.True(t, handled)
+	assert.Empty(t, actions)
+	assert.Equal(t, []string{"b"}, m.batchRecovery.retryIDs)
+	assert.Equal(t, map[string]struct{}{"b": {}}, m.selectedIDs)
+
+	m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications, IsForced: true})
+	assert.Equal(t, []string{"b"}, m.batchRecovery.retryIDs)
+	assert.Equal(t, map[string]struct{}{"b": {}}, m.selectedIDs, "reload must not undo the user's membership edit")
 }
 
 func TestModel_ApplyFilters_ActiveTriageTabs(t *testing.T) {

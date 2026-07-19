@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -101,6 +102,8 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		m.handleBackgroundColor(msg)
 	case notificationsLoadedMsg:
 		return m.handleNotificationsLoaded(msg)
+	case batchReconciliationLoadedMsg:
+		return m.handleBatchReconciliationLoaded(msg)
 	case mutationAppliedMsg:
 		return m.handleMutationApplied(msg)
 	case batchMutationAppliedMsg:
@@ -544,7 +547,7 @@ func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	m.allNotifications = msg.notifications
 	if m.batchRecovery != nil {
-		m.reconcileBatchRecoveryAfterLoad()
+		m.restoreBatchRecoverySelection()
 	} else if !m.batchPending {
 		m.clearSelection()
 	}
@@ -582,6 +585,15 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
 	}
 
+	return actions
+}
+
+func (m *Model) handleBatchReconciliationLoaded(msg batchReconciliationLoadedMsg) []Action {
+	if m.batchRecovery == nil || msg.generation != m.batchRecovery.generation || !m.batchRecovery.awaitingAuthoritative {
+		return nil
+	}
+	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: msg.notifications})
+	m.reconcileBatchRecoveryAfterLoad()
 	return actions
 }
 
@@ -667,8 +679,8 @@ func (m *Model) handleBatchMutationApplied(msg batchMutationAppliedMsg) []Action
 		}
 	}
 	actions := []Action{ActionShowToast{Message: toast}}
-	if m.batchUncertain || m.batchRefreshPending {
-		actions = append(actions, ActionLoadNotifications{})
+	if (m.batchUncertain || m.batchRefreshPending) && m.batchRecovery != nil {
+		actions = append(actions, ActionLoadBatchReconciliation{Generation: m.batchRecovery.generation})
 	}
 	return actions
 }
@@ -848,11 +860,28 @@ func (m *Model) clearSelection() {
 func (m *Model) setBatchRecovery(request types.NotificationBatchRequest, retryIDs []string, status types.NotificationBatchStatus, awaiting bool) {
 	request.IDs = append([]string(nil), request.IDs...)
 	retryIDs = append([]string(nil), retryIDs...)
+	m.batchRecoverySeq++
 	m.pendingBatchRequest = request
 	m.batchRecovery = &batchRecoveryState{
 		request: request, retryIDs: retryIDs, status: status, awaitingAuthoritative: awaiting,
+		generation: m.batchRecoverySeq,
 	}
 	m.restoreBatchRecoverySelection()
+}
+
+func (m *Model) syncBatchRecoveryRetryIDs() {
+	if m.batchRecovery == nil {
+		return
+	}
+	retryIDs := make([]string, 0, len(m.selectedIDs))
+	for id := range m.selectedIDs {
+		retryIDs = append(retryIDs, id)
+	}
+	sort.Strings(retryIDs)
+	m.batchRecovery.retryIDs = retryIDs
+	if len(retryIDs) == 0 && m.batchRecovery.status == types.NotificationBatchCommitted && !m.batchRecovery.awaitingAuthoritative {
+		m.clearBatchRecovery()
+	}
 }
 
 func (m *Model) restoreBatchRecoverySelection() {
@@ -920,6 +949,7 @@ func (m *Model) handleSelectionKeys(msg tea.KeyMsg) ([]Action, bool) {
 				m.selectedIDs[notification.GitHubID] = struct{}{}
 			}
 		}
+		m.syncBatchRecoveryRetryIDs()
 		return []Action{}, true
 	case key.Matches(msg, m.keys.BatchRead):
 		return m.notificationBatchAction(types.NotificationBatchRead), true

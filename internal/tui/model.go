@@ -77,6 +77,7 @@ type Model struct {
 	batchRefreshPending bool
 	pendingBatchRequest types.NotificationBatchRequest
 	batchRecovery       *batchRecoveryState
+	batchRecoverySeq    uint64
 	err                 error
 	state               AppState
 	isDark              bool
@@ -129,6 +130,7 @@ type batchRecoveryState struct {
 	retryIDs              []string
 	status                types.NotificationBatchStatus
 	awaitingAuthoritative bool
+	generation            uint64
 }
 
 // Option defines a functional option for Model configuration.
@@ -409,6 +411,16 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool, isManual bool) 
 	})
 }
 
+func (m *Model) loadBatchReconciliation(generation uint64) tea.Cmd {
+	return m.submitTask("notification-batch:reconcile", 0, api.PrioritySync, func(ctx context.Context) any {
+		notifications, err := m.backend.ListNotifications(ctx)
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+		return batchReconciliationLoadedMsg{notifications: notifications, generation: generation}
+	})
+}
+
 func (m *Model) syncNotificationsWithForce(force bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:sync", types.ConnectedSyncTimeout, api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.backend.Sync(ctx, force)
@@ -442,6 +454,11 @@ type notificationsLoadedMsg struct {
 	IsInitial     bool
 	IsForced      bool
 	IsManual      bool
+}
+
+type batchReconciliationLoadedMsg struct {
+	notifications []triage.NotificationWithState
+	generation    uint64
 }
 
 type mutationAppliedMsg struct {

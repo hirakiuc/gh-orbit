@@ -59,6 +59,8 @@ func (i *Interpreter) Execute(action Action) tea.Cmd {
 		return i.model.FetchDetailCmd(a.ID, a.URL, a.SubjectType, a.Force)
 	case ActionLoadNotifications:
 		return i.model.loadNotifications(a.IsInitial, a.IsForced, a.IsManual)
+	case ActionLoadBatchReconciliation:
+		return i.model.loadBatchReconciliation(a.Generation)
 	case ActionUpdateRateLimit:
 		return func() tea.Msg {
 			i.model.RateLimit = a.Info
