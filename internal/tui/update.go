@@ -585,16 +585,25 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
 	}
 
-	return actions
+	return m.appendBatchReconciliationRetry(actions)
 }
 
 func (m *Model) handleBatchReconciliationLoaded(msg batchReconciliationLoadedMsg) []Action {
 	if m.batchRecovery == nil || msg.generation != m.batchRecovery.generation || !m.batchRecovery.awaitingAuthoritative {
 		return nil
 	}
-	actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: msg.notifications})
+	// Apply the correlated snapshot before clearing uncertainty. Reconciling
+	// first also prevents the common load path from scheduling a redundant retry.
+	m.allNotifications = msg.notifications
 	m.reconcileBatchRecoveryAfterLoad()
-	return actions
+	return m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: msg.notifications})
+}
+
+func (m *Model) appendBatchReconciliationRetry(actions []Action) []Action {
+	if m.batchRecovery == nil || !m.batchRecovery.awaitingAuthoritative {
+		return actions
+	}
+	return append(actions, ActionLoadBatchReconciliation{Generation: m.batchRecovery.generation})
 }
 
 func (m *Model) filterSelectedDetailRefreshCandidate(notifications []triage.NotificationWithState) []triage.NotificationWithState {

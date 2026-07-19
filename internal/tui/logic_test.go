@@ -923,14 +923,16 @@ func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
 
 		// A generic load queued before the batch result is not causal proof of
 		// post-mutation state and must leave recovery pending.
-		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
 		assert.True(t, m.batchRefreshPending)
+		assert.Contains(t, actions, ActionLoadBatchReconciliation{Generation: generation})
 		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation - 1})
 		assert.True(t, m.batchRefreshPending)
 
-		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
+		actions = m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
 		assert.False(t, m.batchRefreshPending)
 		assert.Contains(t, m.selectedIDs, "a")
+		assert.NotContains(t, actions, ActionLoadBatchReconciliation{Generation: generation})
 	})
 
 	t.Run("commit unknown", func(t *testing.T) {
@@ -948,15 +950,17 @@ func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
 		assert.True(t, m.batchRecovery.awaitingAuthoritative)
 		assert.True(t, m.batchUncertain)
 
-		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		actions := m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
 		assert.True(t, m.batchUncertain, "an older generic load cannot complete recovery")
 		assert.True(t, m.batchRecovery.awaitingAuthoritative)
+		assert.Contains(t, actions, ActionLoadBatchReconciliation{Generation: generation}, "a later reload must keep recovery live")
 
-		m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
+		actions = m.handleBatchReconciliationLoaded(batchReconciliationLoadedMsg{notifications: notifications, generation: generation})
 		assert.False(t, m.batchUncertain)
 		assert.False(t, m.batchRecovery.awaitingAuthoritative)
 		assert.Equal(t, request, m.pendingBatchRequest)
 		assert.Equal(t, map[string]struct{}{"a": {}, "b": {}}, m.selectedIDs)
+		assert.NotContains(t, actions, ActionLoadBatchReconciliation{Generation: generation})
 
 		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications, IsManual: true})
 		assert.Equal(t, request, m.pendingBatchRequest)
