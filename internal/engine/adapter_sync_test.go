@@ -60,7 +60,9 @@ func TestMCPAdapter_NotificationBatchConfirmedCommitSurvivesReloadFailure(t *tes
 		},
 		callTool: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{StructuredContent: map[string]any{
-				"status": "committed", "outcomes": outcomes,
+				"status": "committed", "reconciliation": "authoritative",
+				"request":  map[string]any{"operation": "read", "ids": []string{"1"}},
+				"outcomes": outcomes,
 			}}, nil
 		},
 	})
@@ -72,6 +74,69 @@ func TestMCPAdapter_NotificationBatchConfirmedCommitSurvivesReloadFailure(t *tes
 	assert.Equal(t, types.NotificationBatchCommitted, result.Status)
 	assert.Equal(t, types.NotificationBatchReconciliationPending, result.Reconciliation)
 	assert.Equal(t, outcomes, result.Outcomes)
+}
+
+func TestMCPAdapter_NotificationBatchRejectsUntrustworthyStructuredResults(t *testing.T) {
+	validRequest := map[string]any{"operation": "read", "ids": []string{"1"}}
+	tests := map[string]map[string]any{
+		"malformed": {"outcomes": make(chan int)},
+		"missing request": {
+			"status": "committed", "reconciliation": "authoritative",
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}},
+		},
+		"missing outcomes": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+		},
+		"duplicate target": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}, {"id": "1", "status": "succeeded"}},
+		},
+		"foreign target": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "2", "status": "succeeded"}},
+		},
+		"invalid status": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "running"}},
+		},
+		"unbounded error code": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "failed", "error_code": string(make([]byte, 65))}},
+		},
+		"contradictory local-only result": {
+			"status": "committed", "reconciliation": "authoritative",
+			"request":  map[string]any{"operation": "handled", "ids": []string{"1"}},
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}},
+		},
+		"mismatched operation": {
+			"status": "committed", "reconciliation": "authoritative",
+			"request":  map[string]any{"operation": "unread", "ids": []string{"1"}},
+			"outcomes": []map[string]any{{"id": "1", "status": "not_required"}},
+		},
+	}
+
+	for name, payload := range tests {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			adapter := NewMCPAdapter(&blockingMCPClient{
+				readResource: func(_ context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+					return notificationResource(t, request, []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}), nil
+				},
+				callTool: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					calls++
+					return &mcp.CallToolResult{StructuredContent: payload}, nil
+				},
+			})
+			operation := types.NotificationBatchRead
+			if name == "contradictory local-only result" {
+				operation = types.NotificationBatchHandled
+			}
+			result, err := adapter.ApplyNotificationBatch(context.Background(), types.NotificationBatchRequest{Operation: operation, IDs: []string{"1"}})
+			require.NoError(t, err)
+			assert.Equal(t, types.NotificationBatchCommitUnknown, result.Status)
+			assert.Equal(t, 1, calls, "an untrustworthy response must not be replayed")
+		})
+	}
 }
 
 type blockingMCPClient struct {

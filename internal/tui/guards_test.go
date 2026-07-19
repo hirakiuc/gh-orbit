@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/mocks"
@@ -85,6 +86,50 @@ func TestModel_NewTaskContext_UsesTaskRootCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("expected scoped task context to be canceled when task root is canceled")
 	}
+}
+
+func TestModel_SubmitBackendTaskSupersedesAndCleansUpScope(t *testing.T) {
+	m := newTestModel(t)
+	firstStarted := make(chan context.Context, 1)
+	firstDone := make(chan tea.Msg, 1)
+	first := m.submitBackendTask("notification-batch", 0, func(ctx context.Context) any {
+		firstStarted <- ctx
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	go func() { firstDone <- first() }()
+	firstCtx := <-firstStarted
+
+	second := m.submitBackendTask("notification-batch", 0, func(ctx context.Context) any {
+		return ctx.Err()
+	})
+	assert.Nil(t, second())
+	assert.Equal(t, context.Canceled, <-firstDone)
+	assert.ErrorIs(t, firstCtx.Err(), context.Canceled)
+
+	m.taskCancelMu.Lock()
+	assert.Empty(t, m.taskCancels)
+	m.taskCancelMu.Unlock()
+}
+
+func TestModel_SubmitBackendTaskHonorsTaskRootCancellation(t *testing.T) {
+	taskRoot, cancel := context.WithCancel(context.Background())
+	m := newTestModelWithTaskRoot(t, taskRoot)
+	started := make(chan struct{})
+	done := make(chan tea.Msg, 1)
+	cmd := m.submitBackendTask("notification-batch", 0, func(ctx context.Context) any {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	go func() { done <- cmd() }()
+	<-started
+	cancel()
+	assert.Equal(t, context.Canceled, <-done)
+
+	m.taskCancelMu.Lock()
+	assert.Empty(t, m.taskCancels)
+	m.taskCancelMu.Unlock()
 }
 
 func TestModel_Shutdown_ConnectedModeAllowsNilTraffic(t *testing.T) {

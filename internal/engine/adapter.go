@@ -179,13 +179,12 @@ func (a *MCPAdapter) ApplyNotificationBatch(ctx context.Context, request types.N
 	}
 
 	result, ok := decodeNotificationBatchToolResult(resp)
-	if !ok || (result.Status != types.NotificationBatchCommitted && result.Status != types.NotificationBatchRejected) {
+	if !ok || types.ValidateNotificationBatchResult(normalized, result) != nil {
 		return types.NotificationBatchResult{
 			Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
 			Request: normalized, Notifications: before, Err: errors.New("batch_set_state returned an untrustworthy result"),
 		}, nil
 	}
-	result.Request = normalized
 	result.Reconciliation = types.NotificationBatchAuthoritative
 	result.Notifications, err = a.ListNotifications(ctx)
 	if err != nil {

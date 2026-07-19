@@ -9,6 +9,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -121,7 +122,7 @@ func NewCoreEngine(
 	bus := NewEventBus()
 	hooks := newBackendPublishHooks(bus)
 	traffic := api.NewAPITrafficController(ctx, logger)
-	client.SetRateLimitReporter(traffic.ReportRateLimit)
+	wireRateLimitReporter(client, traffic.ReportRateLimit)
 
 	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
 		Client: client,
@@ -184,6 +185,10 @@ func NewCoreEngine(
 		Traffic:           traffic,
 		Alert:             alerter,
 	}, nil
+}
+
+func wireRateLimitReporter(client github.Client, reporter func(models.RateLimitInfo)) {
+	client.SetRateLimitReporter(reporter)
 }
 
 // Shutdown ensures all background resources are released cleanly.

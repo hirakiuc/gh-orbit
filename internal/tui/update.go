@@ -542,12 +542,12 @@ func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 }
 
 func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
-	if !m.batchPending {
-		m.clearSelection()
-		m.batchUncertain = false
-		m.batchRefreshPending = false
-	}
 	m.allNotifications = msg.notifications
+	if m.batchRecovery != nil {
+		m.reconcileBatchRecoveryAfterLoad()
+	} else if !m.batchPending {
+		m.clearSelection()
+	}
 	// Clear inflight on full reload to avoid stale blocks
 	m.inflightEnrichments = make(map[string]time.Time)
 	m.applyFilters()
@@ -619,33 +619,33 @@ func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {
 
 func (m *Model) handleBatchMutationApplied(msg batchMutationAppliedMsg) []Action {
 	m.batchPending = false
-	m.pendingBatchRequest = types.NotificationBatchRequest{}
 	m.err = msg.result.Err
 	m.batchUncertain = msg.result.Status == types.NotificationBatchCommitUnknown
 	m.batchRefreshPending = msg.result.Reconciliation == types.NotificationBatchReconciliationPending
 
 	switch msg.result.Status {
 	case types.NotificationBatchRejected:
+		m.clearBatchRecovery()
 		m.allNotifications = msg.before
 	case types.NotificationBatchCommitted:
 		m.allNotifications = msg.result.Notifications
-		clear(m.selectedIDs)
+		retryIDs := make([]string, 0, len(msg.result.Outcomes))
 		for _, outcome := range msg.result.Outcomes {
 			switch outcome.Status {
 			case types.NotificationRemoteFailed, types.NotificationRemoteCanceled, types.NotificationRemoteNotAttempted:
-				m.selectedIDs[outcome.ID] = struct{}{}
+				retryIDs = append(retryIDs, outcome.ID)
 			}
 		}
-		m.selectionMode = len(m.selectedIDs) > 0
+		if len(retryIDs) > 0 || m.batchRefreshPending {
+			m.setBatchRecovery(msg.result.Request, retryIDs, msg.result.Status, m.batchRefreshPending)
+		} else {
+			m.clearBatchRecovery()
+		}
 	case types.NotificationBatchCommitUnknown:
 		if msg.result.Notifications != nil {
 			m.allNotifications = msg.result.Notifications
 		}
-		m.selectionMode = true
-		clear(m.selectedIDs)
-		for _, id := range msg.result.Request.IDs {
-			m.selectedIDs[id] = struct{}{}
-		}
+		m.setBatchRecovery(msg.result.Request, msg.result.Request.IDs, msg.result.Status, true)
 	}
 	m.applyFilters()
 
@@ -840,6 +840,53 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 func (m *Model) clearSelection() {
 	m.selectionMode = false
 	clear(m.selectedIDs)
+	if !m.batchPending {
+		m.clearBatchRecovery()
+	}
+}
+
+func (m *Model) setBatchRecovery(request types.NotificationBatchRequest, retryIDs []string, status types.NotificationBatchStatus, awaiting bool) {
+	request.IDs = append([]string(nil), request.IDs...)
+	retryIDs = append([]string(nil), retryIDs...)
+	m.pendingBatchRequest = request
+	m.batchRecovery = &batchRecoveryState{
+		request: request, retryIDs: retryIDs, status: status, awaitingAuthoritative: awaiting,
+	}
+	m.restoreBatchRecoverySelection()
+}
+
+func (m *Model) restoreBatchRecoverySelection() {
+	clear(m.selectedIDs)
+	if m.batchRecovery == nil {
+		m.selectionMode = false
+		return
+	}
+	m.pendingBatchRequest = m.batchRecovery.request
+	m.pendingBatchRequest.IDs = append([]string(nil), m.batchRecovery.request.IDs...)
+	for _, id := range m.batchRecovery.retryIDs {
+		m.selectedIDs[id] = struct{}{}
+	}
+	m.selectionMode = len(m.selectedIDs) > 0
+}
+
+func (m *Model) reconcileBatchRecoveryAfterLoad() {
+	if m.batchRecovery.awaitingAuthoritative {
+		m.batchRecovery.awaitingAuthoritative = false
+		m.batchUncertain = false
+		m.batchRefreshPending = false
+	}
+	if m.batchRecovery.status == types.NotificationBatchCommitted && len(m.batchRecovery.retryIDs) == 0 {
+		m.clearBatchRecovery()
+		return
+	}
+	m.restoreBatchRecoverySelection()
+}
+
+func (m *Model) clearBatchRecovery() {
+	m.batchRecovery = nil
+	m.pendingBatchRequest = types.NotificationBatchRequest{}
+	m.batchUncertain = false
+	m.batchRefreshPending = false
 }
 
 func (m *Model) handleSelectionKeys(msg tea.KeyMsg) ([]Action, bool) {

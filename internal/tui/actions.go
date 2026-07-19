@@ -24,6 +24,11 @@ func (m *Model) ApplyNotificationBatch(request types.NotificationBatchRequest) t
 		}
 	}
 
+	// A retry starts a new mutation lifecycle. Keep the current selection while
+	// replacing any prior recovery record with the new immutable request.
+	m.batchRecovery = nil
+	m.batchUncertain = false
+	m.batchRefreshPending = false
 	m.pendingBatchRequest = normalized
 	m.batchPending = true
 	m.allNotifications = applyBatchOptimistically(m.allNotifications, normalized)

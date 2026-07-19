@@ -30,6 +30,8 @@ var ConnectedSyncTimeout = 15 * time.Second
 
 const MaxBatchNotifications = 100
 
+const maxNotificationBatchErrorCodeLength = 64
+
 // NotificationBatchOperation is an explicit desired state for a notification batch.
 type NotificationBatchOperation string
 
@@ -128,6 +130,94 @@ type NotificationBatchResult struct {
 	Notifications  []triage.NotificationWithState  `json:"-"`
 	Toast          string                          `json:"toast,omitempty"`
 	Err            error                           `json:"-"`
+}
+
+// ValidateNotificationBatchResult verifies that a committed result is a
+// complete, self-consistent response for the expected normalized request.
+// Transport adapters must treat validation failures as commit-unknown rather
+// than replaying a mutation whose commit state is no longer knowable.
+func ValidateNotificationBatchResult(expected NotificationBatchRequest, result NotificationBatchResult) error {
+	normalizedExpected, err := NormalizeNotificationBatchRequest(expected)
+	if err != nil {
+		return fmt.Errorf("invalid expected notification batch: %w", err)
+	}
+	normalizedResult, err := NormalizeNotificationBatchRequest(result.Request)
+	if err != nil || !notificationBatchRequestsEqual(result.Request, normalizedResult) {
+		return errors.New("notification batch result request is not normalized")
+	}
+	if !notificationBatchRequestsEqual(normalizedExpected, normalizedResult) {
+		return errors.New("notification batch result request does not match")
+	}
+	if result.Status != NotificationBatchCommitted {
+		return errors.New("notification batch result is not committed")
+	}
+	if result.Reconciliation != NotificationBatchAuthoritative && result.Reconciliation != NotificationBatchReconciliationPending {
+		return errors.New("notification batch result reconciliation is invalid")
+	}
+	if len(result.Outcomes) != len(normalizedExpected.IDs) {
+		return errors.New("notification batch result outcome count does not match")
+	}
+
+	expectedIDs := make(map[string]struct{}, len(normalizedExpected.IDs))
+	for _, id := range normalizedExpected.IDs {
+		expectedIDs[id] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(result.Outcomes))
+	for _, outcome := range result.Outcomes {
+		if _, ok := expectedIDs[outcome.ID]; !ok {
+			return errors.New("notification batch result contains an unknown target")
+		}
+		if _, duplicate := seen[outcome.ID]; duplicate {
+			return errors.New("notification batch result contains a duplicate target")
+		}
+		seen[outcome.ID] = struct{}{}
+		if err := validateNotificationBatchOutcome(normalizedExpected.Operation, outcome); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func notificationBatchRequestsEqual(left, right NotificationBatchRequest) bool {
+	if left.Operation != right.Operation || len(left.IDs) != len(right.IDs) {
+		return false
+	}
+	for index := range left.IDs {
+		if left.IDs[index] != right.IDs[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func validateNotificationBatchOutcome(operation NotificationBatchOperation, outcome NotificationBatchItemResult) error {
+	if len(outcome.ErrorCode) > maxNotificationBatchErrorCodeLength {
+		return errors.New("notification batch result error code is too long")
+	}
+	if !operation.RequiresRemoteRead() {
+		if outcome.Status != NotificationRemoteNotRequired || outcome.ErrorCode != "" {
+			return errors.New("notification batch result contradicts a local-only operation")
+		}
+		return nil
+	}
+
+	switch outcome.Status {
+	case NotificationRemoteSucceeded, NotificationRemoteNotAttempted:
+		if outcome.ErrorCode != "" {
+			return errors.New("notification batch result has an unexpected error code")
+		}
+	case NotificationRemoteFailed:
+		if outcome.ErrorCode != "remote_failed" {
+			return errors.New("notification batch result has an invalid failure code")
+		}
+	case NotificationRemoteCanceled:
+		if outcome.ErrorCode != "canceled" {
+			return errors.New("notification batch result has an invalid cancellation code")
+		}
+	default:
+		return errors.New("notification batch result has an invalid remote status")
+	}
+	return nil
 }
 
 // BridgeStatus represents the functional state of the native system bridge.

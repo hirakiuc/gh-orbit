@@ -351,8 +351,8 @@ func notificationBatchToolResult(result types.NotificationBatchResult, err error
 	if err != nil {
 		return mcp.NewToolResultError("notification batch failed"), nil
 	}
-	if result.Status == types.NotificationBatchRejected {
-		return mcp.NewToolResultError("notification batch rejected"), nil
+	if err := types.ValidateNotificationBatchResult(result.Request, result); err != nil {
+		return mcp.NewToolResultError("notification batch returned an invalid result"), nil
 	}
 	payload := struct {
 		Status         types.NotificationBatchStatus         `json:"status"`

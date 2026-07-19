@@ -12,6 +12,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTrafficController_Concurrency(t *testing.T) {
@@ -142,6 +143,169 @@ func TestTrafficController_NotificationBatchRunsBeforeQueuedScalarAtLimitOne(t *
 	assert.Equal(t, int32(0), atomic.LoadInt32(&tc.activeWorkersCount))
 	assert.Equal(t, "scalar", <-scalarResult)
 	assert.Equal(t, int32(0), atomic.LoadInt32(&tc.activeWorkersCount))
+}
+
+func TestTrafficController_NotificationBatchRejectsFullQueueBeforePrepare(t *testing.T) {
+	tc := NewAPITrafficController(context.Background(), slog.Default())
+	t.Cleanup(func() { tc.Shutdown(context.Background()) })
+	atomic.StoreInt32(&tc.userTaskActive, 1)
+	t.Cleanup(func() { atomic.StoreInt32(&tc.userTaskActive, 0) })
+	for range cap(tc.high) {
+		tc.high <- &apiTask{resp: make(chan any, 1), ctx: context.Background(), cleanup: func() {}}
+	}
+	t.Cleanup(func() { tc.drainQueue(tc.high) })
+
+	prepared := false
+	_, err := tc.RunNotificationBatch(context.Background(), notificationBatchPlan{
+		Request: types.NotificationBatchRequest{Operation: types.NotificationBatchHandled, IDs: []string{"1"}},
+		Prepare: func(context.Context) error { prepared = true; return nil },
+	})
+	assert.ErrorIs(t, err, ErrTrafficQueueFull)
+	assert.False(t, prepared)
+}
+
+func TestTrafficController_NotificationBatchCancellationWhileWaitingForCapacity(t *testing.T) {
+	tc := NewAPITrafficController(context.Background(), slog.Default())
+	atomic.StoreInt32(&tc.workerLimit, 1)
+	t.Cleanup(func() { tc.Shutdown(context.Background()) })
+
+	backgroundStarted := make(chan struct{})
+	releaseBackground := make(chan struct{})
+	_, err := tc.Submit(context.Background(), PrioritySync, func(context.Context) any {
+		close(backgroundStarted)
+		<-releaseBackground
+		return nil
+	})
+	require.NoError(t, err)
+	<-backgroundStarted
+
+	batchCtx, cancelBatch := context.WithCancel(context.Background())
+	prepared := make(chan struct{})
+	done := make(chan notificationBatchExecution, 1)
+	go func() {
+		result, _ := tc.RunNotificationBatch(batchCtx, notificationBatchPlan{
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"1"}},
+			Prepare: func(context.Context) error { close(prepared); return nil },
+			Remote:  func(context.Context, string) error { return nil },
+		})
+		done <- result
+	}()
+	<-prepared
+	cancelBatch()
+	result := <-done
+	assert.True(t, result.Committed)
+	assert.Equal(t, []types.NotificationBatchItemResult{{ID: "1", Status: types.NotificationRemoteNotAttempted}}, result.Outcomes)
+	close(releaseBackground)
+}
+
+func TestTrafficController_NotificationBatchShutdownWhileWaitingForCapacity(t *testing.T) {
+	tc := NewAPITrafficController(context.Background(), slog.Default())
+	atomic.StoreInt32(&tc.workerLimit, 1)
+
+	backgroundStarted := make(chan struct{})
+	_, err := tc.Submit(context.Background(), PrioritySync, func(ctx context.Context) any {
+		close(backgroundStarted)
+		<-ctx.Done()
+		return nil
+	})
+	require.NoError(t, err)
+	<-backgroundStarted
+
+	prepared := make(chan struct{})
+	done := make(chan notificationBatchExecution, 1)
+	go func() {
+		result, _ := tc.RunNotificationBatch(context.Background(), notificationBatchPlan{
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"1"}},
+			Prepare: func(context.Context) error { close(prepared); return nil },
+			Remote:  func(context.Context, string) error { return nil },
+		})
+		done <- result
+	}()
+	<-prepared
+	tc.Shutdown(context.Background())
+	result := <-done
+	assert.True(t, result.Committed)
+	assert.Equal(t, types.NotificationRemoteNotAttempted, result.Outcomes[0].Status)
+}
+
+func TestTrafficController_NotificationBatchSharesCapacityWithBackgroundWork(t *testing.T) {
+	tc := NewAPITrafficController(context.Background(), slog.Default())
+	t.Cleanup(func() { tc.Shutdown(context.Background()) })
+
+	backgroundStarted := make(chan struct{})
+	releaseBackground := make(chan struct{})
+	_, err := tc.Submit(context.Background(), PrioritySync, func(context.Context) any {
+		close(backgroundStarted)
+		<-releaseBackground
+		return nil
+	})
+	require.NoError(t, err)
+	<-backgroundStarted
+
+	childStarted := make(chan string, 3)
+	releaseChildren := make(chan struct{})
+	done := make(chan notificationBatchExecution, 1)
+	go func() {
+		result, _ := tc.RunNotificationBatch(context.Background(), notificationBatchPlan{
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"1", "2", "3"}},
+			Prepare: func(context.Context) error { return nil },
+			Remote: func(_ context.Context, id string) error {
+				childStarted <- id
+				<-releaseChildren
+				return nil
+			},
+		})
+		done <- result
+	}()
+	<-childStarted
+	<-childStarted
+	select {
+	case <-childStarted:
+		t.Fatal("batch exceeded shared capacity while background work was active")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseBackground)
+	<-childStarted
+	close(releaseChildren)
+	assert.True(t, (<-done).Committed)
+}
+
+func TestTrafficController_NotificationBatchHonorsDynamicScaleDown(t *testing.T) {
+	tc := NewAPITrafficController(context.Background(), slog.Default())
+	t.Cleanup(func() { tc.Shutdown(context.Background()) })
+
+	started := make(chan string, 4)
+	releases := map[string]chan struct{}{"1": make(chan struct{}), "2": make(chan struct{}), "3": make(chan struct{}), "4": make(chan struct{})}
+	done := make(chan notificationBatchExecution, 1)
+	go func() {
+		result, _ := tc.RunNotificationBatch(context.Background(), notificationBatchPlan{
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"1", "2", "3", "4"}},
+			Prepare: func(context.Context) error { return nil },
+			Remote: func(_ context.Context, id string) error {
+				started <- id
+				<-releases[id]
+				return nil
+			},
+		})
+		done <- result
+	}()
+	first := <-started
+	second := <-started
+	third := <-started
+	tc.UpdateRateLimit(context.Background(), models.RateLimitInfo{Remaining: 100})
+
+	close(releases[first])
+	close(releases[second])
+	select {
+	case <-started:
+		t.Fatal("new child started before active work reached the scaled-down limit")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releases[third])
+	fourth := <-started
+	assert.Equal(t, "4", fourth)
+	close(releases[fourth])
+	assert.True(t, (<-done).Committed)
 }
 
 func TestTrafficController_RateLimitAtomic(t *testing.T) {

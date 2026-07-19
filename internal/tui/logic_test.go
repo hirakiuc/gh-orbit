@@ -885,6 +885,70 @@ func TestModel_HandleBatchMutationAppliedRetainsFailedIDsAndReloadsUnknown(t *te
 	assert.True(t, m.batchUncertain)
 }
 
+func TestModel_BatchRecoverySurvivesAuthoritativeAndLaterReloads(t *testing.T) {
+	m := newTestModel(t)
+	notifications := []triage.NotificationWithState{
+		{Notification: triage.Notification{GitHubID: "a"}},
+		{Notification: triage.Notification{GitHubID: "b"}},
+	}
+
+	t.Run("partial remote failure", func(t *testing.T) {
+		m.handleBatchMutationApplied(batchMutationAppliedMsg{result: types.NotificationBatchResult{
+			Status: types.NotificationBatchCommitted, Reconciliation: types.NotificationBatchAuthoritative,
+			Request: types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}},
+			Outcomes: []types.NotificationBatchItemResult{
+				{ID: "a", Status: types.NotificationRemoteSucceeded},
+				{ID: "b", Status: types.NotificationRemoteFailed, ErrorCode: "remote_failed"},
+			}, Notifications: notifications,
+		}})
+		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		assert.Equal(t, map[string]struct{}{"b": {}}, m.selectedIDs)
+		assert.Equal(t, []string{"a", "b"}, m.pendingBatchRequest.IDs)
+
+		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications, IsForced: true})
+		assert.Equal(t, map[string]struct{}{"b": {}}, m.selectedIDs, "resource and reconnect reloads preserve the retry set")
+	})
+
+	t.Run("committed reconciliation pending", func(t *testing.T) {
+		m.clearSelection()
+		m.handleBatchMutationApplied(batchMutationAppliedMsg{result: types.NotificationBatchResult{
+			Status: types.NotificationBatchCommitted, Reconciliation: types.NotificationBatchReconciliationPending,
+			Request:       types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a"}},
+			Outcomes:      []types.NotificationBatchItemResult{{ID: "a", Status: types.NotificationRemoteFailed, ErrorCode: "remote_failed"}},
+			Notifications: notifications,
+		}})
+		assert.True(t, m.batchRefreshPending)
+		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		assert.False(t, m.batchRefreshPending)
+		assert.Contains(t, m.selectedIDs, "a")
+	})
+
+	t.Run("commit unknown", func(t *testing.T) {
+		m.clearSelection()
+		request := types.NotificationBatchRequest{Operation: types.NotificationBatchRead, IDs: []string{"a", "b"}}
+		m.handleBatchMutationApplied(batchMutationAppliedMsg{result: types.NotificationBatchResult{
+			Status: types.NotificationBatchCommitUnknown, Reconciliation: types.NotificationBatchReconciliationPending,
+			Request: request, Notifications: notifications,
+		}})
+		assert.True(t, m.batchUncertain)
+		assert.Equal(t, request, m.pendingBatchRequest)
+
+		// A failed load produces no notificationsLoadedMsg, so recovery remains.
+		assert.True(t, m.batchRecovery.awaitingAuthoritative)
+		assert.True(t, m.batchUncertain)
+
+		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications})
+		assert.False(t, m.batchUncertain)
+		assert.False(t, m.batchRecovery.awaitingAuthoritative)
+		assert.Equal(t, request, m.pendingBatchRequest)
+		assert.Equal(t, map[string]struct{}{"a": {}, "b": {}}, m.selectedIDs)
+
+		m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: notifications, IsManual: true})
+		assert.Equal(t, request, m.pendingBatchRequest)
+		assert.Equal(t, map[string]struct{}{"a": {}, "b": {}}, m.selectedIDs)
+	})
+}
+
 func TestModel_ApplyFilters_ActiveTriageTabs(t *testing.T) {
 	m := newTestModel(t)
 	m.config.Notifications.MaxVisibleAgeDays = 0

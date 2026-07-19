@@ -76,6 +76,7 @@ type Model struct {
 	batchUncertain      bool
 	batchRefreshPending bool
 	pendingBatchRequest types.NotificationBatchRequest
+	batchRecovery       *batchRecoveryState
 	err                 error
 	state               AppState
 	isDark              bool
@@ -121,6 +122,13 @@ type Model struct {
 type scopedTaskCancel struct {
 	id     uint64
 	cancel context.CancelFunc
+}
+
+type batchRecoveryState struct {
+	request               types.NotificationBatchRequest
+	retryIDs              []string
+	status                types.NotificationBatchStatus
+	awaitingAuthoritative bool
 }
 
 // Option defines a functional option for Model configuration.
