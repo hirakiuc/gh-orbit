@@ -100,7 +100,7 @@ clean: go/clean native/clean
 
 # --- Go Core (internal/ & cmd/) ---
 
-.PHONY: go/build go/test go/lint go/fmt go/check go/clean go/generate go/coverage go/coverage-summary go/vulncheck
+.PHONY: go/build go/test go/lint go/lint-docs go/fmt go/check go/clean go/generate go/coverage go/coverage-summary go/vulncheck
 
 go/build: $(PROJECT_TMP)
 	go build $(LDFLAGS) -o bin/$(BINARY_NAME) $(CMD_PATH)
@@ -116,8 +116,8 @@ go/lint: $(PROJECT_TMP)
 	golangci-lint run ./...
 	$(MAKE) go/lint-docs
 
-go/lint-docs:
-	markdownlint-cli2
+go/lint-docs: $(PROJECT_TMP)
+	rumdl check --deny-config-warnings .
 
 go/fmt: $(PROJECT_TMP)
 	gofumpt -l -w .

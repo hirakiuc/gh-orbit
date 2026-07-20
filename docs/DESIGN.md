@@ -35,5 +35,4 @@ Our vision for `gh-orbit` extends beyond simple list management. We are building
 
 ---
 
-*For current implementation details, see [.agent/implementation_plan.md](../.agent/implementation_plan.md).*
 *For technical architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).*

@@ -1,0 +1,15 @@
+# Centralized configuration for Markdown documentation linting.
+
+[global]
+disable = ["MD013", "MD033"]
+exclude = [
+    ".agents/**",
+    ".serena/**",
+    ".gemini/**",
+    ".entire/**",
+    ".git/**",
+    "node_modules/**",
+    "tmp/**",
+    "native/OrbitCockpit/.build/**",
+]
+cache-dir = "tmp/rumdl-cache"

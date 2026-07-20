@@ -104,6 +104,7 @@ configurable through `keys.selection_mode`, `keys.select_notification`,
 
 - **Go 1.22+**: Required for the core engine.
 - **Xcode 16.0+ / Swift 6.0+**: Required for the native macOS Cockpit.
+- **rumdl 0.2.36+**: Required for Markdown linting (`brew install rumdl`).
 - **Nerd Fonts**: Required for icons.
 
 ### Building
@@ -141,6 +142,6 @@ gh orbit doctor
 
 ## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+License information has not yet been published.
 
 *For technical depth, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [AGENTS.md](AGENTS.md).*
