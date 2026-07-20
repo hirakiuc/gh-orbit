@@ -140,7 +140,7 @@ Run `make help` for a complete list of `go/` and `native/` specific targets.
 ## 🔒 Security & Privacy
 
 - **Local-First**: Triage state is stored in a private local SQLite database (`modernc.org/sqlite`).
-- **MCP Security**: Unix Domain Sockets use mandatory **Peer Verification** (PID + Code Signature).
+- **MCP Security**: On macOS, engine sockets verify same-user peers and allowed code-signing identities by default. The explicit `--insecure-dev` option bypasses verification only for local development.
 - **Sandbox Note**: The macOS Cockpit has sandboxing disabled to allow for native PTY management and subprocess control.
 - **Auth**: Inherits credentials from the `gh` host environment.
 

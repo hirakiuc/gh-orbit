@@ -10,8 +10,10 @@ decision chronology; this file is the durable reference for current behavior.
 - The backend owns persisted mutations and publishes their observable effects.
 - The Bubble Tea TUI is a first-class interface in a terminal or inside Orbit
   Cockpit.
-- UI clients own only ephemeral presentation state, such as focus, filters,
-  cursors, selections, and pane layout.
+- UI clients do not own authoritative notification, triage, or backend business
+  state. They may own ephemeral presentation state and persist client-specific
+  preferences or orchestration metadata, such as native terminal settings and
+  restorable review-workspace state.
 - Transport adapts backend operations; it does not define business behavior.
 - Local data and inter-process communication are private to the current user.
 
