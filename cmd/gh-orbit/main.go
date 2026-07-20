@@ -432,14 +432,14 @@ func requireIndependentMutationTools(ctx context.Context, capabilityClient toolC
 	if result == nil {
 		return errors.New("listing engine tools returned an empty response")
 	}
-	required := map[string]bool{"set_read": false, "set_handled": false}
+	required := map[string]bool{"set_read": false, "set_handled": false, "batch_set_state": false}
 	for _, tool := range result.Tools {
 		if _, ok := required[tool.Name]; ok {
 			required[tool.Name] = true
 		}
 	}
 	var missing []string
-	for _, name := range []string{"set_read", "set_handled"} {
+	for _, name := range []string{"set_read", "set_handled", "batch_set_state"} {
 		if !required[name] {
 			missing = append(missing, name)
 		}
@@ -487,9 +487,6 @@ func launchTUIMCP(ctx context.Context, env *environment, cfg *config.Config, ada
 }
 
 func launchTUIStandalone(ctx context.Context, env *environment, eng *engine.CoreEngine, userID string) error {
-	// Step 6.15: Connect Client to TrafficController for intelligent rate limit propagation
-	eng.Client.SetRateLimitReporter(eng.Traffic.ReportRateLimit)
-
 	lifecycle := api.NewAppLifecycle(ctx)
 	lifecycleOwned := true
 	defer func() {

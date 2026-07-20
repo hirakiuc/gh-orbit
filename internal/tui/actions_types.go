@@ -80,6 +80,12 @@ type ActionSetHandled struct {
 
 func (a ActionSetHandled) Type() string { return "set_handled" }
 
+type ActionApplyNotificationBatch struct {
+	Request types.NotificationBatchRequest
+}
+
+func (a ActionApplyNotificationBatch) Type() string { return "apply_notification_batch" }
+
 type ActionArchive struct {
 	ID string
 }
@@ -140,6 +146,12 @@ type ActionLoadNotifications struct {
 }
 
 func (a ActionLoadNotifications) Type() string { return "load_notifications" }
+
+type ActionLoadBatchReconciliation struct {
+	Generation uint64
+}
+
+func (a ActionLoadBatchReconciliation) Type() string { return "load_batch_reconciliation" }
 
 type ActionUpdateRateLimit struct {
 	Info models.RateLimitInfo

@@ -57,30 +57,38 @@ type Model struct {
 	detailView DetailModel
 
 	// Shared State & Services (Interfaces)
-	backend          types.TUIBackend
-	traffic          types.TrafficController
-	alerter          api.Alerter
-	ui               UIController
-	config           *config.Config
-	logger           *slog.Logger
-	userID           string
-	version          string
-	styles           Styles
-	keys             KeyMap
-	help             *help.Model
-	showHelp         bool
-	allNotifications []triage.NotificationWithState
-	err              error
-	state            AppState
-	isDark           bool
-	markdownRenderer *glamour.TermRenderer
-	width            int
-	height           int
-	headerHeight     int
-	footerHeight     int
-	bridgeStatus     types.BridgeStatus
-	focusMode        string
-	interpreter      *Interpreter
+	backend             types.TUIBackend
+	traffic             types.TrafficController
+	alerter             api.Alerter
+	ui                  UIController
+	config              *config.Config
+	logger              *slog.Logger
+	userID              string
+	version             string
+	styles              Styles
+	keys                KeyMap
+	help                *help.Model
+	showHelp            bool
+	allNotifications    []triage.NotificationWithState
+	selectionMode       bool
+	selectedIDs         map[string]struct{}
+	batchPending        bool
+	batchUncertain      bool
+	batchRefreshPending bool
+	pendingBatchRequest types.NotificationBatchRequest
+	batchRecovery       *batchRecoveryState
+	batchRecoverySeq    uint64
+	err                 error
+	state               AppState
+	isDark              bool
+	markdownRenderer    *glamour.TermRenderer
+	width               int
+	height              int
+	headerHeight        int
+	footerHeight        int
+	bridgeStatus        types.BridgeStatus
+	focusMode           string
+	interpreter         *Interpreter
 
 	// Connection Mode
 	ConnectionMode string // "Standalone" or "Connected"
@@ -115,6 +123,14 @@ type Model struct {
 type scopedTaskCancel struct {
 	id     uint64
 	cancel context.CancelFunc
+}
+
+type batchRecoveryState struct {
+	request               types.NotificationBatchRequest
+	retryIDs              []string
+	status                types.NotificationBatchStatus
+	awaitingAuthoritative bool
+	generation            uint64
 }
 
 // Option defines a functional option for Model configuration.
@@ -192,7 +208,8 @@ func NewModel(p ModelParams) (*Model, error) {
 
 	styles := DefaultStyles(true)
 	keys := NewKeyMap(p.Config)
-	delegate := newItemDelegate(styles, keys)
+	selectedIDs := make(map[string]struct{})
+	delegate := newItemDelegate(styles, keys, selectedIDs)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.Title = "GitHub Orbit"
@@ -226,6 +243,7 @@ func NewModel(p ModelParams) (*Model, error) {
 		styles:       styles,
 		keys:         keys,
 		help:         &h,
+		selectedIDs:  selectedIDs,
 		state:        StateList,
 		PollInterval: p.Config.Notifications.SyncInterval,
 		// Default intervals
@@ -324,6 +342,14 @@ func (m *Model) submitTask(scope string, timeout time.Duration, priority int, fn
 	}
 }
 
+func (m *Model) submitBackendTask(scope string, timeout time.Duration, fn types.TaskFunc) tea.Cmd {
+	return func() tea.Msg {
+		ctx, release := m.newTaskContext(scope, timeout)
+		defer release()
+		return fn(ctx)
+	}
+}
+
 func (m *Model) newTaskContext(scope string, timeout time.Duration) (context.Context, func()) {
 	base := m.taskRoot
 	var (
@@ -385,6 +411,16 @@ func (m *Model) loadNotifications(isInitial bool, isForced bool, isManual bool) 
 	})
 }
 
+func (m *Model) loadBatchReconciliation(generation uint64) tea.Cmd {
+	return m.submitTask("notification-batch:reconcile", 0, api.PrioritySync, func(ctx context.Context) any {
+		notifications, err := m.backend.ListNotifications(ctx)
+		if err != nil {
+			return types.ErrMsg{Err: err}
+		}
+		return batchReconciliationLoadedMsg{notifications: notifications, generation: generation}
+	})
+}
+
 func (m *Model) syncNotificationsWithForce(force bool, isManual bool) tea.Cmd {
 	return m.submitTask("notifications:sync", types.ConnectedSyncTimeout, api.PrioritySync, func(ctx context.Context) any {
 		rl, err := m.backend.Sync(ctx, force)
@@ -420,6 +456,11 @@ type notificationsLoadedMsg struct {
 	IsManual      bool
 }
 
+type batchReconciliationLoadedMsg struct {
+	notifications []triage.NotificationWithState
+	generation    uint64
+}
+
 type mutationAppliedMsg struct {
 	notifications []triage.NotificationWithState
 	toast         string
@@ -427,6 +468,11 @@ type mutationAppliedMsg struct {
 	targetID      string
 	previousIndex int
 	reconcileItem bool
+}
+
+type batchMutationAppliedMsg struct {
+	result types.NotificationBatchResult
+	before []triage.NotificationWithState
 }
 
 type reviewWorkspaceStartedMsg struct {

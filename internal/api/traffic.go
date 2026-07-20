@@ -29,6 +29,7 @@ type apiTask struct {
 	resp     chan any
 	ctx      context.Context
 	cleanup  func()
+	batch    *notificationBatchPlan
 }
 
 type taskPolicyDecision int
@@ -62,6 +63,7 @@ type APITrafficController struct {
 	// Workers
 	workerLimit        int32
 	activeWorkersCount int32
+	userTaskActive     int32
 	done               chan struct{}
 	workerWG           sync.WaitGroup
 
@@ -232,8 +234,18 @@ func (c *APITrafficController) supervisor() {
 		case <-c.done:
 			return
 		default:
-			if atomic.LoadInt32(&c.activeWorkersCount) >= atomic.LoadInt32(&c.workerLimit) {
-				// At worker limit, wait for a worker to finish.
+			if atomic.LoadInt32(&c.userTaskActive) == 0 {
+				if t := c.dequeueUserTask(); t != nil {
+					atomic.StoreInt32(&c.userTaskActive, 1)
+					c.spawnUserTask(t)
+					continue
+				}
+			}
+
+			// User work has priority and owns serialization before capacity. Do
+			// not let later work consume a permit that the active user task or
+			// notification batch children need.
+			if atomic.LoadInt32(&c.userTaskActive) != 0 || !c.tryAcquireCapacity() {
 				select {
 				case <-c.done:
 					return
@@ -242,10 +254,11 @@ func (c *APITrafficController) supervisor() {
 				continue
 			}
 
-			if t := c.dequeueTask(); t != nil {
-				c.spawnTask(t)
+			if t := c.dequeueBackgroundTask(); t != nil {
+				c.spawnReservedTask(t)
 				continue
 			}
+			c.releaseCapacity()
 
 			select {
 			case <-c.done:
@@ -256,13 +269,16 @@ func (c *APITrafficController) supervisor() {
 	}
 }
 
-func (c *APITrafficController) dequeueTask() *apiTask {
+func (c *APITrafficController) dequeueUserTask() *apiTask {
 	select {
 	case t := <-c.high:
 		return t
 	default:
 	}
+	return nil
+}
 
+func (c *APITrafficController) dequeueBackgroundTask() *apiTask {
 	select {
 	case t := <-c.med:
 		return t
@@ -278,17 +294,25 @@ func (c *APITrafficController) dequeueTask() *apiTask {
 	return nil
 }
 
-func (c *APITrafficController) spawnTask(t *apiTask) {
-	atomic.AddInt32(&c.activeWorkersCount, 1)
+func (c *APITrafficController) spawnReservedTask(t *apiTask) {
 	c.workerWG.Add(1)
 	go func() {
 		defer c.workerWG.Done()
-		c.runTask(t)
+		defer c.releaseCapacity()
+		c.runBackgroundTask(t)
 	}()
 }
 
-func (c *APITrafficController) runTask(t *apiTask) {
-	defer atomic.AddInt32(&c.activeWorkersCount, -1)
+func (c *APITrafficController) spawnUserTask(t *apiTask) {
+	c.workerWG.Add(1)
+	go func() {
+		defer c.workerWG.Done()
+		defer atomic.StoreInt32(&c.userTaskActive, 0)
+		c.runUserTask(t)
+	}()
+}
+
+func (c *APITrafficController) runBackgroundTask(t *apiTask) {
 	defer t.cleanup()
 
 	switch c.evaluateTaskPolicy(t) {
@@ -298,6 +322,31 @@ func (c *APITrafficController) runTask(t *apiTask) {
 		t.resp <- nil
 		return
 	}
+}
+
+func (c *APITrafficController) runUserTask(t *apiTask) {
+	defer t.cleanup()
+
+	if c.evaluateTaskPolicy(t) != taskPolicyProceed {
+		t.resp <- nil
+		return
+	}
+
+	// User serialization is always acquired before global API capacity. Batch
+	// children run while this lock is held but acquire capacity internally.
+	c.userMu.Lock()
+	defer c.userMu.Unlock()
+
+	if t.batch != nil {
+		t.resp <- c.executeNotificationBatch(t.ctx, *t.batch)
+		return
+	}
+	if !c.acquireCapacity(t.ctx) {
+		t.resp <- nil
+		return
+	}
+	defer c.releaseCapacity()
+	t.resp <- t.fn(t.ctx)
 }
 
 func (c *APITrafficController) taskCanceledBeforeExecution(t *apiTask) bool {
@@ -347,12 +396,40 @@ func (c *APITrafficController) requiresSerializedUserExecution(t *apiTask) bool 
 }
 
 func (c *APITrafficController) executeTask(t *apiTask) {
-	if c.requiresSerializedUserExecution(t) {
-		c.userMu.Lock()
-		defer c.userMu.Unlock()
-	}
-
 	t.resp <- t.fn(t.ctx)
+}
+
+func (c *APITrafficController) tryAcquireCapacity() bool {
+	for {
+		active := atomic.LoadInt32(&c.activeWorkersCount)
+		if active >= atomic.LoadInt32(&c.workerLimit) {
+			return false
+		}
+		if atomic.CompareAndSwapInt32(&c.activeWorkersCount, active, active+1) {
+			return true
+		}
+	}
+}
+
+func (c *APITrafficController) acquireCapacity(ctx context.Context) bool {
+	ticker := time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if c.tryAcquireCapacity() {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-c.done:
+			return false
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *APITrafficController) releaseCapacity() {
+	atomic.AddInt32(&c.activeWorkersCount, -1)
 }
 
 func (c *APITrafficController) Shutdown(ctx context.Context) {

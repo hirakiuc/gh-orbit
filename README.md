@@ -48,6 +48,10 @@ gh orbit
 | `r` | Sync notifications (Manual) |
 | `m` | Toggle Read/Unread state |
 | `x` | Toggle local Handled/Unhandled state |
+| `S` | Enter or leave multiple-selection mode |
+| `s` | Add or remove the current notification from the selection |
+| `R` / `U` | Mark selected notifications Read / Unread |
+| `H` / `N` | Mark selected notifications Handled / Unhandled locally |
 | `enter` | View notification details (Description/Body) |
 | `o` | Open in default browser |
 | `c` | Checkout PR locally (`gh pr checkout`) |
@@ -65,6 +69,32 @@ the inherited `x` default, and `[]` disables the action. If you explicitly add
 `toggle_handled` to your config and later downgrade to a version from before
 Issue #473, remove that one line first because older versions strictly reject
 unknown configuration keys.
+
+### Multiple selection and batch operations
+
+Batch operations use a direct, Vim-style workflow with no confirmation dialog:
+
+1. Press `S` to enter multiple-selection mode.
+2. Navigate normally and press `s` to add or remove the current notification.
+3. Press `R`, `U`, `H`, or `N` to apply that state to every selected item.
+
+For example, `S`, `s`, `j`, `j`, `s`, `R` selects the current notification and
+another notification two rows below it, then marks both as read. The `▌`
+indicator remains the list cursor, while `✓` marks every notification included
+in the batch. The footer reports the selected count and changes from `SELECT`
+to `APPLYING`, `REFRESH`, or `UNCERTAIN` as the operation progresses.
+
+`R` updates local read state and sends bounded per-notification read requests to
+GitHub. `U` is local-only because GitHub does not provide an arbitrary
+mark-thread-unread operation. `H` and `N` change only gh-orbit's local handled
+state. If some remote read requests fail, the unsuccessful notifications remain
+selected for retry. A single batch accepts at most 100 distinct notifications.
+
+Press `esc` or `S` again to cancel and clear the selection. Changing tabs or
+filters, or entering the detail view, also clears it. All batch bindings are
+configurable through `keys.selection_mode`, `keys.select_notification`,
+`keys.batch_read`, `keys.batch_unread`, `keys.batch_handled`, and
+`keys.batch_unhandled` in the gh-orbit configuration file.
 
 ---
 

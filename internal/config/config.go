@@ -35,6 +35,12 @@ type KeyMapConfig struct {
 	CopyURL              []string `yaml:"copy_url"`
 	ToggleRead           []string `yaml:"toggle_read"`
 	ToggleHandled        []string `yaml:"toggle_handled"`
+	SelectionMode        []string `yaml:"selection_mode"`
+	SelectNotification   []string `yaml:"select_notification"`
+	BatchRead            []string `yaml:"batch_read"`
+	BatchUnread          []string `yaml:"batch_unread"`
+	BatchHandled         []string `yaml:"batch_handled"`
+	BatchUnhandled       []string `yaml:"batch_unhandled"`
 	NextTab              []string `yaml:"next_tab"`
 	PrevTab              []string `yaml:"prev_tab"`
 	CheckoutPR           []string `yaml:"checkout_pr"`
@@ -50,6 +56,7 @@ type KeyMapConfig struct {
 	Help                 []string `yaml:"help"`
 
 	toggleHandledExplicit bool
+	batchKeysExplicit     map[string]bool
 }
 
 // TUIConfig represents settings for the Terminal UI.
@@ -110,6 +117,12 @@ func DefaultConfig() *Config {
 			CopyURL:              []string{"y"},
 			ToggleRead:           []string{"m"},
 			ToggleHandled:        []string{"x"},
+			SelectionMode:        []string{"S"},
+			SelectNotification:   []string{"s"},
+			BatchRead:            []string{"R"},
+			BatchUnread:          []string{"U"},
+			BatchHandled:         []string{"H"},
+			BatchUnhandled:       []string{"N"},
 			NextTab:              []string{"]", "tab"},
 			PrevTab:              []string{"[", "shift+tab"},
 			CheckoutPR:           []string{"c"},
@@ -225,6 +238,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid config.yml (check for typos): %w", err)
 	}
 	cfg.Keys.toggleHandledExplicit = toggleHandledExplicit
+	cfg.Keys.batchKeysExplicit = make(map[string]bool)
+	for _, name := range []string{"selection_mode", "select_notification", "batch_read", "batch_unread", "batch_handled", "batch_unhandled"} {
+		explicit, explicitErr := yamlMappingHasKey(data, "keys", name)
+		if explicitErr != nil {
+			return nil, fmt.Errorf("invalid config.yml: %w", explicitErr)
+		}
+		cfg.Keys.batchKeysExplicit[name] = explicit
+	}
 
 	normalizeKeyMap(&cfg.Keys)
 
@@ -287,6 +308,11 @@ func (c *Config) Save() error {
 	}
 	if !c.Keys.toggleHandledExplicit {
 		removeYAMLMappingKey(&document, "keys", "toggle_handled")
+	}
+	for _, name := range []string{"selection_mode", "select_notification", "batch_read", "batch_unread", "batch_handled", "batch_unhandled"} {
+		if !c.Keys.batchKeysExplicit[name] {
+			removeYAMLMappingKey(&document, "keys", name)
+		}
 	}
 	data, err := yaml.Marshal(&document)
 	if err != nil {

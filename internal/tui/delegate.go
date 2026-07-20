@@ -21,13 +21,14 @@ func (i item) FilterValue() string {
 }
 
 type itemDelegate struct {
-	styles     Styles
-	keys       KeyMap
-	IsFetching bool
+	styles      Styles
+	keys        KeyMap
+	IsFetching  bool
+	SelectedIDs map[string]struct{}
 }
 
-func newItemDelegate(s Styles, k KeyMap) itemDelegate {
-	return itemDelegate{styles: s, keys: k}
+func newItemDelegate(s Styles, k KeyMap, selectedIDs map[string]struct{}) itemDelegate {
+	return itemDelegate{styles: s, keys: k, SelectedIDs: selectedIDs}
 }
 
 func (d itemDelegate) Height() int                               { return 1 }
@@ -57,6 +58,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		IsFetching: isSelected && d.IsFetching,
 		IsSelected: isSelected,
 	}
+	_, ctx.IsMultiSelected = d.SelectedIDs[i.notification.GitHubID]
 	str := RenderNotificationRow(ctx, i.notification)
 
 	_, _ = fmt.Fprint(w, str)

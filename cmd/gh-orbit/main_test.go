@@ -29,7 +29,7 @@ func TestRequireIndependentMutationTools(t *testing.T) {
 		return result
 	}
 
-	require.NoError(t, requireIndependentMutationTools(context.Background(), capabilityClientStub{result: tools("set_read", "set_handled")}))
+	require.NoError(t, requireIndependentMutationTools(context.Background(), capabilityClientStub{result: tools("set_read", "set_handled", "batch_set_state")}))
 
 	for _, tc := range []struct {
 		name   string
@@ -38,8 +38,9 @@ func TestRequireIndependentMutationTools(t *testing.T) {
 	}{
 		{name: "list error", client: capabilityClientStub{err: errors.New("timeout")}, want: "listing engine tools"},
 		{name: "nil response", client: capabilityClientStub{}, want: "empty response"},
-		{name: "missing read", client: capabilityClientStub{result: tools("set_handled")}, want: "set_read"},
-		{name: "missing handled", client: capabilityClientStub{result: tools("set_read")}, want: "set_handled"},
+		{name: "missing read", client: capabilityClientStub{result: tools("set_handled", "batch_set_state")}, want: "set_read"},
+		{name: "missing handled", client: capabilityClientStub{result: tools("set_read", "batch_set_state")}, want: "set_handled"},
+		{name: "missing batch", client: capabilityClientStub{result: tools("set_read", "set_handled")}, want: "batch_set_state"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := requireIndependentMutationTools(context.Background(), tc.client)
@@ -64,8 +65,9 @@ func TestPrepareConnectedMutationClient_FailuresCloseWithoutConstructing(t *test
 	}{
 		{name: "rpc error", client: capabilityClientStub{err: errors.New("timeout")}},
 		{name: "nil malformed response", client: capabilityClientStub{}},
-		{name: "missing read", client: capabilityClientStub{result: tools("set_handled")}},
-		{name: "missing handled", client: capabilityClientStub{result: tools("set_read")}},
+		{name: "missing read", client: capabilityClientStub{result: tools("set_handled", "batch_set_state")}},
+		{name: "missing handled", client: capabilityClientStub{result: tools("set_read", "batch_set_state")}},
+		{name: "missing batch", client: capabilityClientStub{result: tools("set_read", "set_handled")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			closed, adapterConstructed, standaloneConstructed := 0, 0, 0

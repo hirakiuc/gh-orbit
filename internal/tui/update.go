@@ -2,6 +2,8 @@ package tui
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -75,9 +77,13 @@ func (m *Model) updateDetailStateMsg(msg tea.Msg) []tea.Cmd {
 
 func (m *Model) updateListStateMsg(msg tea.Msg, oldIndex int) []tea.Cmd {
 	oldPage := m.listView.list.Paginator.Page
+	oldFilter := m.listView.list.FilterValue()
 	var cmd tea.Cmd
 	m.listView.list, cmd = m.listView.list.Update(msg)
 	cmds := []tea.Cmd{cmd}
+	if m.listView.list.FilterValue() != oldFilter {
+		m.clearSelection()
+	}
 
 	// Debounced enrichment logic (after sub-model update ensures index/page is fresh)
 	if m.listView.list.Index() != oldIndex || m.listView.list.Paginator.Page != oldPage {
@@ -96,8 +102,12 @@ func (m *Model) transitionGlobal(msg tea.Msg) []Action {
 		m.handleBackgroundColor(msg)
 	case notificationsLoadedMsg:
 		return m.handleNotificationsLoaded(msg)
+	case batchReconciliationLoadedMsg:
+		return m.handleBatchReconciliationLoaded(msg)
 	case mutationAppliedMsg:
 		return m.handleMutationApplied(msg)
+	case batchMutationAppliedMsg:
+		return m.handleBatchMutationApplied(msg)
 	case reviewWorkspaceStartedMsg:
 		return m.handleReviewWorkspaceStarted(msg)
 	case syncCompleteMsg:
@@ -528,7 +538,7 @@ func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 	m.styles = DefaultStyles(m.isDark)
 	m.keys = NewKeyMap(m.config)
 	m.listView.list.Styles.Title = m.styles.Title
-	m.listView.delegate = newItemDelegate(m.styles, m.keys)
+	m.listView.delegate = newItemDelegate(m.styles, m.keys, m.selectedIDs)
 	m.listView.list.SetDelegate(m.listView.delegate)
 	m.updateMarkdownRenderer()
 	m.ui.SetStyles(m.styles)
@@ -536,6 +546,11 @@ func (m *Model) handleBackgroundColor(msg tea.BackgroundColorMsg) {
 
 func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 	m.allNotifications = msg.notifications
+	if m.batchRecovery != nil {
+		m.restoreBatchRecoverySelection()
+	} else if !m.batchPending {
+		m.clearSelection()
+	}
 	// Clear inflight on full reload to avoid stale blocks
 	m.inflightEnrichments = make(map[string]time.Time)
 	m.applyFilters()
@@ -570,7 +585,25 @@ func (m *Model) handleNotificationsLoaded(msg notificationsLoadedMsg) []Action {
 		actions = append(actions, ActionScheduleTick{TickType: TickHeartbeat, Interval: m.heartbeatInterval})
 	}
 
-	return actions
+	return m.appendBatchReconciliationRetry(actions)
+}
+
+func (m *Model) handleBatchReconciliationLoaded(msg batchReconciliationLoadedMsg) []Action {
+	if m.batchRecovery == nil || msg.generation != m.batchRecovery.generation || !m.batchRecovery.awaitingAuthoritative {
+		return nil
+	}
+	// Apply the correlated snapshot before clearing uncertainty. Reconciling
+	// first also prevents the common load path from scheduling a redundant retry.
+	m.allNotifications = msg.notifications
+	m.reconcileBatchRecoveryAfterLoad()
+	return m.handleNotificationsLoaded(notificationsLoadedMsg{notifications: msg.notifications})
+}
+
+func (m *Model) appendBatchReconciliationRetry(actions []Action) []Action {
+	if m.batchRecovery == nil || !m.batchRecovery.awaitingAuthoritative {
+		return actions
+	}
+	return append(actions, ActionLoadBatchReconciliation{Generation: m.batchRecovery.generation})
 }
 
 func (m *Model) filterSelectedDetailRefreshCandidate(notifications []triage.NotificationWithState) []triage.NotificationWithState {
@@ -603,6 +636,62 @@ func (m *Model) handleMutationApplied(msg mutationAppliedMsg) []Action {
 		return nil
 	}
 	return []Action{ActionShowToast{Message: msg.toast}}
+}
+
+func (m *Model) handleBatchMutationApplied(msg batchMutationAppliedMsg) []Action {
+	m.batchPending = false
+	m.err = msg.result.Err
+	m.batchUncertain = msg.result.Status == types.NotificationBatchCommitUnknown
+	m.batchRefreshPending = msg.result.Reconciliation == types.NotificationBatchReconciliationPending
+
+	switch msg.result.Status {
+	case types.NotificationBatchRejected:
+		m.clearBatchRecovery()
+		m.allNotifications = msg.before
+	case types.NotificationBatchCommitted:
+		m.allNotifications = msg.result.Notifications
+		retryIDs := make([]string, 0, len(msg.result.Outcomes))
+		for _, outcome := range msg.result.Outcomes {
+			switch outcome.Status {
+			case types.NotificationRemoteFailed, types.NotificationRemoteCanceled, types.NotificationRemoteNotAttempted:
+				retryIDs = append(retryIDs, outcome.ID)
+			}
+		}
+		if len(retryIDs) > 0 || m.batchRefreshPending {
+			m.setBatchRecovery(msg.result.Request, retryIDs, msg.result.Status, m.batchRefreshPending)
+		} else {
+			m.clearBatchRecovery()
+		}
+	case types.NotificationBatchCommitUnknown:
+		if msg.result.Notifications != nil {
+			m.allNotifications = msg.result.Notifications
+		}
+		m.setBatchRecovery(msg.result.Request, msg.result.Request.IDs, msg.result.Status, true)
+	}
+	m.applyFilters()
+
+	toast := msg.result.Toast
+	if toast == "" {
+		switch msg.result.Status {
+		case types.NotificationBatchRejected:
+			toast = "Batch update failed"
+		case types.NotificationBatchCommitUnknown:
+			toast = "Batch outcome unknown; refreshing"
+		default:
+			if m.batchRefreshPending {
+				toast = "Batch committed; refresh pending"
+			} else if len(m.selectedIDs) > 0 {
+				toast = fmt.Sprintf("Batch committed; %d remote updates need retry", len(m.selectedIDs))
+			} else {
+				toast = "Batch update complete"
+			}
+		}
+	}
+	actions := []Action{ActionShowToast{Message: toast}}
+	if (m.batchUncertain || m.batchRefreshPending) && m.batchRecovery != nil {
+		actions = append(actions, ActionLoadBatchReconciliation{Generation: m.batchRecovery.generation})
+	}
+	return actions
 }
 
 func (m *Model) handleReviewWorkspaceStarted(msg reviewWorkspaceStartedMsg) []Action {
@@ -750,6 +839,9 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 	if msg.String() == "ctrl+c" {
 		return []Action{ActionQuit{}}
 	}
+	if actions, handled := m.handleSelectionKeys(msg); handled {
+		return actions
+	}
 
 	if actions := m.handleNavigationKeys(msg); actions != nil {
 		return actions
@@ -764,6 +856,137 @@ func (m *Model) handleListKey(msg tea.KeyMsg) []Action {
 	}
 
 	return m.handlePriorityKeys(msg)
+}
+
+func (m *Model) clearSelection() {
+	m.selectionMode = false
+	clear(m.selectedIDs)
+	if !m.batchPending {
+		m.clearBatchRecovery()
+	}
+}
+
+func (m *Model) setBatchRecovery(request types.NotificationBatchRequest, retryIDs []string, status types.NotificationBatchStatus, awaiting bool) {
+	request.IDs = append([]string(nil), request.IDs...)
+	retryIDs = append([]string(nil), retryIDs...)
+	m.batchRecoverySeq++
+	m.pendingBatchRequest = request
+	m.batchRecovery = &batchRecoveryState{
+		request: request, retryIDs: retryIDs, status: status, awaitingAuthoritative: awaiting,
+		generation: m.batchRecoverySeq,
+	}
+	m.restoreBatchRecoverySelection()
+}
+
+func (m *Model) syncBatchRecoveryRetryIDs() {
+	if m.batchRecovery == nil {
+		return
+	}
+	retryIDs := make([]string, 0, len(m.selectedIDs))
+	for id := range m.selectedIDs {
+		retryIDs = append(retryIDs, id)
+	}
+	sort.Strings(retryIDs)
+	m.batchRecovery.retryIDs = retryIDs
+	if len(retryIDs) == 0 && m.batchRecovery.status == types.NotificationBatchCommitted && !m.batchRecovery.awaitingAuthoritative {
+		m.clearBatchRecovery()
+	}
+}
+
+func (m *Model) restoreBatchRecoverySelection() {
+	clear(m.selectedIDs)
+	if m.batchRecovery == nil {
+		m.selectionMode = false
+		return
+	}
+	m.pendingBatchRequest = m.batchRecovery.request
+	m.pendingBatchRequest.IDs = append([]string(nil), m.batchRecovery.request.IDs...)
+	for _, id := range m.batchRecovery.retryIDs {
+		m.selectedIDs[id] = struct{}{}
+	}
+	m.selectionMode = len(m.selectedIDs) > 0
+}
+
+func (m *Model) reconcileBatchRecoveryAfterLoad() {
+	if m.batchRecovery.awaitingAuthoritative {
+		m.batchRecovery.awaitingAuthoritative = false
+		m.batchUncertain = false
+		m.batchRefreshPending = false
+	}
+	if m.batchRecovery.status == types.NotificationBatchCommitted && len(m.batchRecovery.retryIDs) == 0 {
+		m.clearBatchRecovery()
+		return
+	}
+	m.restoreBatchRecoverySelection()
+}
+
+func (m *Model) clearBatchRecovery() {
+	m.batchRecovery = nil
+	m.pendingBatchRequest = types.NotificationBatchRequest{}
+	m.batchUncertain = false
+	m.batchRefreshPending = false
+}
+
+func (m *Model) handleSelectionKeys(msg tea.KeyMsg) ([]Action, bool) {
+	if key.Matches(msg, m.keys.SelectionMode) {
+		if m.batchPending {
+			return []Action{ActionShowToast{Message: "Batch update already in progress"}}, true
+		}
+		if m.selectionMode {
+			m.clearSelection()
+		} else {
+			m.selectionMode = true
+		}
+		return []Action{}, true
+	}
+	if !m.selectionMode {
+		return nil, false
+	}
+	if m.batchPending {
+		return []Action{ActionShowToast{Message: "Batch update already in progress"}}, true
+	}
+
+	switch {
+	case key.Matches(msg, m.keys.Back):
+		m.clearSelection()
+		return []Action{}, true
+	case key.Matches(msg, m.keys.SelectNotification):
+		if notification, ok := m.selectedNotification(); ok {
+			if _, selected := m.selectedIDs[notification.GitHubID]; selected {
+				delete(m.selectedIDs, notification.GitHubID)
+			} else {
+				m.selectedIDs[notification.GitHubID] = struct{}{}
+			}
+		}
+		m.syncBatchRecoveryRetryIDs()
+		return []Action{}, true
+	case key.Matches(msg, m.keys.BatchRead):
+		return m.notificationBatchAction(types.NotificationBatchRead), true
+	case key.Matches(msg, m.keys.BatchUnread):
+		return m.notificationBatchAction(types.NotificationBatchUnread), true
+	case key.Matches(msg, m.keys.BatchHandled):
+		return m.notificationBatchAction(types.NotificationBatchHandled), true
+	case key.Matches(msg, m.keys.BatchUnhandled):
+		return m.notificationBatchAction(types.NotificationBatchUnhandled), true
+	case key.Matches(msg, m.keys.NextTab), key.Matches(msg, m.keys.PrevTab),
+		key.Matches(msg, m.keys.Tab1), key.Matches(msg, m.keys.Tab2), key.Matches(msg, m.keys.Tab3),
+		key.Matches(msg, m.keys.FilterPR), key.Matches(msg, m.keys.FilterIssue), key.Matches(msg, m.keys.FilterDiscussion),
+		key.Matches(msg, m.keys.ToggleDetail):
+		m.clearSelection()
+		return nil, false
+	default:
+		// Leave unbound navigation to the Bubbles list while suppressing
+		// scalar actions during selection mode.
+		return nil, true
+	}
+}
+
+func (m *Model) notificationBatchAction(operation types.NotificationBatchOperation) []Action {
+	request, ok := m.selectedBatchRequest(operation)
+	if !ok {
+		return []Action{ActionShowToast{Message: "Select at least one notification"}}
+	}
+	return []Action{ActionApplyNotificationBatch{Request: request}}
 }
 
 func (m *Model) handleNavigationKeys(msg tea.KeyMsg) []Action {

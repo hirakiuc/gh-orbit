@@ -108,6 +108,17 @@ func (m *Model) renderFooter() string {
 	if m.ui.resourceFilter != "" {
 		filters = m.styles.FilterChip.Render(" " + m.ui.resourceFilter + " ")
 	}
+	if m.selectionMode {
+		selection := fmt.Sprintf(" SELECT %d ", len(m.selectedIDs))
+		if m.batchPending {
+			selection = fmt.Sprintf(" APPLYING %d ", len(m.selectedIDs))
+		} else if m.batchUncertain {
+			selection = fmt.Sprintf(" UNCERTAIN %d ", len(m.selectedIDs))
+		} else if m.batchRefreshPending {
+			selection = fmt.Sprintf(" REFRESH %d ", len(m.selectedIDs))
+		}
+		filters += m.styles.PriorityMed.Render(selection)
+	}
 
 	// 3. Bridge Health Indicator
 	bridge := "[NATIVE]"

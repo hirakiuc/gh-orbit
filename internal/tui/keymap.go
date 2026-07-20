@@ -17,6 +17,12 @@ type KeyMap struct {
 	CopyURL              key.Binding
 	ToggleRead           key.Binding
 	ToggleHandled        key.Binding
+	SelectionMode        key.Binding
+	SelectNotification   key.Binding
+	BatchRead            key.Binding
+	BatchUnread          key.Binding
+	BatchHandled         key.Binding
+	BatchUnhandled       key.Binding
 	NextTab              key.Binding
 	PrevTab              key.Binding
 	CheckoutPR           key.Binding
@@ -36,6 +42,13 @@ type KeyMap struct {
 func NewKeyMap(cfg *config.Config) KeyMap {
 	k := cfg.Keys
 	handledKeys := availableHandledKeys(k)
+	used := establishedKeySet(k)
+	selectionModeKeys := availableKeys(k.SelectionMode, used)
+	selectNotificationKeys := availableKeys(k.SelectNotification, used)
+	batchReadKeys := availableKeys(k.BatchRead, used)
+	batchUnreadKeys := availableKeys(k.BatchUnread, used)
+	batchHandledKeys := availableKeys(k.BatchHandled, used)
+	batchUnhandledKeys := availableKeys(k.BatchUnhandled, used)
 	return KeyMap{
 		Sync: key.NewBinding(
 			key.WithKeys(k.Sync...),
@@ -73,7 +86,13 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 			key.WithKeys(k.ToggleRead...),
 			key.WithHelp(k.ToggleRead[0], "mark read/unread"),
 		),
-		ToggleHandled: optionalBinding(handledKeys, "mark handled/unhandled"),
+		ToggleHandled:      optionalBinding(handledKeys, "mark handled/unhandled"),
+		SelectionMode:      optionalBinding(selectionModeKeys, "selection mode"),
+		SelectNotification: optionalBinding(selectNotificationKeys, "select notification"),
+		BatchRead:          optionalBinding(batchReadKeys, "mark selected read"),
+		BatchUnread:        optionalBinding(batchUnreadKeys, "mark selected unread"),
+		BatchHandled:       optionalBinding(batchHandledKeys, "mark selected handled"),
+		BatchUnhandled:     optionalBinding(batchUnhandledKeys, "mark selected unhandled"),
 		NextTab: key.NewBinding(
 			key.WithKeys(k.NextTab...),
 			key.WithHelp(k.NextTab[0], "next tab"),
@@ -130,6 +149,11 @@ func NewKeyMap(cfg *config.Config) KeyMap {
 }
 
 func availableHandledKeys(keys config.KeyMapConfig) []string {
+	used := establishedKeySet(keys)
+	return availableKeys(keys.ToggleHandled, used)
+}
+
+func establishedKeySet(keys config.KeyMapConfig) map[string]struct{} {
 	used := make(map[string]struct{})
 	existing := [][]string{
 		keys.Sync, keys.PriorityUp, keys.PriorityDown, keys.PriorityNone,
@@ -144,8 +168,12 @@ func availableHandledKeys(keys config.KeyMapConfig) []string {
 			used[binding] = struct{}{}
 		}
 	}
-	filtered := make([]string, 0, len(keys.ToggleHandled))
-	for _, binding := range keys.ToggleHandled {
+	return used
+}
+
+func availableKeys(bindings []string, used map[string]struct{}) []string {
+	filtered := make([]string, 0, len(bindings))
+	for _, binding := range bindings {
 		if _, collision := used[binding]; !collision {
 			filtered = append(filtered, binding)
 		}
@@ -168,6 +196,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.Help,
 		k.Sync,
+		k.SelectionMode,
 		k.ToggleRead,
 		k.ToggleHandled,
 		k.ToggleDetail,
@@ -180,6 +209,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Sync, k.CopyURL, k.OpenBrowser, k.ViewContextual},
 		{k.ToggleRead, k.ToggleHandled, k.ToggleDetail, k.Back, k.FilterPR, k.FilterIssue, k.FilterDiscussion},
+		{k.SelectionMode, k.SelectNotification, k.BatchRead, k.BatchUnread, k.BatchHandled, k.BatchUnhandled},
 		{k.PriorityUp, k.PriorityDown, k.PriorityNone},
 		{k.Tab1, k.Tab2, k.Tab3},
 		{k.NextTab, k.PrevTab, k.CheckoutPR, k.StartReviewWorkspace, k.Help, k.Quit},

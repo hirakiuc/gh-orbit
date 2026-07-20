@@ -2,17 +2,142 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/hirakiuc/gh-orbit/internal/api"
 	"github.com/hirakiuc/gh-orbit/internal/models"
+	"github.com/hirakiuc/gh-orbit/internal/triage"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func notificationResource(t *testing.T, request mcp.ReadResourceRequest, notifications []triage.NotificationWithState) *mcp.ReadResourceResult {
+	t.Helper()
+	payload, err := json.Marshal(notifications)
+	require.NoError(t, err)
+	return &mcp.ReadResourceResult{Contents: []mcp.ResourceContents{
+		mcp.TextResourceContents{URI: request.Params.URI, Text: string(payload)},
+	}}
+}
+
+func TestMCPAdapter_NotificationBatchTransportLossIsCommitUnknown(t *testing.T) {
+	callCount := 0
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		readResource: func(_ context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			return notificationResource(t, request, []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}), nil
+		},
+		callTool: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			callCount++
+			return nil, errors.New("connection lost")
+		},
+	})
+
+	result, err := adapter.ApplyNotificationBatch(context.Background(), types.NotificationBatchRequest{
+		Operation: types.NotificationBatchRead, IDs: []string{"1"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, types.NotificationBatchCommitUnknown, result.Status)
+	assert.Equal(t, types.NotificationBatchReconciliationPending, result.Reconciliation)
+	assert.Equal(t, 1, callCount, "an indeterminate request must not be replayed")
+}
+
+func TestMCPAdapter_NotificationBatchConfirmedCommitSurvivesReloadFailure(t *testing.T) {
+	reads := 0
+	outcomes := []types.NotificationBatchItemResult{{ID: "1", Status: types.NotificationRemoteFailed, ErrorCode: "remote_failed"}}
+	adapter := NewMCPAdapter(&blockingMCPClient{
+		readResource: func(_ context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			reads++
+			if reads > 1 {
+				return nil, errors.New("reload failed")
+			}
+			return notificationResource(t, request, []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}), nil
+		},
+		callTool: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{StructuredContent: map[string]any{
+				"status": "committed", "reconciliation": "authoritative",
+				"request":  map[string]any{"operation": "read", "ids": []string{"1"}},
+				"outcomes": outcomes,
+			}}, nil
+		},
+	})
+
+	result, err := adapter.ApplyNotificationBatch(context.Background(), types.NotificationBatchRequest{
+		Operation: types.NotificationBatchRead, IDs: []string{"1"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, types.NotificationBatchCommitted, result.Status)
+	assert.Equal(t, types.NotificationBatchReconciliationPending, result.Reconciliation)
+	assert.Equal(t, outcomes, result.Outcomes)
+}
+
+func TestMCPAdapter_NotificationBatchRejectsUntrustworthyStructuredResults(t *testing.T) {
+	validRequest := map[string]any{"operation": "read", "ids": []string{"1"}}
+	tests := map[string]map[string]any{
+		"malformed": {"outcomes": make(chan int)},
+		"missing request": {
+			"status": "committed", "reconciliation": "authoritative",
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}},
+		},
+		"missing outcomes": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+		},
+		"duplicate target": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}, {"id": "1", "status": "succeeded"}},
+		},
+		"foreign target": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "2", "status": "succeeded"}},
+		},
+		"invalid status": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "running"}},
+		},
+		"unbounded error code": {
+			"status": "committed", "reconciliation": "authoritative", "request": validRequest,
+			"outcomes": []map[string]any{{"id": "1", "status": "failed", "error_code": string(make([]byte, 65))}},
+		},
+		"contradictory local-only result": {
+			"status": "committed", "reconciliation": "authoritative",
+			"request":  map[string]any{"operation": "handled", "ids": []string{"1"}},
+			"outcomes": []map[string]any{{"id": "1", "status": "succeeded"}},
+		},
+		"mismatched operation": {
+			"status": "committed", "reconciliation": "authoritative",
+			"request":  map[string]any{"operation": "unread", "ids": []string{"1"}},
+			"outcomes": []map[string]any{{"id": "1", "status": "not_required"}},
+		},
+	}
+
+	for name, payload := range tests {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			adapter := NewMCPAdapter(&blockingMCPClient{
+				readResource: func(_ context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+					return notificationResource(t, request, []triage.NotificationWithState{{Notification: triage.Notification{GitHubID: "1"}}}), nil
+				},
+				callTool: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					calls++
+					return &mcp.CallToolResult{StructuredContent: payload}, nil
+				},
+			})
+			operation := types.NotificationBatchRead
+			if name == "contradictory local-only result" {
+				operation = types.NotificationBatchHandled
+			}
+			result, err := adapter.ApplyNotificationBatch(context.Background(), types.NotificationBatchRequest{Operation: operation, IDs: []string{"1"}})
+			require.NoError(t, err)
+			assert.Equal(t, types.NotificationBatchCommitUnknown, result.Status)
+			assert.Equal(t, 1, calls, "an untrustworthy response must not be replayed")
+		})
+	}
+}
 
 type blockingMCPClient struct {
 	callTool     func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)

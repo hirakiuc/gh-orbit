@@ -9,6 +9,7 @@ import (
 	"github.com/hirakiuc/gh-orbit/internal/config"
 	"github.com/hirakiuc/gh-orbit/internal/db"
 	"github.com/hirakiuc/gh-orbit/internal/github"
+	"github.com/hirakiuc/gh-orbit/internal/models"
 	"github.com/hirakiuc/gh-orbit/internal/types"
 )
 
@@ -68,12 +69,13 @@ func newBackendPublishHooks(bus *EventBus) backendPublishHooks {
 	}
 }
 
-func newAppBackend(database types.Repository, client github.Client, syncer types.Syncer, enricher types.Enricher, hooks backendPublishHooks) (*api.AppBackend, error) {
+func newAppBackend(database types.Repository, client github.Client, syncer types.Syncer, enricher types.Enricher, traffic *api.APITrafficController, hooks backendPublishHooks) (*api.AppBackend, error) {
 	return api.NewAppBackend(api.AppBackendParams{
 		Store:                       database,
 		Client:                      client,
 		Syncer:                      syncer,
 		Enricher:                    enricher,
+		BatchExecutor:               traffic,
 		ResolveUserID:               currentUserResolver(client),
 		PublishNotificationsChanged: hooks.notificationsChanged,
 		PublishEnrichmentUpdated:    hooks.enrichmentChanged,
@@ -120,6 +122,7 @@ func NewCoreEngine(
 	bus := NewEventBus()
 	hooks := newBackendPublishHooks(bus)
 	traffic := api.NewAPITrafficController(ctx, logger)
+	wireRateLimitReporter(client, traffic.ReportRateLimit)
 
 	enricher, err := api.NewEnrichmentEngine(ctx, api.EnrichParams{
 		Client: client,
@@ -163,7 +166,7 @@ func NewCoreEngine(
 	}
 	syncer.OnMutation = hooks.notificationsChanged
 
-	appBackend, err := newAppBackend(database, client, syncer, enricher, hooks)
+	appBackend, err := newAppBackend(database, client, syncer, enricher, traffic, hooks)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
@@ -182,6 +185,10 @@ func NewCoreEngine(
 		Traffic:           traffic,
 		Alert:             alerter,
 	}, nil
+}
+
+func wireRateLimitReporter(client github.Client, reporter func(models.RateLimitInfo)) {
+	client.SetRateLimitReporter(reporter)
 }
 
 // Shutdown ensures all background resources are released cleanly.
