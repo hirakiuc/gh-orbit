@@ -35,9 +35,25 @@ gh orbit
 
 `gh-orbit` follows a decoupled architecture using the **Model Context Protocol (MCP)** over secure Unix Domain Sockets:
 
-1. **Headless Engine (Go)**: The sole owner of the local SQLite database and GitHub API interactions. It broadcasts real-time mutation events via an internal event bus.
-2. **Terminal UI (MCP Client)**: The standard cross-platform triage interface.
-3. **Orbit Cockpit (macOS)**: A native SwiftUI application that hosts multiple terminal panes for TUI navigation and real-time AI agent execution logs.
+1. **Core Engine (Go)**: The authority for local SQLite state, GitHub API interactions, background services, and mutation events.
+2. **Terminal UI**: The standard cross-platform triage interface. It uses the engine in-process in standalone mode or through MCP when a headless engine is available.
+3. **Orbit Cockpit (macOS)**: A native SwiftUI host that starts or reuses the headless engine and embeds terminal panes for TUI navigation and AI agent execution logs.
+
+---
+
+## 🧭 Product Direction
+
+`gh-orbit` is built for high-volume GitHub workflows where notification triage
+must stay fast even as humans and AI agents produce more pull requests. Its
+local-first model keeps notification and triage state in private SQLite storage,
+supports offline review of synchronized data, and makes individual or batch
+organization responsive without requiring manual token management.
+
+The current product focuses on dependable notification triage and review
+orchestration. Future AI-assisted capabilities may add concise pull-request
+summaries, locally grounded risk signals, and failed-CI diagnostics. Those
+features should remain optional, preserve backend authority, and clearly expose
+the source data behind generated conclusions.
 
 ---
 
@@ -124,7 +140,7 @@ Run `make help` for a complete list of `go/` and `native/` specific targets.
 ## 🔒 Security & Privacy
 
 - **Local-First**: Triage state is stored in a private local SQLite database (`modernc.org/sqlite`).
-- **MCP Security**: Unix Domain Sockets use mandatory **Peer Verification** (PID + Code Signature).
+- **MCP Security**: On macOS, engine sockets verify same-user peers and allowed code-signing identities by default. The explicit `--insecure-dev` option bypasses verification only for local development.
 - **Sandbox Note**: The macOS Cockpit has sandboxing disabled to allow for native PTY management and subprocess control.
 - **Auth**: Inherits credentials from the `gh` host environment.
 

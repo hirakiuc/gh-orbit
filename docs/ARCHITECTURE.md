@@ -1,84 +1,193 @@
-# Architecture: gh-orbit
+# Architecture
 
-This document describes the high-level design and engineering standards of `gh-orbit`.
+This document describes the architecture implemented by the current `gh-orbit`
+codebase. Git history and closed issues preserve completed migration plans and
+decision chronology; this file is the durable reference for current behavior.
 
-For the approved v2 migration direction around backend authority, embedded-TUI support, and transport boundaries, see [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md).
+## System invariants
 
-## 1. Core Architecture (TEA + DI)
+- SQLite is the local source of truth for notifications and local triage state.
+- The backend owns persisted mutations and publishes their observable effects.
+- The Bubble Tea TUI is a first-class interface in a terminal or inside Orbit
+  Cockpit.
+- UI clients do not own authoritative notification, triage, or backend business
+  state. They may own ephemeral presentation state and persist client-specific
+  preferences or orchestration metadata, such as native terminal settings and
+  restorable review-workspace state.
+- Transport adapts backend operations; it does not define business behavior.
+- Local data and inter-process communication are private to the current user.
 
-`gh-orbit` follows **The Elm Architecture (TEA)** via the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework. To ensure testability and decoupling, we employ strict **Interface-Based Dependency Injection**.
+## Runtime topology
 
-### TUI Model Decoupling
+`gh-orbit` supports one backend model through three product surfaces.
 
-The TUI `Model` does not depend on concrete implementations of services. Instead, it interacts through specialized interfaces defined in `internal/types/api.go`:
+### Standalone TUI
 
-- `Syncer`: Orchestrates notification fetching and state updates.
-- `Alerter`: Manages system-level notifications (macOS/Native).
-- `TrafficController`: Serializes and prioritizes API/DB access.
-- `Repository`: Provides a unified interface for the SQLite persistence layer.
+Running `gh orbit` first looks for the headless engine socket. When no usable
+engine is available, the process creates a `CoreEngine` in-process and injects
+its `AppBackend` into the TUI. The same process then owns SQLite, GitHub access,
+sync, enrichment, traffic control, alerting, and shutdown.
 
-## 2. Lifecycle & Context Management
+### Connected TUI and headless engine
 
-We adhere to the "Context-less Struct" mandate to prevent memory leaks and ensure clean propagation.
+`gh orbit engine` creates a `CoreEngine` and exposes it through an MCP server on
+a Unix domain socket. A TUI that discovers the socket initializes an MCP client,
+checks that the engine exposes the required independent mutation tools, and
+uses `MCPAdapter` as its backend.
 
-### Two-Phase Shutdown (Go 1.26+)
+Connected mode treats traffic control, sync, persistence, and mutation
+reconciliation as engine-owned. If `GH_ORBIT_REQUIRE_ENGINE=1`, a missing or
+incompatible engine is fatal instead of triggering standalone fallback. Orbit
+Cockpit uses this requirement so its embedded TUI cannot silently establish a
+second backend authority.
 
-To guarantee that telemetry (OTel traces) and logs are flushed to disk even during forced termination, `main.go` implements a two-phase shutdown:
+### Orbit Cockpit
 
-1. **Phase 1 (Cancellation)**: The application's root context is cancelled (via `SIGINT/SIGTERM`), signaling all background workers to stop.
-2. **Phase 2 (Cleanup)**: A final cleanup sequence is executed using `context.WithoutCancel(ctx)`, ensuring that I/O operations for telemetry persist.
+The native macOS application is a host around the same Go engine. Its
+`NativeEngineManager` reuses a compatible engine or starts the bundled helper,
+then verifies readiness with an MCP initialize exchange. SwiftUI supplies
+windowing, settings, review-workspace orchestration, logs, and terminal panes.
+The terminal renderer is abstracted by `OrbitTerminalEngine`, with SwiftTerm as
+the current implementation.
 
-### Trace-Log Correlation
+Component-specific native behavior remains documented under
+`native/OrbitCockpit/`.
 
-Every user action and background task is linked to the root `session` span. All log lines include a `trace_id`, enabling deep observability into the system's asynchronous operations.
+```text
+regular terminal                         Orbit Cockpit
+      |                                  /           \
+ Bubble Tea TUI                  embedded TUI    native host UI
+      |                                  |        (supervision,
+      +------------ TUIBackend ----------+         terminals,
+                    |                              orchestration)
+          +---------+---------+                         |
+          |                   |                         |
+     AppBackend       MCPAdapter / MCP             starts or reuses
+     (standalone)             |                         |
+          |              CoreEngine <------------------+
+          +---------+---------+
+                    |
+          SQLite + GitHub + services
+```
 
-## 3. Persistence & Security
+The diagram shows equivalent backend contracts, not simultaneous ownership:
+standalone mode uses an in-process `AppBackend`; connected clients use
+`MCPAdapter` to reach the engine-owned `AppBackend`.
 
-`gh-orbit` implements a hardened persistence layer compliant with **XDG v0.8+** standards.
+## Backend ownership
 
-### The Discovery Ladder
+`internal/engine.CoreEngine` is the composition root for shared backend
+services. Construction establishes:
 
-To prevent data loss when environment variables change, the system uses a tiered discovery process:
+1. the SQLite repository;
+2. the GitHub client inherited from the authenticated `gh` environment;
+3. the internal event bus and mutation publication hooks;
+4. API traffic control and rate-limit reporting;
+5. enrichment and alert services;
+6. notification fetching and synchronization; and
+7. the authoritative `internal/api.AppBackend`.
 
-1. Check `$XDG_DATA_HOME/gh-orbit/` (Modern Data path).
-2. Check `$XDG_STATE_HOME/gh-orbit/` (Modern State/Log path).
-3. Fallback to Legacy paths (e.g., `~/.config/gh/extensions/gh-orbit`).
+Shutdown stops sync, enrichment, traffic control, and alerts before closing the
+database.
 
-**Atomic Migration**: When legacy data is found, the system performs an atomic "Stage-Swap" migration using SHA-256 verification to ensure 100% data integrity before removing legacy artifacts.
+The application-facing contract is `types.TUIBackend`. It includes notification
+listing and detail retrieval, sync, independent read and handled-state changes,
+priority changes, batch operations, and review-workspace requests. The TUI
+depends on this contract rather than SQLite or GitHub implementations.
 
-### Security Mandate (0700/0600)
+### Mutation semantics
 
-All directories and files created by the application are secured with strict Unix permissions:
+Local persistence is authoritative for UI-visible triage state. Backend methods
+perform local mutations, publish notification-change events, and reconcile any
+required GitHub request. Read and handled states are independent: handled state
+is local-only, while marking a notification read also requests the corresponding
+GitHub change. GitHub does not expose an arbitrary mark-unread operation, so
+unread changes remain local.
 
-- **Directories**: `0700` (`drwx------`) - Private to the user.
-- **Files**: `0600` (`-rw-------`) - Sensitive metadata (DB, Logs, Traces) is protected from other local users.
+Batch mutations use the same backend semantics as single-item mutations. The
+backend prepares local state transactionally, performs bounded remote read
+requests where applicable, and returns an authoritative snapshot or explicit
+reconciliation state to the caller.
 
-## 4. Testing Strategy
+## Events and MCP
 
-We employ a **Hybrid Testing Model** to balance speed with fidelity:
+The internal `EventBus` publishes coalescing, non-blocking signals for changes
+to the notification list and enrichment data. Backend mutation hooks and sync
+or enrichment services emit these signals; publishers never wait for a slow
+subscriber.
 
-- **Service Logic**: Tested using [Mockery](https://github.com/vektra/mockery)-generated mocks for interfaces.
-- **Data Persistence**: Tested against a **Real In-Memory SQLite** database (`modernc.org/sqlite`) to ensure SQL query accuracy without disk side-effects.
-- **TUI Visuals**: Unit tests for the `Model.Update` loop and rendering components using `testify/assert`.
+The MCP server adapts the backend into tools and resources. It subscribes to
+engine events and emits resource-update notifications so connected clients can
+refresh from authoritative state. The MCP adapter translates TUI backend calls
+without introducing separate mutation rules.
 
-## 5. Testing & Mocking Standards
+## Transport and security
 
-### 5.1 Mockery v3 Configuration
+MCP over a local Unix domain socket is the only implemented inter-process
+transport. It remains a good fit for the current local-first, single-user
+product and retains tool- and agent-oriented interoperability without a second
+RPC stack.
 
-We generate Go test doubles with **mockery v3** and keep them in `internal/mocks` using one file per interface (`mock_{{ .InterfaceName | snakecase }}.go`).
+The engine creates its runtime directory with mode `0700` and its socket with
+mode `0600`. On macOS, accepted connections must come from the same user and,
+unless the explicit insecure development option is enabled, from an allowed
+code-signed gh-orbit identity. The native host and CLI resolve the same
+`gh-orbit/engine.sock` runtime path.
 
-Repo conventions:
+The backend contract remains transport-agnostic. Re-evaluate an additional
+gRPC adapter if one or more of these conditions become material:
 
-1. Run `make go/generate` after interface changes.
-2. Keep mocks in `internal/mocks` so production packages do not grow test-only files.
-3. Prefer interface surfaces in `internal/types`, `internal/api`, and `internal/github` that avoid framework-internal types.
+- Swift development is repeatedly constrained by weak typed-client ergonomics;
+- event or streaming adaptation becomes persistently complex;
+- multiple rich local clients require conventional app-oriented RPC;
+- MCP interoperability no longer justifies its maintenance cost; or
+- transport code begins accumulating business behavior.
 
-`mockery` v2-specific settings such as `resolve-type-alias` are gone in v3. If a future interface needs a framework alias workaround, use the v3 `replace-type` schema instead of reintroducing v2-era config.
+If that pressure appears, evaluate MCP plus gRPC before replacing MCP outright.
 
----
+## Persistence, configuration, and observability
 
-## 6. Development Principles
+The database uses `modernc.org/sqlite` with WAL mode, foreign keys, a busy
+timeout, and immediate transaction locking. Data follows XDG paths, with
+legacy-data migration where supported. Private directories use mode `0700` and
+private files use `0600`; startup permission audits repair safe, user-owned
+paths when possible.
 
-- **Doc-First**: Run `go doc` before implementing external library calls.
-- **Fail-Fast**: Configuration errors and permission failures are reported immediately on startup.
-- **Context Awareness**: `ctx context.Context` is always the first parameter of any I/O or background method.
+Configuration is loaded at process composition and passed into the services it
+owns. Subsystems do not establish competing configuration authority.
+
+Every command initializes structured logging. Verbose mode also initializes
+OpenTelemetry and creates a session span carrying version, operating-system,
+and architecture attributes. Runtime contexts and explicit shutdown methods
+bound background work and resource cleanup.
+
+## Package responsibilities
+
+| Package | Responsibility |
+| --- | --- |
+| `cmd/gh-orbit` | CLI composition, mode selection, lifecycle, and diagnostics |
+| `internal/api` | Application services and authoritative backend use cases |
+| `internal/engine` | Backend composition, events, MCP server, and MCP client adapter |
+| `internal/db` | SQLite persistence, migrations, and local state transactions |
+| `internal/github` | GitHub API integration and notification fetching |
+| `internal/config` | Configuration, XDG paths, logging, telemetry, and permissions |
+| `internal/triage` | Pure triage policy and notification classification |
+| `internal/tui` | Bubble Tea presentation and ephemeral interaction state |
+| `internal/types` | Shared application contracts and value types |
+| `native/OrbitCockpit` | SwiftUI host, engine supervision, terminal panes, and orchestration |
+
+Dependencies flow from presentation and transport adapters toward application
+contracts. Business behavior belongs in application or domain services, not in
+the TUI, native renderer, or MCP handlers.
+
+## Validation and testing
+
+Go services use unit tests with Testify and generated Mockery test doubles;
+persistence tests exercise SQLite behavior. TUI tests cover update and rendering
+semantics. Orbit Cockpit uses Swift Testing for native lifecycle, settings, and
+terminal-host behavior.
+
+Run `make check` for the complete Go and native quality gate. Run
+`make quality-report` for an on-demand complexity scorecard under
+`tmp/quality-report.md`; mutation testing remains an explicit manual diagnostic
+through `make quality-mutation`.
