@@ -7,6 +7,9 @@
 /tmp/plans/*
 !/tmp/plans/.gitkeep
 
+# rumdl default cache (project commands use /tmp/rumdl-cache)
+/.rumdl_cache/
+
 # Ignore serena files
 .serena/
 

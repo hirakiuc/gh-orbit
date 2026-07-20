@@ -22,3 +22,19 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11.3
+
+  markdown:
+    name: markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install rumdl
+        run: |
+          python3 -m venv tmp/rumdl-venv
+          tmp/rumdl-venv/bin/python -m pip install 'rumdl==0.2.36'
+          echo "$GITHUB_WORKSPACE/tmp/rumdl-venv/bin" >> "$GITHUB_PATH"
+      - name: Lint Markdown
+        run: |
+          test "$(rumdl --version)" = "rumdl 0.2.36"
+          make go/lint-docs
+          test ! -d .rumdl_cache
