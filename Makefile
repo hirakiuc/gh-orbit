@@ -2,7 +2,7 @@
 BINARY_NAME=gh-orbit
 COCKPIT_NAME=OrbitCockpit
 CMD_PATH=./cmd/gh-orbit
-GOLANGCI_LINT_VERSION=v2.11.3
+GOLANGCI_LINT_VERSION=v2.15.0
 
 # Build metadata
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
