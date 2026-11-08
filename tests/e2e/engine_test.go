@@ -171,8 +171,10 @@ func spawnEngine(t *testing.T, tmpHome string) *testEngine {
 func (e *testEngine) stop() {
 	e.cancel()
 	select {
-	case <-e.errChan:
-		// expected termination
+	case err := <-e.errChan:
+		if err != nil {
+			e.t.Logf("Engine exited after cancellation: %v", err)
+		}
 	case <-time.After(2 * time.Second):
 		e.t.Log("Engine did not stop gracefully, killing...")
 		_ = e.cmd.Process.Kill()
