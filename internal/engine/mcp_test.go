@@ -219,7 +219,7 @@ func TestMCPServer_UDSHandshake(t *testing.T) {
 
 	// 3. Signal exit
 	cancel()
-	<-errChan
+	assert.ErrorIs(t, <-errChan, context.Canceled)
 }
 
 func TestMCPServer_ProtocolChaos(t *testing.T) {
